@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>人机协作实验平台 V3｜高清流程图</title>
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --paper:#ffffff;
+      --ink:#172033;
+      --muted:#596579;
+      --line:#9aa8bd;
+      --blue:#2f6eea;
+      --blue-50:#eaf1ff;
+      --green:#1c9b6a;
+      --green-50:#e9f8f0;
+      --orange:#db8b00;
+      --orange-50:#fff4de;
+      --purple:#7a50c7;
+      --purple-50:#f1eafd;
+      --red:#d84b47;
+      --red-50:#fff0f0;
+      --gray-50:#f1f4f8;
+      --shadow:0 10px 28px rgba(23,32,51,.10);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;
+    }
+    .page{
+      max-width:1900px;
+      margin:0 auto;
+      padding:24px 28px 40px;
+    }
+    header{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:20px;
+      margin-bottom:18px;
+    }
+    h1{font-size:30px;line-height:1.15;margin:0 0 8px;font-weight:780;letter-spacing:.01em}
+    .subtitle{font-size:15px;color:var(--muted);line-height:1.55;margin:0;max-width:980px}
+    .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+    button{
+      border:1px solid #c7d2e5;background:#fff;color:#1f2a44;border-radius:10px;padding:10px 14px;
+      font-weight:650;cursor:pointer;box-shadow:0 2px 8px rgba(23,32,51,.06)
+    }
+    button:hover{border-color:#8aa4cf;background:#f8fbff}
+    .canvas-card{
+      background:var(--paper);
+      border:1px solid #d9e1ec;
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .hint{
+      display:flex;gap:12px;align-items:center;justify-content:space-between;
+      padding:12px 18px;border-bottom:1px solid #e6edf5;background:#fbfdff;color:#4b5b73;font-size:14px
+    }
+    .hint b{color:#1c2e4a}
+    .diagram-wrap{overflow:auto;background:linear-gradient(#fff,#fbfcff);}
+    svg{display:block;width:2000px;height:1100px;max-width:none}
+    .node{cursor:default}
+    .node rect,.node path{transition:filter .15s ease, stroke-width .15s ease}
+    .node:hover rect,.node:hover path{filter:drop-shadow(0 7px 10px rgba(35,55,95,.18));stroke-width:2.6}
+    .swim-label{font-size:22px;font-weight:760;fill:#173050}
+    .title-text{font-size:19px;font-weight:760;fill:#13233a}
+    .small{font-size:14px;fill:#46546a}
+    .tiny{font-size:12.5px;fill:#556278}
+    .micro{font-size:11.5px;fill:#667085}
+    .box-title{font-size:15.5px;font-weight:760;fill:#172033}
+    .box-body{font-size:12.6px;fill:#4c5870}
+    .badge-text{font-size:13px;font-weight:760;fill:white}
+    .lane-title{font-size:17px;font-weight:780;fill:#10233e}
+    .arrow{stroke:#6b7b93;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    .arrow-blue{stroke:var(--blue);stroke-width:2.5;fill:none;marker-end:url(#arrowBlue)}
+    .arrow-green{stroke:var(--green);stroke-width:2.5;fill:none;marker-end:url(#arrowGreen)}
+    .arrow-purple{stroke:var(--purple);stroke-width:2.5;fill:none;marker-end:url(#arrowPurple)}
+    .dash{stroke-dasharray:7 7}
+    .detail-panel{
+      margin-top:16px;background:#fff;border:1px solid #d9e1ec;border-radius:16px;box-shadow:var(--shadow);
+      padding:18px 20px;display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:start
+    }
+    .detail-panel h2{font-size:19px;margin:0;color:#13233a}
+    .detail-panel p{margin:4px 0 0;color:#536177;line-height:1.65;font-size:14.5px}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+    .chip{font-size:12px;color:#28415f;background:#edf4ff;border:1px solid #d8e6ff;border-radius:999px;padding:5px 9px}
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}
+    .card{background:#fff;border:1px solid #d9e1ec;border-radius:16px;padding:16px 16px;box-shadow:0 6px 18px rgba(23,32,51,.06)}
+    .card h3{margin:0 0 8px;font-size:16px;color:#172033}
+    .card ul{margin:0;padding-left:18px;color:#526176;font-size:13.5px;line-height:1.65}
+    @media(max-width:1000px){
+      .page{padding:16px}
+      header{display:block}
+      .toolbar{justify-content:flex-start;margin-top:12px}
+      .detail-panel{grid-template-columns:1fr}
+      .cards{grid-template-columns:1fr}
+    }
+    @media print{
+      body{background:#fff}.page{max-width:none;padding:0}.toolbar,.hint,.detail-panel,.cards{display:none}.canvas-card{box-shadow:none;border:none;border-radius:0}.diagram-wrap{overflow:visible}svg{width:100%;height:auto}
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div>
+        <h1>人机协作实验平台 V3｜从登录到结束实验</h1>
+        <p class="subtitle">高清 HTML / SVG 流程图。图中文字减少为核心节点，开发细节通过悬浮提示与下方卡片呈现。主流程依据 V3：三实验局独立、团队层面随机、A/B 权限隔离、主副线 AI 隔离、来源必填、全量日志与异常打标。</p>
+      </div>
+      <div class="toolbar">
+        <button onclick="downloadSvg()">下载 SVG</button>
+        <button onclick="window.print()">打印 / 导出 PDF</button>
+        <button onclick="resetDetail()">重置说明</button>
+      </div>
+    </header>
+
+    <section class="canvas-card">
+      <div class="hint"><span><b>使用方式：</b>横向滚动查看全图；悬浮任一节点查看开发说明。浏览器缩放不会糊，因为图是 SVG 矢量渲染。</span><span>V3 · Developer Flow</span></div>
+      <div class="diagram-wrap">
+        <svg id="flowSvg" viewBox="0 0 2000 1100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="人机协作实验平台 V3 从登录到结束实验流程图">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#6b7b93"/></marker>
+            <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#2f6eea"/></marker>
+            <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#1c9b6a"/></marker>
+            <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#7a50c7"/></marker>
+            <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#172033" flood-opacity="0.10"/>
+            </filter>
+          </defs>
+
+          <rect x="0" y="0" width="2000" height="1100" fill="#ffffff"/>
+          <text x="34" y="44" class="swim-label">人机协作实验平台 V3：全过程开发视图</text>
+          <text x="34" y="70" class="small">登录 → 随机化 → 测试轮 → 三个工作段循环 → 结束问卷与结算</text>
+
+          <rect x="24" y="95" width="1620" height="155" rx="18" fill="#f5f8ff" stroke="#d8e4f5"/>
+          <rect x="24" y="285" width="1620" height="165" rx="18" fill="#f3fbf7" stroke="#d7eadf"/>
+          <rect x="24" y="475" width="1620" height="210" rx="18" fill="#f6f9ff" stroke="#d6e1f4"/>
+          <rect x="24" y="720" width="1620" height="140" rx="18" fill="#faf6ff" stroke="#e4d8f5"/>
+          <rect x="24" y="890" width="1620" height="145" rx="18" fill="#f6f7f9" stroke="#dce2ea"/>
+
+          <rect x="1660" y="95" width="320" height="940" rx="18" fill="#ffffff" stroke="#d8e1ef" filter="url(#softShadow)"/>
+          <text x="1684" y="132" class="title-text">开发者实现重点</text>
+          <g class="node" data-title="V3 关键实现" data-detail="V3 开发核心是参数化、后端权限控制和可追溯日志。所有处理绑定 team_id；时间窗口、AI 能力、副线调度和叙事内容均从配置读取，不在前端写死。">
+            <rect x="1684" y="155" width="276" height="292" rx="14" fill="#eef5ff" stroke="#c5d8f6"/>
+            <text x="1702" y="186" class="box-title">P0 必须实现</text>
+            <text x="1702" y="218" class="box-body">✓ 团队层面随机化</text>
+            <text x="1702" y="246" class="box-body">✓ 时间窗口参数化</text>
+            <text x="1702" y="274" class="box-body">✓ A/B 材料权限边界</text>
+            <text x="1702" y="302" class="box-body">✓ B 提交不强制打开 A</text>
+            <text x="1702" y="330" class="box-body">✓ 来源字段必填</text>
+            <text x="1702" y="358" class="box-body">✓ 主线 AI 按公司隔离</text>
+            <text x="1702" y="386" class="box-body">✓ 全量事件日志与异常 flag</text>
+            <text x="1702" y="414" class="box-body">✓ 后台标准答案占位表</text>
+          </g>
+          <g class="node" data-title="关键公式" data-detail="A 输出解锁采用统一函数：A_output_unlock_time = max(A_window_lock_time, B_receive_time + B_preA_minutes)。该规则同时覆盖首家公司与后续公司。">
+            <rect x="1684" y="472" width="276" height="150" rx="14" fill="#fff8e9" stroke="#f0cf8d"/>
+            <text x="1702" y="502" class="box-title">A 输出解锁公式</text>
+            <text x="1702" y="536" class="box-body">max( A_window_lock_time,</text>
+            <text x="1736" y="563" class="box-body">B_receive_time</text>
+            <text x="1736" y="590" class="box-body">+ B_preA_minutes )</text>
+          </g>
+          <g class="node" data-title="日志与异常" data-detail="断线、晚提交、多标签页、AI 超时、来源不一致、疑似副线批处理等异常不删除原始记录，只生成 quality_flags。">
+            <rect x="1684" y="650" width="276" height="170" rx="14" fill="#fff1f1" stroke="#efc5c3"/>
+            <text x="1702" y="680" class="box-title">异常处理原则</text>
+            <text x="1702" y="713" class="box-body">原始记录不删除</text>
+            <text x="1702" y="740" class="box-body">只生成数据质量 flag</text>
+            <text x="1702" y="767" class="box-body">服务器时间为主时间源</text>
+            <text x="1702" y="794" class="box-body">单活跃标签页写入</text>
+          </g>
+          <g class="node" data-title="后台占位" data-detail="材料和评分暂未定稿，但开发时必须预留 company_master、material_source、gold_fact、gold_issue、rubric_dimension、rubric_weight_version、score_record 等表。">
+            <rect x="1684" y="845" width="276" height="92" rx="14" fill="#f1f4f8" stroke="#d1dae7"/>
+            <text x="1702" y="879" class="box-title">后台标准答案占位</text>
+            <text x="1702" y="910" class="box-body">可空 · 可版本化 · 可导入导出</text>
+          </g>
+          <text x="1684" y="982" class="tiny">图例：实线箭头=主流程；虚线=循环/记录；</text>
+          <text x="1684" y="1006" class="tiny">绿色=A；蓝色=B；紫色=副线/AI；灰色=后台。</text>
+
+          <text x="42" y="132" class="lane-title">① 登录与准备</text>
+          <text x="42" y="320" class="lane-title">② A 角色主线</text>
+          <text x="42" y="512" class="lane-title">③ B 角色主线</text>
+          <text x="42" y="755" class="lane-title">④ 副线任务与 AI</text>
+          <text x="42" y="925" class="lane-title">⑤ 系统 / 后台</text>
+
+          <g class="node" data-title="登录" data-detail="参与者进入实验平台，系统生成 participant_id 并绑定 session_id、座位或终端编号。">
+            <rect x="160" y="122" width="145" height="72" rx="14" fill="#ffffff" stroke="#b9c9df"/>
+            <circle cx="184" cy="158" r="15" fill="#2f6eea"/><text x="180" y="163" class="badge-text">1</text>
+            <text x="205" y="153" class="box-title">用户登录</text><text x="205" y="176" class="box-body">participant_id</text>
+          </g>
+          <path d="M305 158 H340" class="arrow"/>
+          <g class="node" data-title="服务器随机化" data-detail="服务器完成配对、A/B 角色随机和团队处理 slot 分配；处理状态来自场次内隐藏随机序列，所有处理绑定 team_id。">
+            <rect x="340" y="122" width="205" height="72" rx="14" fill="#ffffff" stroke="#b9c9df"/>
+            <circle cx="364" cy="158" r="15" fill="#2f6eea"/><text x="360" y="163" class="badge-text">2</text>
+            <text x="385" y="153" class="box-title">配对 + 角色 + 处理</text><text x="385" y="176" class="box-body">team_id / A/B / slot</text>
+          </g>
+          <path d="M545 158 H580" class="arrow"/>
+          <g class="node" data-title="实验说明" data-detail="展示实验规则、AI 使用记录说明、主副线任务说明、来源填写规则。前端不得暴露处理组名称。">
+            <rect x="580" y="122" width="160" height="72" rx="14" fill="#ffffff" stroke="#b9c9df"/>
+            <circle cx="604" cy="158" r="15" fill="#2f6eea"/><text x="600" y="163" class="badge-text">3</text>
+            <text x="625" y="153" class="box-title">实验说明</text><text x="625" y="176" class="box-body">规则 / 权限 / AI</text>
+          </g>
+          <path d="M740 158 H775" class="arrow"/>
+          <g class="node" data-title="测试轮" data-detail="测试轮不是理解考试，而是关键操作完成条件。A/B 必须完成材料打开、AI 调用、表单/来源/反馈、副线展开退出等操作后才能进入正式实验。">
+            <rect x="775" y="122" width="165" height="72" rx="14" fill="#ffffff" stroke="#b9c9df"/>
+            <circle cx="799" cy="158" r="15" fill="#2f6eea"/><text x="795" y="163" class="badge-text">4</text>
+            <text x="820" y="153" class="box-title">测试轮</text><text x="820" y="176" class="box-body">完成 checklist</text>
+          </g>
+          <path d="M940 158 H980" class="arrow-blue"/>
+          <g class="node" data-title="正式实验循环" data-detail="正式实验由 3 个工作段组成。每段结束后保存状态、工作段问卷、休息；实验局 1 可能触发 AI 升级，实验局 3 可能展示叙事信息。">
+            <rect x="980" y="107" width="450" height="102" rx="16" fill="#eef5ff" stroke="#aecaef"/>
+            <text x="1005" y="140" class="box-title">正式实验：3 个工作段循环</text>
+            <text x="1005" y="169" class="box-body">工作段 → 保存 → 问卷 → 休息 / 升级 / 叙事</text>
+            <text x="1005" y="193" class="box-body">第 3 段后：结束问卷 → 绩效结算 → 结束</text>
+          </g>
+          <path d="M1430 158 H1485" class="arrow-blue"/>
+          <g class="node" data-title="结束实验" data-detail="第三个工作段结束后，系统停止新公司和新副线释放，保存草稿、AI 日志、快照、来源字段和行为日志，进入结束问卷和结算。">
+            <rect x="1485" y="122" width="115" height="72" rx="14" fill="#ffffff" stroke="#b9c9df"/>
+            <text x="1510" y="153" class="box-title">结束</text><text x="1510" y="176" class="box-body">问卷 / 结算</text>
+          </g>
+
+          <g class="node" data-title="A 接收公司" data-detail="A 任一时点只能处理一家公司。系统推送 A 端微观材料，A 无权查看 B 自有材料、B 草稿、B 报告或 B 的 AI 对话。">
+            <rect x="160" y="325" width="145" height="80" rx="14" fill="#ffffff" stroke="#a7d8bc"/>
+            <text x="183" y="355" class="box-title">接收公司</text><text x="183" y="380" class="box-body">A 微观材料</text>
+          </g>
+          <path d="M305 365 H338" class="arrow-green"/>
+          <g class="node" data-title="A 固定窗口" data-detail="A_window_minutes 为可配置参数，不写死 5 分钟。到点按服务器时间锁定，断线或处于副线界面也不自动补时。">
+            <rect x="338" y="325" width="165" height="80" rx="14" fill="#ffffff" stroke="#a7d8bc"/>
+            <text x="365" y="355" class="box-title">A 固定窗口</text><text x="365" y="380" class="box-body">A_window_minutes</text>
+          </g>
+          <path d="M503 365 H536" class="arrow-green"/>
+          <g class="node" data-title="A 输出" data-detail="A 输出包含 A.1 基础数值、A.2 机会/风险线索、A.3 总体交接备注。A.3 可为空但需记录。">
+            <rect x="536" y="325" width="180" height="80" rx="14" fill="#ffffff" stroke="#a7d8bc"/>
+            <text x="560" y="355" class="box-title">填写 A.1 / A.2 / A.3</text><text x="560" y="380" class="box-body">数值 · 线索 · 备注</text>
+          </g>
+          <path d="M716 365 H748" class="arrow-green"/>
+          <g class="node" data-title="A 可使用 AI 或副线" data-detail="主线 AI 按公司隔离上下文。AI 等待不是停工，A 可以继续主线、切换副线或无操作；这些等待期间行为必须记录。">
+            <rect x="748" y="325" width="185" height="80" rx="14" fill="#ffffff" stroke="#a7d8bc"/>
+            <text x="772" y="355" class="box-title">主线 AI / 副线</text><text x="772" y="380" class="box-body">等待期间可切换</text>
+          </g>
+          <path d="M933 365 H966" class="arrow-green"/>
+          <g class="node" data-title="A 锁定" data-detail="到达 A_window_minutes 后系统自动保存并锁定 A 输出。若 AI 未返回，旧请求绑定旧 company_id 并归档，不得显示到下一家公司。">
+            <rect x="966" y="325" width="160" height="80" rx="14" fill="#ffffff" stroke="#a7d8bc"/>
+            <text x="1002" y="355" class="box-title">到点锁定</text><text x="1002" y="380" class="box-body">保存 / 归档 AI</text>
+          </g>
+          <path d="M1126 365 H1158" class="arrow-green"/>
+          <g class="node" data-title="公司池" data-detail="A 输出锁定后进入 company pool。B 完成上一家公司后从池中随机抽取；记录 pool_size_at_draw、company_enter_pool_time、B_receive_time。">
+            <rect x="1158" y="325" width="150" height="80" rx="14" fill="#e9f8f0" stroke="#7fc69f"/>
+            <text x="1200" y="355" class="box-title">公司池</text><text x="1190" y="380" class="box-body">company pool</text>
+          </g>
+          <path d="M1308 365 C1375 365 1375 522 1310 522" class="arrow-green dash"/>
+
+          <g class="node" data-title="B 接收公司" data-detail="B 完成上一家公司报告和反馈后，从公司池随机接收公司。默认显示 B 自有材料，不默认显示 A 输出。">
+            <rect x="160" y="530" width="150" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="188" y="565" class="box-title">抽取公司</text><text x="188" y="590" class="box-body">B 自有材料</text>
+          </g>
+          <path d="M310 575 H345" class="arrow-blue"/>
+          <g class="node" data-title="B_PreA" data-detail="B_preA_minutes 为可配置参数，通常与 A_window_minutes 同步。此阶段 B 只能看 B 自有材料；B 的主线 AI 不能访问 A 材料、A 尽调表或 A 备注。">
+            <rect x="345" y="530" width="205" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="378" y="565" class="box-title">PreA 独立处理</text><text x="378" y="590" class="box-body">B_preA_minutes</text>
+          </g>
+          <path d="M550 575 H585" class="arrow-blue"/>
+          <g class="node" data-title="未开放标签" data-detail="B_PreA 阶段点击 A 产出页或 A 原始材料页时，标签内显示倒计时或未开放提示，并记录 attempted_access_preunlock。">
+            <rect x="585" y="530" width="175" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="620" y="565" class="box-title">A 页倒计时</text><text x="615" y="590" class="box-body">记录尝试访问</text>
+          </g>
+          <path d="M760 575 H795" class="arrow-blue"/>
+          <g class="node" data-title="解锁快照" data-detail="到达统一解锁时点后保存 B_PreA 快照，包含信息点、来源、备忘录、当前倾向、主线 AI thread、界面位置和时间戳。">
+            <rect x="795" y="530" width="185" height="90" rx="14" fill="#eef5ff" stroke="#8ab2ec"/>
+            <text x="828" y="565" class="box-title">快照 + 解锁</text><text x="821" y="590" class="box-body">B_PreA snapshot</text>
+          </g>
+          <path d="M980 575 H1015" class="arrow-blue"/>
+          <g class="node" data-title="B_PostA" data-detail="A 输出解锁后，B 可选择查看 A 尽调表、A 备注、复核 A 原始材料、继续使用 AI、修改信息点和备忘录。不要求查看 A。">
+            <rect x="1015" y="530" width="195" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="1050" y="565" class="box-title">PostA 整合</text><text x="1040" y="590" class="box-body">可看 A / 可复核</text>
+          </g>
+          <path d="M1210 575 H1245" class="arrow-blue"/>
+          <g class="node" data-title="B 提交" data-detail="提交条件：A 输出已解锁、达到最低信息点数量、每条信息点来源必填、备忘录达标、最终建议已选。打开 A 产出页不是提交条件。">
+            <rect x="1245" y="530" width="165" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="1290" y="565" class="box-title">提交报告</text><text x="1282" y="590" class="box-body">来源必填</text>
+          </g>
+          <path d="M1410 575 H1445" class="arrow-blue"/>
+          <g class="node" data-title="反馈" data-detail="B 提交后进入反馈页。若发送反馈，A 仅收到右下角短暂弹窗；A 不能回看历史反馈；反馈不是双向聊天。">
+            <rect x="1445" y="530" width="105" height="90" rx="14" fill="#ffffff" stroke="#a8c5ec"/>
+            <text x="1475" y="565" class="box-title">反馈</text><text x="1460" y="590" class="box-body">可发送</text>
+          </g>
+
+          <g class="node" data-title="统一解锁函数" data-detail="首家公司和后续公司统一使用该公式，防止 B 在形成独立 PreA 判断前接触 A 输出。">
+            <rect x="580" y="640" width="440" height="54" rx="13" fill="#fff8e9" stroke="#f0cf8d"/>
+            <text x="600" y="674" class="box-title">解锁 = max(A 锁定时间, B 接收时间 + B_PreA)</text>
+          </g>
+
+          <g class="node" data-title="副线调度" data-detail="实验局 2 操纵 continuous vs batch。两组副线总量、难度、奖励、保留规则和副线 AI 一致；差异是到达节奏与工作流组织。">
+            <rect x="160" y="755" width="180" height="70" rx="14" fill="#ffffff" stroke="#cbb8ee"/>
+            <text x="190" y="785" class="box-title">副线释放</text><text x="190" y="808" class="box-body">continuous / batch</text>
+          </g>
+          <path d="M340 790 H375" class="arrow-purple"/>
+          <g class="node" data-title="副线提示" data-detail="顶部提示只显示“有新副线任务到达”，不显示当前未处理 X 条。后台仍可记录库存，但前端不暴露库存数量。">
+            <rect x="375" y="755" width="190" height="70" rx="14" fill="#ffffff" stroke="#cbb8ee"/>
+            <text x="405" y="785" class="box-title">顶部提示</text><text x="405" y="808" class="box-body">不显示 X 条库存</text>
+          </g>
+          <path d="M565 790 H600" class="arrow-purple"/>
+          <g class="node" data-title="副线 AI" data-detail="副线页内设置独立 AI，对话上下文按工作段清空。副线 AI 不访问主线材料，主线 AI 不访问副线内容。">
+            <rect x="600" y="755" width="195" height="70" rx="14" fill="#ffffff" stroke="#cbb8ee"/>
+            <text x="630" y="785" class="box-title">副线 AI 独立</text><text x="630" y="808" class="box-body">按工作段清空</text>
+          </g>
+          <path d="M795 790 H830" class="arrow-purple"/>
+          <g class="node" data-title="批处理记录" data-detail="不技术性禁止参与者复制多条副线任务给 AI。系统记录 prompt 长度、粘贴事件、多条任务匹配和 side_ai_bulk_candidate。">
+            <rect x="830" y="755" width="210" height="70" rx="14" fill="#ffffff" stroke="#cbb8ee"/>
+            <text x="860" y="785" class="box-title">疑似批处理</text><text x="860" y="808" class="box-body">记录，不禁止</text>
+          </g>
+          <path d="M1040 790 H1075" class="arrow-purple"/>
+          <g class="node" data-title="段末归档" data-detail="副线任务段内保留，工作段结束时归档未完成任务；不设置单条短时过期或倒计时淘汰。">
+            <rect x="1075" y="755" width="170" height="70" rx="14" fill="#ffffff" stroke="#cbb8ee"/>
+            <text x="1110" y="785" class="box-title">段内保留</text><text x="1110" y="808" class="box-body">段末归档</text>
+          </g>
+
+          <g class="node" data-title="随机化审计" data-detail="记录 session_id、team_id、slot_id、randomization_block、role_assignment_seed、treatment_assignment、assignment_time_server 等。">
+            <rect x="160" y="930" width="190" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="190" y="962" class="box-title">randomization_audit</text><text x="190" y="986" class="box-body">角色 / 处理 slot</text>
+          </g>
+          <path d="M350 966 H382" class="arrow"/>
+          <g class="node" data-title="全量事件日志" data-detail="记录 event_log，包括 server_timestamp、participant/team/role、company_id、work_segment、window_type、event_type、ui_region、dwell_ms、browser_focus_status 等。">
+            <rect x="382" y="930" width="180" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="415" y="962" class="box-title">event_log</text><text x="415" y="986" class="box-body">服务器时间轴</text>
+          </g>
+          <path d="M562 966 H594" class="arrow"/>
+          <g class="node" data-title="AI 日志" data-detail="主线 AI 和副线 AI 分开记录：prompt、response、thread_id、权限阶段、模型版本、等待时间、跨边界状态。">
+            <rect x="594" y="930" width="180" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="635" y="962" class="box-title">AI logs</text><text x="625" y="986" class="box-body">main / side</text>
+          </g>
+          <path d="M774 966 H806" class="arrow"/>
+          <g class="node" data-title="来源与快照" data-detail="保存 B_PreA 快照、source_trace、来源一致性 flag；来源必填但不因一致性异常阻止提交。">
+            <rect x="806" y="930" width="190" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="835" y="962" class="box-title">快照 / 来源</text><text x="835" y="986" class="box-body">B_PreA · source</text>
+          </g>
+          <path d="M996 966 H1028" class="arrow"/>
+          <g class="node" data-title="质量标记" data-detail="quality_flags 包括 severe_idle、low_main_activity、source_inconsistency、secondary_tab_activity、late_submit、technical_failure 等。">
+            <rect x="1028" y="930" width="175" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="1060" y="962" class="box-title">quality_flags</text><text x="1060" y="986" class="box-body">异常只打标</text>
+          </g>
+          <path d="M1203 966 H1235" class="arrow"/>
+          <g class="node" data-title="标准答案后台" data-detail="为后续评分预留 company_master、material_master、material_source、gold_fact、gold_issue、gold_recommendation、rubric_dimension、score_record 等。">
+            <rect x="1235" y="930" width="215" height="72" rx="14" fill="#ffffff" stroke="#ccd4df"/>
+            <text x="1270" y="962" class="box-title">标准答案后台</text><text x="1270" y="986" class="box-body">占位 / 版本化</text>
+          </g>
+
+          <path d="M160 1060 H1600" stroke="#aab7c9" stroke-width="2" stroke-dasharray="4 8"/>
+          <circle cx="160" cy="1060" r="5" fill="#2f6eea"/><text x="145" y="1084" class="micro">登录</text>
+          <circle cx="775" cy="1060" r="5" fill="#2f6eea"/><text x="728" y="1084" class="micro">测试轮通过</text>
+          <circle cx="1035" cy="1060" r="5" fill="#2f6eea"/><text x="993" y="1084" class="micro">工作段 1</text>
+          <circle cx="1185" cy="1060" r="5" fill="#2f6eea"/><text x="1143" y="1084" class="micro">工作段 2</text>
+          <circle cx="1335" cy="1060" r="5" fill="#2f6eea"/><text x="1293" y="1084" class="micro">工作段 3</text>
+          <circle cx="1542" cy="1060" r="5" fill="#2f6eea"/><text x="1515" y="1084" class="micro">结束</text>
+        </svg>
+      </div>
+    </section>
+
+    <section class="detail-panel" id="detailPanel">
+      <div>
+        <h2 id="detailTitle">节点说明</h2>
+        <div class="chips"><span class="chip">悬浮节点查看</span><span class="chip">矢量高清</span><span class="chip">开发版 V3</span></div>
+      </div>
+      <p id="detailText">此流程图将 V3 开发文档压缩成可视化主流程：登录与随机化、A/B 主线任务、副线任务与 AI、后台日志与异常标记。上方图形文本较少，开发细节通过悬浮节点显示。</p>
+    </section>
+
+    <section class="cards">
+      <div class="card">
+        <h3>主流程</h3>
+        <ul>
+          <li>服务器配对、角色随机、处理 slot 随机。</li>
+          <li>A 输出锁定入池，B 从公司池随机接收。</li>
+          <li>首家公司也遵守统一解锁公式。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>A/B 权限</h3>
+        <ul>
+          <li>A 只看 A 微观材料。</li>
+          <li>B_PreA 只看 B 自有材料。</li>
+          <li>B_PostA 后才开放 A 输出和复核入口。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>AI 与副线</h3>
+        <ul>
+          <li>主线 AI 按公司隔离上下文。</li>
+          <li>副线 AI 独立，按工作段清空。</li>
+          <li>副线批处理不禁止，但记录。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>日志与导出</h3>
+        <ul>
+          <li>事件表、AI 表、公司流转表、来源追踪表。</li>
+          <li>异常只打标，不删除原始记录。</li>
+          <li>后台标准答案系统先做占位。</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const titleEl = document.getElementById('detailTitle');
+    const textEl = document.getElementById('detailText');
+    const defaultTitle = titleEl.textContent;
+    const defaultText = textEl.textContent;
+    function resetDetail(){ titleEl.textContent = defaultTitle; textEl.textContent = defaultText; }
+    document.querySelectorAll('.node').forEach(node => {
+      node.addEventListener('mouseenter', () => {
+        titleEl.textContent = node.dataset.title || defaultTitle;
+        textEl.textContent = node.dataset.detail || defaultText;
+      });
+    });
+    function downloadSvg(){
+      const svg = document.getElementById('flowSvg');
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svg);
+      if(!source.match(/^<svg[^>]+xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)){
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+      const blob = new Blob([source], {type:'image/svg+xml;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '人机协作实验平台V3_流程图.svg';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

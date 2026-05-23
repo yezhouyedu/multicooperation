@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 投资决策实验平台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgGlobal: '#f0f2f5',      /* 全局底层灰 */
+                        surface: '#ffffff',       /* 面板纯白 */
+                        primary: '#1e80ff',       /* 品牌蓝 */
+                        primaryHover: '#1168e3',
+                        success: '#28a745',       /* 提交绿 */
+                        danger: '#ef4444',        /* 警示红 */
+                        borderLight: '#e5e6eb',   /* 极浅边框 */
+                        textMain: '#1d2129',      /* 正文黑 */
+                        textMuted: '#86909c'      /* 提示灰 */
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隐藏滚动条但保留滚动功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* 拖拽分割条的悬浮感 */
+        .splitter-v { cursor: col-resize; transition: background-color 0.2s; }
+        .splitter-v:hover { background-color: #1e80ff; }
+        .splitter-v:hover > div { background-color: #ffffff; }
+        .splitter-h { cursor: row-resize; transition: background-color 0.2s; }
+        .splitter-h:hover { background-color: #1e80ff; }
+        .splitter-h:hover > div { background-color: #ffffff; }
+
+        /* 传送带物理滚动引擎：从右滑入，左侧缩小吸入 */
+        @keyframes conveyorScroll {
+            0% { left: 100%; opacity: 0; transform: translateY(-50%) scale(0.9); }
+            5% { opacity: 1; transform: translateY(-50%) scale(1); }
+            85% { opacity: 1; transform: translateY(-50%) scale(1); }
+            100% { left: 0%; opacity: 0; transform: translateY(-50%) scale(0.5); }
+        }
+        .scroll-item {
+            position: absolute;
+            top: 50%;
+            animation: conveyorScroll 12s linear forwards; /* 12秒滚动时长 */
+            white-space: nowrap;
+        }
+
+        /* Inbox 积压提示动画 */
+        .pulse-badge { animation: pulseWarning 0.6s ease-out; }
+        @keyframes pulseWarning {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        
+        /* 平滑过渡 */
+        .pane-transition { transition: flex-basis 0.3s ease-in-out, opacity 0.3s; }
+    </style>
+</head>
+
+<body class="h-screen w-screen overflow-hidden bg-bgGlobal flex flex-col text-textMain text-sm font-sans selection:bg-blue-200">
+
+    <!-- ================= 1. 顶部全局功能区 ================= -->
+    <nav class="h-[52px] bg-surface border-b border-borderLight flex items-center justify-between px-5 shrink-0 shadow-sm z-30">
+        <div class="flex items-center gap-5">
+            <div class="font-bold text-lg text-primary tracking-wide"><i class="fa-solid fa-chart-pie mr-2"></i>AI 投资决策平台</div>
+            <div class="text-textMuted bg-gray-100 px-2.5 py-1 rounded text-xs border border-gray-200">角色: 投资经理 (B端)</div>
+            <div class="text-textMuted bg-gray-100 px-2.5 py-1 rounded text-xs border border-gray-200">当前项目: 星云科技 (No.1024)</div>
+        </div>
+        
+        <!-- 开发者测试台 (仅供演示) -->
+        <div class="flex gap-2 bg-yellow-50 p-1 rounded border border-yellow-200 text-xs">
+            <button onclick="simulateContinuous()" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 shadow-sm"><i class="fa-solid fa-play mr-1"></i>模拟连续</button>
+            <button onclick="simulateBatch()" class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 shadow-sm"><i class="fa-solid fa-layer-group mr-1"></i>模拟批量</button>
+        </div>
+
+        <div class="flex items-center gap-6">
+            <div class="flex items-center gap-2 text-textMuted font-mono bg-gray-50 px-3 py-1 rounded-full border border-gray-200">
+                <i class="fa-regular fa-clock text-primary"></i> <span id="timer" class="font-bold">00:25:14</span>
+            </div>
+            <!-- 主线提交按钮 -->
+            <button class="bg-success hover:bg-green-600 text-white px-5 py-1.5 rounded-md flex items-center gap-2 font-bold transition shadow hover:shadow-md">
+                <i class="fa-solid fa-cloud-arrow-up"></i> 提交进入反馈页
+            </button>
+            <div class="w-px h-6 bg-borderLight"></div>
+            <div class="w-8 h-8 rounded-full bg-blue-100 overflow-hidden cursor-pointer border border-primaryHover shadow-sm">
+                <img src="https://api.dicebear.com/6.x/avataaars/svg?seed=Manager" alt="avatar">
+            </div>
+        </div>
+    </nav>
+
+    <!-- ================= 2. 顶部副线任务区 (传送带 + Inbox) ================= -->
+    <div class="h-12 bg-blue-50/50 border-b border-blue-200 flex items-center px-4 shrink-0 relative z-20">
+        
+        <!-- Inbox 收件箱 -->
+        <div class="shrink-0 bg-transparent pr-4 flex items-center h-full relative z-30">
+            <button onclick="toggleSubTaskModal(true)" class="bg-danger hover:bg-red-600 text-white text-sm px-4 py-1.5 rounded-md flex items-center shadow-sm transition font-bold group">
+                <i class="fa-solid fa-inbox mr-2 group-hover:-translate-y-0.5 transition-transform"></i> 待处理副线
+                <span id="pending-count" class="bg-white text-danger rounded-full min-w-[20px] h-5 flex items-center justify-center ml-2 font-black px-1.5 text-xs shadow-inner">0</span>
+            </button>
+            <div class="w-px h-6 bg-blue-200 ml-4"></div>
+            <div class="font-bold text-blue-700 ml-4 shrink-0 flex items-center">
+                <i class="fa-solid fa-satellite-dish animate-pulse text-blue-500 mr-2"></i> 市场实时快讯
+            </div>
+        </div>
+
+        <!-- Track 滚动轨道 -->
+        <div id="scroll-track" class="flex-1 h-full relative overflow-hidden">
+            <!-- JS 动态注入的滚动气泡将出现在这里 -->
+        </div>
+    </div>
+
+    <!-- ================= 3. 主工作区 ================= -->
+    <main class="flex-1 flex flex-row overflow-hidden p-2 gap-2 relative z-0">
+        
+        <!-- ================= A 区：材料区 ================= -->
+        <section id="pane-a" class="w-1/2 bg-surface rounded-xl shadow-sm border border-borderLight flex flex-col overflow-hidden pane-transition">
+            <!-- Tabs -->
+            <header class="h-11 border-b border-borderLight flex items-center px-2 shrink-0 bg-gray-50 gap-1">
+                <button onclick="switchTab('tab-raw')" id="btn-tab-raw" class="h-full px-5 text-textMuted hover:text-textMain border-b-2 border-transparent transition font-medium">原始材料</button>
+                <button onclick="switchTab('tab-dd')" id="btn-tab-dd" class="h-full px-5 text-primary font-bold border-b-2 border-primary transition bg-blue-50/50">A 的尽调表 (默认)</button>
+            </header>
+            
+            <!-- 内容容器 -->
+            <div class="flex-1 overflow-hidden relative">
+                
+                <!-- Tab内容 1：A的尽调表 -->
+                <div id="tab-dd" class="absolute inset-0 overflow-y-auto p-6 no-scrollbar">
+                    <div class="max-w-3xl mx-auto">
+                        <div class="flex items-center justify-between border-b pb-4 mb-6">
+                            <h2 class="text-xl font-black text-gray-800">上游尽调员 (A) 预审尽调表</h2>
+                            <span class="text-xs text-gray-400">最后更新: 10:02 AM</span>
+                        </div>
+                        
+                        <!-- A的备注高亮 -->
+                        <div class="bg-blue-50 border-l-4 border-primary p-4 mb-8 rounded-r-lg">
+                            <p class="font-bold text-primary mb-2 flex items-center"><i class="fa-solid fa-comment-dots mr-2"></i>A 的核心交接备注：</p>
+                            <p class="text-gray-700 leading-relaxed">"这家公司虽然营收增长极快，占据了市场先机，但我发现在合规性材料上有些模糊，特别是海外收入的合规证明。建议下游（B端）在定夺时仔细审查其第二季度的法务合规文件。"</p>
+                        </div>
+
+                        <!-- 结构化信息 -->
+                        <div class="space-y-8">
+                            <div class="bg-gray-50 rounded-lg p-5 border border-borderLight">
+                                <h3 class="font-bold text-gray-800 text-base mb-3 flex items-center"><i class="fa-solid fa-arrow-trend-up text-green-500 mr-2"></i>机会点初步梳理</h3>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-2 leading-relaxed">
+                                    <li>核心算法技术处于行业领先地位，具有较深的专利技术护城河。</li>
+                                    <li>管理团队拥有连续成功创业经验，具备极强的执行力与行业人脉。</li>
+                                    <li>过去三个季度营收复合增长率达 45%，用户留存率优于竞品。</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-gray-50 rounded-lg p-5 border border-borderLight">
+                                <h3 class="font-bold text-gray-800 text-base mb-3 flex items-center"><i class="fa-solid fa-triangle-exclamation text-yellow-500 mr-2"></i>风险点初步梳理</h3>
+                                <ul class="list-disc pl-5 text-gray-600 space-y-2 leading-relaxed">
+                                    <li>现金流周转天数长于行业平均水平，资金链存在隐患。</li>
+                                    <li>存在尚未判决的知识产权边缘纠纷，可能面临数额不大的罚款。</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab内容 2：原始材料 (默认隐藏) -->
+                <div id="tab-raw" class="absolute inset-0 overflow-y-auto p-6 no-scrollbar hidden bg-gray-100">
+                    <div class="max-w-3xl mx-auto bg-white p-8 rounded border border-gray-200 shadow-sm">
+                        <h1 class="text-2xl font-black text-center mb-6">星云科技 2025 年度商业计划书 (BP)</h1>
+                        <p class="text-gray-500 text-center mb-8">机密材料 · 严禁外传</p>
+                        <div class="space-y-6 text-gray-700 leading-loose">
+                            <p class="indent-8">星云科技有限公司成立于 2021 年，致力于为全球企业提供基于新一代生成式 AI 的数据自动化处理解决方案。我们的使命是“让机器懂得数据的内在逻辑”...</p>
+                            <h3 class="font-bold text-lg mt-4">一、 市场规模与痛点</h3>
+                            <p class="indent-8">根据 IDC 预测，到 2026 年全球数据自动化市场规模将达到 1500 亿美元。当前企业面临的主要痛点在于异构数据无法拉通，导致数据孤岛严重...</p>
+                            <h3 class="font-bold text-lg mt-4">二、 财务状况简报 (含第二季度法务)</h3>
+                            <p class="indent-8 bg-yellow-50 p-2 rounded">【系统提示：您翻阅到了 A 备注中提及的区域】...关于海外区收入，我司目前主要依托海外代理商进行结算。由于部分地区的税务政策仍处于灰度期，相关合规报备文件仍在与当地律所沟通补办中...</p>
+                            <p class="indent-8">...</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 纵向分割拖拽条 -->
+        <div class="splitter-v w-2 bg-transparent rounded flex items-center justify-center shrink-0 z-10 mx-0.5">
+            <div class="w-1 h-12 bg-gray-300 rounded-full"></div>
+        </div>
+
+        <!-- ================= 右侧容器 (Flex Col) ================= -->
+        <section id="right-container" class="flex-1 flex flex-col overflow-hidden gap-2">
+            
+            <!-- ================= B 区：任务区 ================= -->
+            <div id="pane-b" class="h-1/2 bg-surface rounded-xl shadow-sm border border-borderLight flex flex-col overflow-hidden relative pane-transition">
+                <header class="h-11 border-b border-borderLight flex items-center justify-between px-4 shrink-0 bg-blue-50/30">
+                    <div class="font-bold text-gray-800 flex items-center">
+                        <div class="bg-primary text-white w-6 h-6 rounded flex items-center justify-center mr-2 text-xs"><i class="fa-solid fa-pen"></i></div>
+                        我的判定任务 (B)
+                    </div>
+                    <div class="flex items-center gap-2 text-textMuted">
+                        <button class="w-8 h-8 rounded hover:bg-gray-200 transition tooltip flex items-center justify-center" title="重置表单"><i class="fa-solid fa-rotate-left"></i></button>
+                        <div class="w-px h-4 bg-borderLight mx-1"></div>
+                        <button onclick="toggleMaximize('pane-b', 'pane-c')" class="w-8 h-8 rounded hover:bg-gray-200 hover:text-primary transition tooltip flex items-center justify-center" title="全屏/半屏切换"><i class="fa-solid fa-expand"></i></button>
+                    </div>
+                </header>
+                
+                <div class="flex-1 overflow-y-auto p-5 no-scrollbar bg-white">
+                    <div class="max-w-2xl mx-auto space-y-6 pb-10">
+                        
+                        <!-- 表单项 1 -->
+                        <div>
+                            <label class="block font-bold text-gray-800 mb-2">1. 补充及确认机会点 <span class="text-danger">*</span></label>
+                            <textarea class="w-full bg-gray-50 border border-borderLight rounded-lg p-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-white resize-none mb-2 text-gray-700 transition" rows="2" placeholder="综合A的结论与您的发现，列出核心机会点..."></textarea>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500 shrink-0">本条信息主要来源:</span>
+                                <select class="flex-1 bg-gray-50 border border-borderLight rounded-md p-1.5 text-xs text-gray-700 focus:outline-none focus:border-primary">
+                                    <option value="" disabled selected>-- 请选择 --</option>
+                                    <option>A 尽调表</option>
+                                    <option>A 备注</option>
+                                    <option>原始材料</option>
+                                    <option>AI 辅助分析</option>
+                                    <option>不确定</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 表单项 2 -->
+                        <div class="pt-4 border-t border-dashed border-gray-200">
+                            <label class="block font-bold text-gray-800 mb-2">2. 补充及确认风险点 <span class="text-danger">*</span></label>
+                            <textarea class="w-full bg-gray-50 border border-borderLight rounded-lg p-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-white resize-none mb-2 text-gray-700 transition" rows="2" placeholder="警惕未披露风险..."></textarea>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500 shrink-0">本条信息主要来源:</span>
+                                <select class="flex-1 bg-gray-50 border border-borderLight rounded-md p-1.5 text-xs text-gray-700 focus:outline-none focus:border-primary">
+                                    <option value="" disabled selected>-- 请选择 --</option>
+                                    <option>A 尽调表</option>
+                                    <option>A 备注</option>
+                                    <option>原始材料</option>
+                                    <option>AI 辅助分析</option>
+                                    <option>不确定</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- 表单项 3 -->
+                        <div class="pt-4 border-t border-dashed border-gray-200">
+                            <label class="block font-bold text-gray-800 mb-2 flex items-center justify-between">
+                                <span>3. 投资备忘录 (Investment Memo) <span class="text-danger">*</span></span>
+                                <span class="text-xs font-normal text-gray-400">支持 Markdown</span>
+                            </label>
+                            <textarea class="w-full bg-gray-50 border border-borderLight rounded-lg p-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-white resize-none text-gray-700 transition leading-relaxed" rows="4" placeholder="请基于上述判断，撰写完整的投资立项备忘录..."></textarea>
+                        </div>
+
+                        <!-- 表单项 4 -->
+                        <div class="pt-4 border-t border-gray-200">
+                            <label class="block font-bold text-gray-800 mb-3 text-lg">4. 最终建议 <span class="text-danger">*</span></label>
+                            <div class="flex gap-6">
+                                <label class="flex-1 flex items-center justify-center gap-2 p-3 bg-white border-2 border-borderLight rounded-lg cursor-pointer hover:border-success hover:bg-green-50 transition has-[:checked]:border-success has-[:checked]:bg-green-50">
+                                    <input type="radio" name="decision" class="w-4 h-4 accent-success"> 
+                                    <span class="font-bold text-gray-800">✅ 推进投资</span>
+                                </label>
+                                <label class="flex-1 flex items-center justify-center gap-2 p-3 bg-white border-2 border-borderLight rounded-lg cursor-pointer hover:border-danger hover:bg-red-50 transition has-[:checked]:border-danger has-[:checked]:bg-red-50">
+                                    <input type="radio" name="decision" class="w-4 h-4 accent-danger"> 
+                                    <span class="font-bold text-gray-800">❌ 放弃投资</span>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- 横向分割拖拽条 -->
+            <div class="splitter-h h-2 bg-transparent rounded flex items-center justify-center shrink-0 z-10 my-0.5">
+                <div class="w-12 h-1 bg-gray-300 rounded-full"></div>
+            </div>
+
+            <!-- ================= C 区：AI 交互区 ================= -->
+            <div id="pane-c" class="flex-1 bg-surface rounded-xl shadow-sm border border-borderLight flex flex-col overflow-hidden relative pane-transition">
+                <header class="h-11 border-b border-borderLight flex items-center justify-between px-4 shrink-0 bg-purple-50/30">
+                    <div class="font-bold text-gray-800 flex items-center gap-2">
+                        <div class="bg-purple-500 text-white w-6 h-6 rounded flex items-center justify-center text-xs"><i class="fa-solid fa-robot"></i></div>
+                        AI 分析助手
+                        <span class="bg-purple-100 border border-purple-200 text-purple-700 text-[10px] px-1.5 py-0.5 rounded-sm font-normal">v2.0 已升级</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-textMuted">
+                        <button onclick="toggleMaximize('pane-c', 'pane-b')" class="w-8 h-8 rounded hover:bg-gray-200 hover:text-purple-600 transition tooltip flex items-center justify-center" title="全屏/半屏切换"><i class="fa-solid fa-expand"></i></button>
+                    </div>
+                </header>
+                
+                <!-- Chat 历史记录区 -->
+                <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-6 bg-gray-50/50 no-scrollbar">
+                    
+                    <!-- AI 消息 -->
+                    <div class="flex gap-3 items-start">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm"><i class="fa-solid fa-robot text-xs"></i></div>
+                        <div class="bg-white border border-borderLight rounded-2xl rounded-tl-none p-3.5 text-sm text-gray-700 shadow-sm max-w-[85%] leading-relaxed">
+                            你好！我是你的专属 AI 投资助手。我已经阅读了《星云科技》的原始材料。你可以向我提问，或者上传财务报表截图让我帮你分析风险。
+                        </div>
+                    </div>
+
+                    <!-- User 消息 -->
+                    <div class="flex gap-3 flex-row-reverse items-start">
+                        <div class="w-8 h-8 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-gray-500 shrink-0"><i class="fa-solid fa-user text-xs"></i></div>
+                        <div class="bg-primary border border-primaryHover rounded-2xl rounded-tr-none p-3.5 text-sm text-white shadow-sm max-w-[85%] leading-relaxed">
+                            A 尽调员提到第二季度的法务文件有问题，帮我查一下原始材料里怎么说的？
+                        </div>
+                    </div>
+
+                    <!-- AI Loading 状态 -->
+                    <div class="flex gap-3 items-start">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white shrink-0 shadow-sm"><i class="fa-solid fa-robot text-xs"></i></div>
+                        <div class="bg-white border border-borderLight rounded-2xl rounded-tl-none p-3.5 text-sm text-gray-500 shadow-sm max-w-[85%] flex items-center gap-3">
+                            <i class="fa-solid fa-circle-notch fa-spin text-purple-500 text-lg"></i> 
+                            <span>正在检索长文档数据库...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 底部输入区 -->
+                <div class="p-3 border-t border-borderLight bg-white flex items-end gap-2">
+                    <button class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-purple-500 hover:bg-purple-50 transition shrink-0 rounded-full" title="上传/拖入图片">
+                        <i class="fa-solid fa-paperclip text-lg"></i>
+                    </button>
+                    <div class="flex-1 bg-gray-50 border border-gray-200 rounded-xl flex items-center p-1 focus-within:bg-white focus-within:border-purple-300 focus-within:ring-2 focus-within:ring-purple-100 transition-all">
+                        <textarea class="w-full bg-transparent p-2 text-sm focus:outline-none resize-none no-scrollbar h-9 leading-5" placeholder="输入问题指令或粘贴财报截图..."></textarea>
+                    </div>
+                    <button class="w-10 h-10 flex items-center justify-center text-white bg-purple-500 rounded-full hover:bg-purple-600 transition shrink-0 shadow-sm disabled:opacity-50" title="发送 (Enter)">
+                        <i class="fa-solid fa-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ========================================================================= -->
+    <!-- ================= 4. 全屏副线任务打标页 (Modal) ========================= -->
+    <!-- ========================================================================= -->
+    <div id="subtask-overlay" class="fixed inset-0 z-50 bg-bgGlobal flex flex-col hidden transition-opacity duration-300 opacity-0 backdrop-blur-sm">
+        
+        <!-- 顶栏退路 -->
+        <header class="h-14 bg-white border-b border-borderLight flex items-center justify-between px-6 shrink-0 shadow-sm">
+            <button onclick="toggleSubTaskModal(false)" class="text-gray-500 hover:text-primary transition font-bold flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-blue-50 border border-transparent hover:border-blue-100">
+                <i class="fa-solid fa-arrow-left-long"></i> 暂不处理，退回主界面
+            </button>
+            <div class="font-black text-lg text-gray-800 tracking-wide flex items-center">
+                <i class="fa-solid fa-bullseye text-red-500 mr-2"></i> 突发快讯研判 
+                <span class="text-red-500 text-sm font-bold bg-red-50 px-2 py-0.5 rounded ml-3 border border-red-100">任务进度: 1/4</span>
+            </div>
+            <div class="w-[180px]"></div> <!-- 占位保持居中 -->
+        </header>
+
+        <!-- 内容作业区 -->
+        <div class="flex-1 flex overflow-hidden p-6 gap-6 max-w-[1400px] w-full mx-auto">
+            
+            <!-- 左侧：新闻阅读区 -->
+            <div class="flex-1 bg-white rounded-xl shadow-sm border border-borderLight overflow-hidden flex flex-col">
+                <div class="bg-gray-50 border-b border-borderLight p-3 px-8 shrink-0 flex items-center justify-between">
+                    <span class="font-bold text-gray-500 tracking-widest text-xs uppercase">Source Article</span>
+                    <span class="text-xs font-mono bg-white border border-gray-200 text-gray-500 px-2 py-1 rounded">ID: MSG-9921</span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-10 prose prose-blue max-w-none">
+                    <h1 class="text-3xl font-black text-gray-900 mb-4 leading-tight">突发！行业监管政策疑似收紧，企业环保合规成本或翻倍</h1>
+                    <div class="flex items-center gap-6 text-gray-400 text-sm border-b border-borderLight pb-6 mb-8">
+                        <span class="flex items-center"><i class="fa-regular fa-clock mr-1.5"></i> 今日 10:05</span>
+                        <span class="flex items-center"><i class="fa-solid fa-building-columns mr-1.5"></i> 华尔街见闻</span>
+                        <span class="bg-orange-100 text-orange-600 px-2 py-0.5 rounded text-xs border border-orange-200">#宏观政策</span>
+                    </div>
+                    <div class="text-gray-700 leading-loose text-lg space-y-6">
+                        <p>据多方内幕人士证实，相关监管机构正在起草针对高新科技制造业的最新环保执行标准。该草案可能将当前企业的碳排放配额直接削减 30%，并要求建立更为严格的数据追踪体系。</p>
+                        <p class="border-l-4 border-gray-300 pl-4 text-gray-500 italic">分析人士指出，这将对行业内处于高速扩张期、但底层基础设施尚未完全合规的初创企业造成极大的资金和法律压力。</p>
+                        <p>若政策在下月落地，相关企业将被要求在三个月内强制完成技术设备与法务流程的升级。否则，除面临巨额罚款外，甚至可能遭遇停产整顿的风险。目前，该草案仍在最后征求意见阶段。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：打标表单区 -->
+            <div class="w-[450px] shrink-0 bg-white rounded-xl shadow-sm border border-borderLight flex flex-col overflow-hidden">
+                <div class="bg-gradient-to-r from-blue-50 to-blue-100 border-b border-blue-200 p-4 px-6 shrink-0 font-bold text-primary flex items-center text-base">
+                    <i class="fa-solid fa-tags mr-2"></i> 快速研判问卷
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-6 space-y-8 bg-white no-scrollbar">
+                    
+                    <!-- 问题 1 -->
+                    <div>
+                        <label class="block font-bold text-gray-800 mb-3 text-base">Q1. 该快讯对您当前正在评估的“星云科技”的影响偏向是？ <span class="text-danger">*</span></label>
+                        <div class="space-y-3">
+                            <label class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-primary hover:bg-blue-50 transition has-[:checked]:border-primary has-[:checked]:bg-blue-50 has-[:checked]:ring-1 has-[:checked]:ring-primary">
+                                <input type="radio" name="q1" class="w-4 h-4 accent-primary"> 
+                                <span class="font-bold text-green-600">利好 (Positive)</span>
+                            </label>
+                            <label class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-primary hover:bg-blue-50 transition has-[:checked]:border-primary has-[:checked]:bg-blue-50 has-[:checked]:ring-1 has-[:checked]:ring-primary">
+                                <input type="radio" name="q1" class="w-4 h-4 accent-primary"> 
+                                <span class="font-bold text-danger">利空 (Negative)</span>
+                            </label>
+                            <label class="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:border-primary hover:bg-blue-50 transition has-[:checked]:border-primary has-[:checked]:bg-blue-50 has-[:checked]:ring-1 has-[:checked]:ring-primary">
+                                <input type="radio" name="q1" class="w-4 h-4 accent-primary"> 
+                                <span class="font-bold text-gray-600">无实质影响 / 尚不确定</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 问题 2 -->
+                    <div>
+                        <label class="block font-bold text-gray-800 mb-3 text-base">Q2. 您认为该风险/机会的严重程度评级为？ <span class="text-danger">*</span></label>
+                        <select class="w-full border border-gray-300 rounded-lg p-3 bg-gray-50 focus:outline-none focus:border-primary focus:bg-white focus:ring-1 focus:ring-primary shadow-sm text-gray-700 font-medium transition cursor-pointer">
+                            <option value="" disabled selected>-- 展开选择评级 --</option>
+                            <option value="high">🔴 高 (需立即核实变更估值模型)</option>
+                            <option value="medium">🟡 中 (需在最终备忘录中进行预警)</option>
+                            <option value="low">🟢 低 (仅作为常规宏观参考)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 底部提交栏 -->
+                <div class="p-5 border-t border-borderLight bg-gray-50 shrink-0">
+                    <button class="w-full bg-primary hover:bg-primaryHover text-white font-bold text-base py-3.5 rounded-lg transition shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                        保存并拉取下一条 <i class="fa-solid fa-bolt"></i>
+                    </button>
+                    <p class="text-center text-xs text-gray-400 mt-3 font-mono">剩余待处理卡片：3</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 前端 JS 交互逻辑 ================= -->
+    <script>
+        // --- 1. A区 Tab 切换逻辑 ---
+        function switchTab(tabId) {
+            // 隐藏所有内容
+            document.getElementById('tab-raw').classList.add('hidden');
+            document.getElementById('tab-dd').classList.add('hidden');
+            // 重置所有按钮样式
+            document.getElementById('btn-tab-raw').className = "h-full px-5 text-textMuted hover:text-textMain border-b-2 border-transparent transition font-medium";
+            document.getElementById('btn-tab-dd').className = "h-full px-5 text-textMuted hover:text-textMain border-b-2 border-transparent transition font-medium";
+            
+            // 激活选中项
+            document.getElementById(tabId).classList.remove('hidden');
+            document.getElementById('btn-' + tabId).className = "h-full px-5 text-primary font-bold border-b-2 border-primary transition bg-blue-50/50";
+        }
+
+        // --- 2. B/C区 全屏/半屏切换逻辑 ---
+        // 技巧：被放大的面板设为 flex-1（或保持），被隐藏的面板设为 hidden
+        function toggleMaximize(targetId, otherId) {
+            const targetPane = document.getElementById(targetId);
+            const otherPane = document.getElementById(otherId);
+            
+            if (otherPane.classList.contains('hidden')) {
+                // 当前是全屏状态，执行还原
+                otherPane.classList.remove('hidden');
+            } else {
+                // 当前是分屏状态，执行全屏（隐藏另一个）
+                otherPane.classList.add('hidden');
+            }
+        }
+
+        // --- 3. 传送带与打标页逻辑 ---
+        let pendingCount = 0;
+        const track = document.getElementById('scroll-track');
+        const countBadge = document.getElementById('pending-count');
+        const demoTexts =["行业监管政策疑似将要收紧...", "竞品公司发布最新一代核心技术产品...", "环保部门要求全面整改..."];
+
+        function createScrollItem(text) {
+            const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }).substring(0,5);
+            const item = document.createElement('button');
+            item.className = 'scroll-item bg-white border border-blue-200 text-blue-800 px-3.5 py-1.5 rounded-full text-xs shadow hover:bg-blue-50 transition flex items-center max-w-[300px] cursor-pointer z-10 group';
+            item.innerHTML = `<span class="font-black mr-2 text-blue-600 bg-blue-100 px-1 rounded">${time}</span><span class="truncate group-hover:underline">${text}</span>`;
+            
+            // 点击拦截
+            item.onclick = () => {
+                item.remove();
+                toggleSubTaskModal(true);
+            };
+
+            // 滚动到尽头吸入
+            item.addEventListener('animationend', () => {
+                item.remove();
+                pendingCount++;
+                countBadge.innerText = pendingCount;
+                countBadge.classList.add('pulse-badge');
+                setTimeout(() => countBadge.classList.remove('pulse-badge'), 600);
+            });
+            track.appendChild(item);
+        }
+
+        function toggleSubTaskModal(show) {
+            const modal = document.getElementById('subtask-overlay');
+            if (show) {
+                if (pendingCount > 0) {
+                    pendingCount--;
+                    countBadge.innerText = pendingCount;
+                }
+                modal.classList.remove('hidden');
+                setTimeout(() => { modal.classList.remove('opacity-0'); modal.classList.add('opacity-100'); }, 10);
+            } else {
+                modal.classList.remove('opacity-100'); modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            }
+        }
+
+        function simulateContinuous() {
+            createScrollItem(demoTexts[Math.floor(Math.random() * demoTexts.length)]);
+        }
+
+        function simulateBatch() {
+            for(let i=0; i<3; i++) {
+                setTimeout(() => { createScrollItem(`[加急批次] ${demoTexts[i]}`); }, i * 1000);
+            }
+        }
+    </script>
+</body>
+</html>

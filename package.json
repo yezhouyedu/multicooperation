@@ -1,0 +1,20 @@
+{
+  "name": "multi-cooperation",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.11.0",
+  "scripts": {
+    "dev:web": "corepack pnpm --filter web dev",
+    "dev:server": "corepack pnpm --filter server start:dev",
+    "dev": "echo Run web and server in separate terminals for now",
+    "dev:local": "powershell -ExecutionPolicy Bypass -File ./scripts/start-local.ps1",
+    "dev:stop": "powershell -ExecutionPolicy Bypass -File ./scripts/stop-local.ps1",
+    "dev:restart": "powershell -ExecutionPolicy Bypass -File ./scripts/restart-local.ps1",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker/docker-compose.yml logs -f postgres"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

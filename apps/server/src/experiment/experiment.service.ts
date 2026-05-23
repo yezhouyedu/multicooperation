@@ -1,0 +1,1263 @@
+import {
+  BadRequestException,
+  Injectable,
+  MessageEvent,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  AiLevel,
+  ExperimentConfig,
+  ExperimentPhase,
+  Pairing,
+  Participant,
+  ParticipantRole,
+  Prisma,
+  QuestionnaireTemplate,
+  RuntimePhase,
+  SegmentType,
+  Session,
+  SessionStatus,
+  TaskAssignment,
+} from '@prisma/client';
+import { Observable, Subject, Subscription } from 'rxjs';
+import { PrismaService } from '../prisma/prisma.service';
+import { buildMaterialPublicUrl, normalizeMaterials } from '../admin/materials';
+
+type EnterExperimentInput = {
+  nickname?: string;
+  role?: ParticipantRole;
+};
+
+type RecordProgressInput = {
+  sessionCode: string;
+  role: ParticipantRole;
+  stage: string;
+  payload?: Prisma.InputJsonValue;
+};
+
+type DraftSelector = {
+  role: ParticipantRole;
+  section?: 'main' | 'feedback';
+};
+
+type SnapshotRecord = {
+  id: string;
+  role: string | null;
+  section: string | null;
+  payload: Prisma.JsonValue;
+  createdAt: Date;
+};
+
+type SessionStreamEnvelope = MessageEvent & {
+  type: string;
+  data: unknown;
+};
+
+type RuntimeSession = Session & {
+  pairings: (Pairing & {
+    participantA: Participant | null;
+    participantB: Participant | null;
+  })[];
+  tasks: TaskAssignment[];
+  questionnaireAnswers: { participantId: string; segmentIndex: number }[];
+};
+
+@Injectable()
+export class ExperimentService {
+  private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async createSession(_input: EnterExperimentInput = {}) {
+    return {
+      ok: false,
+      error: 'Legacy endpoint removed. Please use /auth/login.',
+    };
+  }
+
+  async joinSession(_sessionCode: string, _input: EnterExperimentInput = {}) {
+    return {
+      ok: false,
+      error: 'Legacy endpoint removed. Please use /auth/login.',
+    };
+  }
+
+  createSessionEventStream(sessionCode: string, participantId?: string): Observable<MessageEvent> {
+    return new Observable<MessageEvent>((subscriber) => {
+      let disposed = false;
+      let lastRuntimeSignature = '';
+      const sessionStream = this.getSessionStream(sessionCode);
+
+      const emitRuntime = async () => {
+        if (disposed) return;
+        try {
+          const runtime = await this.getRuntime(sessionCode, participantId);
+          const signature = JSON.stringify(runtime);
+          if (signature === lastRuntimeSignature) return;
+          lastRuntimeSignature = signature;
+          subscriber.next({ type: 'runtime', data: runtime });
+        } catch (error) {
+          subscriber.next({
+            type: 'runtime_error',
+            data: {
+              message:
+                error instanceof Error ? error.message : `Failed to refresh runtime for ${sessionCode}`,
+            },
+          });
+        }
+      };
+
+      const sessionSubscription: Subscription = sessionStream.subscribe((event) => {
+        if (event.type === 'runtime_invalidated') {
+          void emitRuntime();
+          return;
+        }
+        subscriber.next(event);
+      });
+
+      const intervalHandle = setInterval(() => {
+        void emitRuntime();
+      }, 2000);
+
+      void emitRuntime();
+
+      return () => {
+        disposed = true;
+        clearInterval(intervalHandle);
+        sessionSubscription.unsubscribe();
+      };
+    });
+  }
+
+  async startPractice(sessionCode: string) {
+    const config = await this.ensureConfig();
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const now = new Date();
+    const endsAt = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.update({
+        where: { id: session.id },
+        data: {
+          status: SessionStatus.IN_PROGRESS,
+          runtimePhase: RuntimePhase.PRACTICE,
+          currentPhase: ExperimentPhase.PRACTICE,
+          currentSegmentIndex: 0,
+          currentSegmentType: SegmentType.PRACTICE,
+          currentSegmentStarts: now,
+          currentSegmentEnds: endsAt,
+        },
+      });
+      await tx.sessionSegmentState.updateMany({
+        where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+        data: { startedAt: now, endsAt },
+      });
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true };
+  }
+
+  async completePractice(sessionCode: string) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    await this.startFormalWorkSegment(session.id, 1);
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true };
+  }
+
+  async getSessionState(sessionCode: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const pairing = session.pairings[0] ?? null;
+
+    return {
+      ok: true,
+      session: {
+        id: session.id,
+        code: session.code,
+        status: session.status,
+        runtimePhase: session.runtimePhase,
+        currentSegmentIndex: session.currentSegmentIndex,
+        currentSegmentType: session.currentSegmentType,
+        createdAt: session.createdAt,
+      },
+      pairing: pairing
+        ? {
+            id: pairing.id,
+            participantA: pairing.participantA
+              ? {
+                  id: pairing.participantA.id,
+                  nickname: pairing.participantA.nickname,
+                  role: pairing.participantA.role,
+                  phone: pairing.participantA.phone,
+                }
+              : null,
+            participantB: pairing.participantB
+              ? {
+                  id: pairing.participantB.id,
+                  nickname: pairing.participantB.nickname,
+                  role: pairing.participantB.role,
+                  phone: pairing.participantB.phone,
+                }
+              : null,
+          }
+        : null,
+    };
+  }
+
+  async getRuntime(sessionCode: string, participantId?: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const config = synced.config;
+    const pairing = session.pairings[0];
+    if (!pairing) throw new BadRequestException('Session pairing record is missing');
+
+    const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    const roleTask =
+      assignedRole === ParticipantRole.B
+        ? session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.bCompletedAt)
+        : session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
+
+    const currentCompany = roleTask
+      ? await this.prisma.company.findUnique({ where: { id: roleTask.companyId } })
+      : null;
+    const fallbackCompany =
+      currentCompany && !this.hasUsableMaterials(currentCompany)
+        ? await this.prisma.company.findUnique({ where: { id: 'company-p01-baseline' } })
+        : null;
+
+    return {
+      ok: true,
+      assignedRole,
+      phase: this.mapRuntimePhase(session.runtimePhase),
+      segmentIndex: session.currentSegmentIndex,
+      segmentType: session.currentSegmentType,
+      segmentRemainingSeconds: this.getRemainingSeconds(session.currentSegmentEnds),
+      currentTask: roleTask
+        ? {
+            id: roleTask.id,
+            sortOrder: roleTask.sortOrder,
+            sequenceIndex: roleTask.sequenceIndex,
+            company: currentCompany ? this.serializeCompany(currentCompany, fallbackCompany) : null,
+            aSubmittedAt: roleTask.aSubmittedAt,
+            aUnlockedForBAt: roleTask.aUnlockedForBAt,
+            bViewedAInfoAt: roleTask.bViewedAInfoAt,
+            bCompletedAt: roleTask.bCompletedAt,
+          }
+        : null,
+      taskRemainingSeconds:
+        assignedRole === ParticipantRole.A && roleTask ? this.getRemainingSeconds(roleTask.aDeadlineAt) : null,
+      aInfoUnlocked: Boolean(roleTask?.aUnlockedForBAt),
+      bHasViewedAInfo: Boolean(roleTask?.bViewedAInfoAt),
+      bCanSubmit: Boolean(roleTask?.bCanSubmitAt),
+      isIdle: !roleTask,
+      isFrozen: Boolean(roleTask?.frozenAt),
+      questionnaireSubmitted: participantId
+        ? session.questionnaireAnswers.some(
+            (answer) =>
+              answer.participantId === participantId &&
+              answer.segmentIndex === session.currentSegmentIndex,
+          )
+        : false,
+      aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex),
+      sideTaskState: {
+        pendingLabel: '待处理事宜',
+        tickerMessage: '您有新事项入库，请尽快处理',
+        scrollIntervalSeconds: 30,
+      },
+      questionnaireTemplate:
+        session.runtimePhase === RuntimePhase.FORMAL_BREAK && config.activeQuestionnaireTemplate
+          ? {
+              id: config.activeQuestionnaireTemplate.id,
+              title: config.activeQuestionnaireTemplate.title,
+              items: config.activeQuestionnaireTemplate.items,
+            }
+          : null,
+    };
+  }
+
+  async recordProgress(input: RecordProgressInput) {
+    const session = await this.prisma.session.findUnique({
+      where: { code: input.sessionCode },
+      include: {
+        pairings: {
+          include: {
+            participantA: true,
+            participantB: true,
+          },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException(`Session ${input.sessionCode} not found`);
+    const pairing = session.pairings[0];
+    if (!pairing) throw new BadRequestException('Session pairing record is missing');
+
+    const participant = input.role === ParticipantRole.A ? pairing.participantA : pairing.participantB;
+    if (!participant) {
+      throw new BadRequestException(`Participant with role ${input.role} has not joined yet`);
+    }
+
+    const progress = await this.prisma.taskProgress.create({
+      data: {
+        sessionId: session.id,
+        participantId: participant.id,
+        stage: input.stage,
+        payload: input.payload,
+      },
+    });
+
+    const eventPayload = {
+      id: progress.id,
+      stage: progress.stage,
+      payload: progress.payload,
+      createdAt: progress.createdAt,
+      participantId: participant.id,
+      role: input.role,
+    };
+    this.emitSessionEvent(input.sessionCode, {
+      type: input.stage,
+      data: eventPayload,
+    });
+
+    return {
+      ok: true,
+      progress: {
+        id: progress.id,
+        stage: progress.stage,
+        sessionId: progress.sessionId,
+        participantId: progress.participantId,
+        createdAt: progress.createdAt,
+      },
+    };
+  }
+
+  async getSessionProgress(sessionCode: string) {
+    const session = await this.prisma.session.findUnique({
+      where: { code: sessionCode },
+      include: {
+        progresses: {
+          include: { participant: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    return {
+      ok: true,
+      session: {
+        id: session.id,
+        code: session.code,
+        status: session.status,
+      },
+      progresses: session.progresses.map((progress) => ({
+        id: progress.id,
+        stage: progress.stage,
+        payload: progress.payload,
+        createdAt: progress.createdAt,
+        participant: {
+          id: progress.participant.id,
+          role: progress.participant.role,
+          nickname: progress.participant.nickname,
+          phone: progress.participant.phone,
+        },
+      })),
+    };
+  }
+
+  async getSessionTasks(sessionCode: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const companies = await this.prisma.company.findMany({
+      where: { id: { in: session.tasks.map((task) => task.companyId) } },
+    });
+    const companyMap = new Map(companies.map((company) => [company.id, company]));
+    const baselineCompany = companyMap.get('company-p01-baseline')
+      ?? (await this.prisma.company.findUnique({ where: { id: 'company-p01-baseline' } }));
+
+    return {
+      ok: true,
+      tasks: session.tasks.map((task) => ({
+        id: task.id,
+        phase: task.phase,
+        sortOrder: task.sortOrder,
+        sequenceIndex: task.sequenceIndex,
+        aSubmittedAt: task.aSubmittedAt,
+        aUnlockedForBAt: task.aUnlockedForBAt,
+        bViewedAInfoAt: task.bViewedAInfoAt,
+        bCanSubmitAt: task.bCanSubmitAt,
+        bCompletedAt: task.bCompletedAt,
+        frozenAt: task.frozenAt,
+        company: companyMap.get(task.companyId)
+          ? this.serializeCompany(
+              companyMap.get(task.companyId)!,
+              this.hasUsableMaterials(companyMap.get(task.companyId)!)
+                ? null
+                : baselineCompany,
+            )
+          : null,
+        aDraft: task.aDraft,
+        bDraft: task.bDraft,
+        bFeedbackDraft: task.bFeedbackDraft,
+      })),
+    };
+  }
+
+  async getTaskDraft(sessionCode: string, taskId: string, selector: DraftSelector) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const task = await this.prisma.taskAssignment.findFirst({
+      where: { id: taskId, sessionId: session.id },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    return {
+      ok: true,
+      taskId: task.id,
+      payload: this.pickDraftPayload(task, selector),
+    };
+  }
+
+  async getTaskSnapshots(sessionCode: string, taskId: string) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const task = await this.prisma.taskAssignment.findFirst({
+      where: { id: taskId, sessionId: session.id },
+      include: { snapshots: { orderBy: { createdAt: 'desc' } } },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    return {
+      ok: true,
+      taskId: task.id,
+      snapshots: task.snapshots,
+    };
+  }
+
+  async restoreLatestSnapshot(sessionCode: string, taskId: string) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const latestSnapshots = (await this.prisma.taskSnapshot.findMany({
+      where: {
+        sessionId: session.id,
+        taskAssignmentId: task.id,
+        snapshotType: 'work_segment_freeze',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    })) as SnapshotRecord[];
+    if (latestSnapshots.length === 0) {
+      return { ok: true, restored: false };
+    }
+
+    const data: Prisma.TaskAssignmentUpdateInput = {};
+    for (const snapshot of latestSnapshots) {
+      if (snapshot.section === 'main' && snapshot.role === 'A') data.aDraft = this.toDraftValue(snapshot.payload);
+      if (snapshot.section === 'main' && snapshot.role === 'B') data.bDraft = this.toDraftValue(snapshot.payload);
+      if (snapshot.section === 'feedback' && snapshot.role === 'B') {
+        data.bFeedbackDraft = this.toDraftValue(snapshot.payload);
+      }
+    }
+
+    await this.prisma.taskAssignment.update({
+      where: { id: task.id },
+      data,
+    });
+
+    const latestFreeze = latestSnapshots[0];
+    await this.prisma.taskSnapshot.create({
+      data: {
+        sessionId: session.id,
+        taskAssignmentId: task.id,
+        snapshotType: 'restored_from_freeze',
+        scope: 'mainline',
+        segmentIndex: null,
+        role: null,
+        section: null,
+        restoreSourceSnapshotId: latestFreeze.id,
+        takenReason: 'manual_restore_latest',
+        label: `恢复自冻结快照 ${latestFreeze.createdAt.toISOString()}`,
+        payload: {
+          restoredSections: latestSnapshots.map((snapshot) => ({
+            id: snapshot.id,
+            role: snapshot.role,
+            section: snapshot.section,
+          })),
+        } as Prisma.InputJsonValue,
+      } as Prisma.TaskSnapshotUncheckedCreateInput,
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true, restored: true };
+  }
+
+  async saveTaskDraft(
+    sessionCode: string,
+    taskId: string,
+    body: {
+      role: ParticipantRole;
+      section?: 'main' | 'feedback';
+      payload: Prisma.InputJsonValue;
+    },
+  ) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
+    if (!task) throw new NotFoundException('Task not found');
+
+    const data: Prisma.TaskAssignmentUpdateInput = {};
+    if (body.role === ParticipantRole.A) {
+      data.aDraft = body.payload;
+    } else if (body.section === 'feedback') {
+      data.bFeedbackDraft = body.payload;
+    } else {
+      data.bDraft = body.payload;
+    }
+
+    await this.prisma.taskAssignment.update({ where: { id: task.id }, data });
+    await this.recordProgress({
+      sessionCode,
+      role: body.role,
+      stage:
+        body.role === ParticipantRole.A
+          ? 'a_form_saved'
+          : body.section === 'feedback'
+            ? 'b_feedback_saved'
+            : 'b_workspace_saved',
+      payload: { taskId, ...(body.payload as object) },
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true };
+  }
+
+  async viewAInfo(sessionCode: string, taskId: string) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
+
+    const now = new Date();
+    const updated = await this.prisma.taskAssignment.update({
+      where: { id: task.id },
+      data: {
+        bViewedAInfoAt: task.bViewedAInfoAt ?? now,
+        bCanSubmitAt: task.bCanSubmitAt ?? now,
+      },
+    });
+
+    await this.recordProgress({
+      sessionCode,
+      role: ParticipantRole.B,
+      stage: 'b_viewed_a_info',
+      payload: { taskId },
+    });
+    this.emitRuntimeInvalidated(sessionCode);
+
+    return { ok: true, task: updated };
+  }
+
+  async getQuestionnaire(sessionCode: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    if (synced.session.runtimePhase !== RuntimePhase.FORMAL_BREAK) {
+      return { ok: true, questionnaire: null };
+    }
+
+    return {
+      ok: true,
+      questionnaire: synced.config.activeQuestionnaireTemplate
+        ? {
+            id: synced.config.activeQuestionnaireTemplate.id,
+            title: synced.config.activeQuestionnaireTemplate.title,
+            items: synced.config.activeQuestionnaireTemplate.items,
+          }
+        : null,
+    };
+  }
+
+  async submitQuestionnaire(sessionCode: string, participantId: string, answers: Prisma.InputJsonValue) {
+    const synced = await this.syncRuntime(sessionCode);
+    const participant = await this.prisma.participant.findUnique({ where: { id: participantId } });
+    if (!participant) throw new NotFoundException('Participant not found');
+
+    await this.prisma.questionnaireResponse.create({
+      data: {
+        sessionId: synced.session.id,
+        participantId,
+        templateId: synced.config.activeQuestionnaireTemplate?.id,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: synced.session.currentSegmentIndex,
+        answers,
+      },
+    });
+
+    await this.prisma.taskProgress.create({
+      data: {
+        sessionId: synced.session.id,
+        participantId,
+        stage: 'break_questionnaire_submitted',
+        payload: answers,
+      },
+    });
+
+    this.emitSessionEvent(sessionCode, {
+      type: 'break_questionnaire_submitted',
+      data: { participantId, payload: answers },
+    });
+    this.emitRuntimeInvalidated(sessionCode);
+
+    return { ok: true };
+  }
+
+  async aSubmitTask(sessionCode: string, taskId: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const task = session.tasks.find((item) => item.id === taskId);
+    if (!task) throw new NotFoundException('Task not found');
+
+    const now = new Date();
+    await this.prisma.taskAssignment.update({
+      where: { id: taskId },
+      data: {
+        aSubmittedAt: task.aSubmittedAt ?? now,
+        aUnlockedForBAt: task.aUnlockedForBAt ?? now,
+        aRemainingSeconds: this.computeRemainingSeconds(task.aDeadlineAt),
+      },
+    });
+
+    await this.recordProgress({
+      sessionCode,
+      role: ParticipantRole.A,
+      stage: 'a_task_submitted',
+      payload: { taskId, sortOrder: task.sortOrder },
+    });
+    this.emitRuntimeInvalidated(sessionCode);
+
+    return { ok: true, taskId };
+  }
+
+  async bCompleteTask(sessionCode: string, taskId: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const task = session.tasks.find((item) => item.id === taskId);
+    if (!task) throw new NotFoundException('Task not found');
+    if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
+    if (!task.bViewedAInfoAt) throw new BadRequestException('请先查看 A 信息区后再提交');
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.taskAssignment.update({
+        where: { id: taskId },
+        data: { bCompletedAt: new Date() },
+      });
+
+      const participantB = session.pairings[0]?.participantB;
+      if (participantB) {
+        await tx.taskProgress.create({
+          data: {
+            sessionId: session.id,
+            participantId: participantB.id,
+            stage: 'b_task_completed',
+            payload: { taskId, sortOrder: task.sortOrder },
+          },
+        });
+      }
+
+      const remaining = await tx.taskAssignment.count({
+        where: { sessionId: session.id, phase: ExperimentPhase.FORMAL, bCompletedAt: null },
+      });
+      const allDone = remaining === 0;
+
+      if (allDone) {
+        await tx.session.update({
+          where: { id: session.id },
+          data: { status: SessionStatus.COMPLETED, runtimePhase: RuntimePhase.END },
+        });
+      }
+
+      return { ok: true, taskId, allDone };
+    });
+
+    this.emitSessionEvent(sessionCode, {
+      type: 'b_task_completed',
+      data: { taskId, sortOrder: task.sortOrder },
+    });
+    this.emitRuntimeInvalidated(sessionCode);
+
+    return result;
+  }
+
+  private async syncRuntime(sessionCode: string) {
+    const config = await this.ensureConfig();
+
+    await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { code: sessionCode },
+        include: {
+          pairings: { include: { participantA: true, participantB: true } },
+          tasks: { where: { phase: ExperimentPhase.FORMAL }, orderBy: { sortOrder: 'asc' } },
+          questionnaireAnswers: true,
+        },
+      });
+
+      if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+      if (session.runtimePhase === RuntimePhase.END || session.status === SessionStatus.COMPLETED) return;
+
+      const now = new Date();
+
+      if (session.runtimePhase === RuntimePhase.FORMAL_WORK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
+        const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
+        if (currentATask && currentATask.aStartedAt && !currentATask.aSubmittedAt) {
+          const resumedAt = currentATask.resumedAt ?? currentATask.aStartedAt;
+          const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - resumedAt.getTime()) / 1000));
+          const remaining = Math.max(0, (currentATask.aRemainingSeconds || 300) - elapsedSeconds);
+          await tx.taskAssignment.update({
+            where: { id: currentATask.id },
+            data: {
+              frozenAt: now,
+              aDeadlineAt: null,
+              aRemainingSeconds: remaining,
+            },
+          });
+        }
+        await this.advanceAfterWork(tx, session, config, now);
+        return;
+      }
+
+      if (session.runtimePhase === RuntimePhase.FORMAL_BREAK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
+        await this.advanceAfterBreak(tx, session, config, now);
+        return;
+      }
+
+      if (session.runtimePhase === RuntimePhase.FORMAL_WORK) {
+        const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
+        if (currentATask) {
+          if (!currentATask.aStartedAt) {
+            const remaining = currentATask.aRemainingSeconds || 300;
+            const deadline = new Date(
+              Math.min(
+                now.getTime() + remaining * 1000,
+                session.currentSegmentEnds?.getTime() ?? now.getTime() + remaining * 1000,
+              ),
+            );
+            await tx.taskAssignment.update({
+              where: { id: currentATask.id },
+              data: {
+                aStartedAt: now,
+                resumedAt: currentATask.resumedAt ?? now,
+                frozenAt: null,
+                aDeadlineAt: deadline,
+              },
+            });
+          } else if (currentATask.frozenAt) {
+            const remaining = currentATask.aRemainingSeconds || 300;
+            const deadline = new Date(
+              Math.min(
+                now.getTime() + remaining * 1000,
+                session.currentSegmentEnds?.getTime() ?? now.getTime() + remaining * 1000,
+              ),
+            );
+            await tx.taskAssignment.update({
+              where: { id: currentATask.id },
+              data: {
+                resumedAt: now,
+                frozenAt: null,
+                aDeadlineAt: deadline,
+              },
+            });
+          }
+        }
+      }
+    });
+
+    const session = await this.prisma.session.findUnique({
+      where: { code: sessionCode },
+      include: {
+        pairings: { include: { participantA: true, participantB: true } },
+        tasks: { orderBy: { sortOrder: 'asc' } },
+        questionnaireAnswers: true,
+      },
+    });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    await this.autoUnlockATask(sessionCode, session);
+
+    const refetched = await this.prisma.session.findUnique({
+      where: { code: sessionCode },
+      include: {
+        pairings: { include: { participantA: true, participantB: true } },
+        tasks: { orderBy: { sortOrder: 'asc' } },
+        questionnaireAnswers: true,
+      },
+    });
+    if (!refetched) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    return {
+      session: refetched,
+      config,
+    } as {
+      session: RuntimeSession;
+      config: ExperimentConfig & { activeQuestionnaireTemplate: QuestionnaireTemplate | null };
+    };
+  }
+
+  private async autoUnlockATask(sessionCode: string, session: RuntimeSession) {
+    if (session.runtimePhase !== RuntimePhase.FORMAL_WORK) return;
+
+    const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
+    if (!currentATask?.aDeadlineAt || currentATask.aUnlockedForBAt) return;
+    if (currentATask.aDeadlineAt > new Date()) return;
+
+    const pairing = session.pairings[0];
+    const snapshotAt = currentATask.aDeadlineAt;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.taskAssignment.update({
+        where: { id: currentATask.id },
+        data: {
+          aSubmittedAt: snapshotAt,
+          aUnlockedForBAt: snapshotAt,
+          aRemainingSeconds: 0,
+        },
+      });
+
+      if (pairing?.participantAId) {
+        await tx.taskProgress.create({
+          data: {
+            sessionId: session.id,
+            participantId: pairing.participantAId,
+            stage: 'a_task_auto_submitted',
+            payload: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
+          },
+        });
+      }
+
+      if (pairing?.participantBId) {
+        await tx.taskSnapshot.create({
+          data: {
+            sessionId: session.id,
+            taskAssignmentId: currentATask.id,
+            participantId: pairing.participantBId,
+            snapshotType: 'b_five_minute_snapshot',
+            scope: 'mainline',
+            role: 'B',
+            section: 'main',
+            segmentIndex: session.currentSegmentIndex,
+            takenReason: 'a_info_unlocked',
+            label: `5分钟快照 ${snapshotAt.toISOString()}`,
+            payload: {
+              bDraft: currentATask.bDraft,
+              bFeedbackDraft: currentATask.bFeedbackDraft,
+            } as Prisma.InputJsonValue,
+          } as Prisma.TaskSnapshotUncheckedCreateInput,
+        });
+      }
+    });
+
+    this.emitSessionEvent(sessionCode, {
+      type: 'a_task_auto_submitted',
+      data: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
+    });
+    this.emitRuntimeInvalidated(sessionCode);
+  }
+
+  private async advanceAfterWork(
+    tx: Prisma.TransactionClient,
+    session: RuntimeSession,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    const currentTask = session.tasks.find((task) => !task.bCompletedAt || !task.aSubmittedAt);
+    if (currentTask) {
+      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
+        snapshotType: 'work_segment_freeze',
+        scope: 'mainline',
+        role: 'A',
+        section: 'main',
+        segmentIndex: session.currentSegmentIndex,
+        takenReason: 'segment_transition_to_break',
+        label: `工作段冻结快照 A 主表 ${now.toISOString()}`,
+        payload: currentTask.aDraft,
+      });
+      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
+        snapshotType: 'work_segment_freeze',
+        scope: 'mainline',
+        role: 'B',
+        section: 'main',
+        segmentIndex: session.currentSegmentIndex,
+        takenReason: 'segment_transition_to_break',
+        label: `工作段冻结快照 投资判断 ${now.toISOString()}`,
+        payload: currentTask.bDraft,
+      });
+      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
+        snapshotType: 'work_segment_freeze',
+        scope: 'mainline',
+        role: 'B',
+        section: 'feedback',
+        segmentIndex: session.currentSegmentIndex,
+        takenReason: 'segment_transition_to_break',
+        label: `工作段冻结快照 反馈表 ${now.toISOString()}`,
+        payload: currentTask.bFeedbackDraft,
+      });
+    }
+
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex },
+      data: { completedAt: now },
+    });
+
+    if (session.currentSegmentIndex >= 5) {
+      await tx.session.update({
+        where: { id: session.id },
+        data: {
+          runtimePhase: RuntimePhase.END,
+          status: SessionStatus.COMPLETED,
+          currentSegmentEnds: now,
+        },
+      });
+      return;
+    }
+
+    const breakEnds = new Date(now.getTime() + config.breakDurationMinutes * 60 * 1000);
+    await tx.session.update({
+      where: { id: session.id },
+      data: {
+        runtimePhase: RuntimePhase.FORMAL_BREAK,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: session.currentSegmentIndex + 1,
+        currentSegmentType: SegmentType.BREAK,
+        currentSegmentStarts: now,
+        currentSegmentEnds: breakEnds,
+      },
+    });
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex + 1 },
+      data: { startedAt: now, endsAt: breakEnds },
+    });
+  }
+
+  private async advanceAfterBreak(
+    tx: Prisma.TransactionClient,
+    session: RuntimeSession,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex },
+      data: { completedAt: now },
+    });
+
+    const nextWorkIndex = session.currentSegmentIndex + 1;
+    if (nextWorkIndex > 5) {
+      await tx.session.update({
+        where: { id: session.id },
+        data: {
+          runtimePhase: RuntimePhase.END,
+          status: SessionStatus.COMPLETED,
+          currentSegmentEnds: now,
+        },
+      });
+      return;
+    }
+
+    const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    await tx.session.update({
+      where: { id: session.id },
+      data: {
+        runtimePhase: RuntimePhase.FORMAL_WORK,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: nextWorkIndex,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: now,
+        currentSegmentEnds: workEnds,
+      },
+    });
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId: session.id, segmentIndex: nextWorkIndex },
+      data: { startedAt: now, endsAt: workEnds },
+    });
+
+    const nextTask = session.tasks.find((task) => !task.bCompletedAt || !task.aSubmittedAt);
+    if (nextTask) {
+      await this.restoreTaskDraftsFromLatestFreeze(tx, session.id, nextTask.id, nextWorkIndex);
+    }
+  }
+
+  private async startFormalWorkSegment(sessionId: string, segmentIndex: number) {
+    const config = await this.ensureConfig();
+    const now = new Date();
+    const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.update({
+        where: { id: sessionId },
+        data: {
+          status: SessionStatus.IN_PROGRESS,
+          runtimePhase: RuntimePhase.FORMAL_WORK,
+          currentPhase: ExperimentPhase.FORMAL,
+          currentSegmentIndex: segmentIndex,
+          currentSegmentType: SegmentType.WORK,
+          currentSegmentStarts: now,
+          currentSegmentEnds: workEnds,
+          practiceCompletedAt: now,
+        },
+      });
+      await tx.sessionSegmentState.updateMany({
+        where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+        data: { completedAt: now },
+      });
+      await tx.sessionSegmentState.updateMany({
+        where: { sessionId, phase: ExperimentPhase.FORMAL, segmentIndex },
+        data: { startedAt: now, endsAt: workEnds },
+      });
+    });
+  }
+
+  private resolveParticipantRole(pairing: Pairing, participantId?: string) {
+    if (participantId && pairing.participantAId === participantId) return ParticipantRole.A;
+    if (participantId && pairing.participantBId === participantId) return ParticipantRole.B;
+    return pairing.participantAId ? ParticipantRole.A : ParticipantRole.B;
+  }
+
+  private mapRuntimePhase(phase: RuntimePhase) {
+    switch (phase) {
+      case RuntimePhase.INSTRUCTION:
+        return 'instruction';
+      case RuntimePhase.PRACTICE:
+        return 'practice';
+      case RuntimePhase.FORMAL_WORK:
+        return 'formal_work';
+      case RuntimePhase.FORMAL_BREAK:
+        return 'formal_break';
+      case RuntimePhase.END:
+      default:
+        return 'end';
+    }
+  }
+
+  private getCurrentAiLevel(
+    config: ExperimentConfig,
+    segmentIndex: number,
+  ) {
+    if (segmentIndex <= 1) return config.segmentOneAiLevel;
+    if (segmentIndex <= 3) return config.segmentTwoAiLevel;
+    return config.segmentThreeAiLevel;
+  }
+
+  private getRemainingSeconds(endsAt?: Date | null) {
+    if (!endsAt) return null;
+    return Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / 1000));
+  }
+
+  private computeRemainingSeconds(endsAt?: Date | null) {
+    if (!endsAt) return 0;
+    return Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / 1000));
+  }
+
+  private async snapshotTaskSection(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    taskId: string,
+    snapshot: {
+      snapshotType: string;
+      scope: string;
+      role: string;
+      section: string;
+      segmentIndex: number;
+      takenReason: string;
+      label: string;
+      payload: Prisma.InputJsonValue | null;
+    },
+  ) {
+    await tx.taskSnapshot.create({
+      data: {
+        sessionId,
+        taskAssignmentId: taskId,
+        snapshotType: snapshot.snapshotType,
+        scope: snapshot.scope,
+        role: snapshot.role,
+        section: snapshot.section,
+        segmentIndex: snapshot.segmentIndex,
+        takenReason: snapshot.takenReason,
+        label: snapshot.label,
+        payload: snapshot.payload ?? Prisma.JsonNull,
+      } as Prisma.TaskSnapshotUncheckedCreateInput,
+    });
+  }
+
+  private async restoreTaskDraftsFromLatestFreeze(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    taskId: string,
+    segmentIndex: number,
+  ) {
+    const latestSnapshots = (await tx.taskSnapshot.findMany({
+      where: {
+        sessionId,
+        taskAssignmentId: taskId,
+        snapshotType: 'work_segment_freeze',
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    })) as SnapshotRecord[];
+    if (latestSnapshots.length === 0) return;
+
+    const data: Prisma.TaskAssignmentUpdateInput = {};
+    for (const snapshot of latestSnapshots) {
+      if (snapshot.role === 'A' && snapshot.section === 'main') data.aDraft = this.toDraftValue(snapshot.payload);
+      if (snapshot.role === 'B' && snapshot.section === 'main') data.bDraft = this.toDraftValue(snapshot.payload);
+      if (snapshot.role === 'B' && snapshot.section === 'feedback') {
+        data.bFeedbackDraft = this.toDraftValue(snapshot.payload);
+      }
+    }
+    await tx.taskAssignment.update({
+      where: { id: taskId },
+      data,
+    });
+
+    await tx.taskSnapshot.create({
+      data: {
+        sessionId,
+        taskAssignmentId: taskId,
+        snapshotType: 'restored_from_freeze',
+        scope: 'mainline',
+        segmentIndex,
+        restoreSourceSnapshotId: latestSnapshots[0].id,
+        takenReason: 'segment_resume_after_break',
+        label: `恢复自冻结快照 ${latestSnapshots[0].createdAt.toISOString()}`,
+        payload: {
+          restoredSections: latestSnapshots.map((snapshot) => ({
+            id: snapshot.id,
+            role: snapshot.role,
+            section: snapshot.section,
+          })),
+        } as Prisma.InputJsonValue,
+      } as Prisma.TaskSnapshotUncheckedCreateInput,
+    });
+  }
+
+  private toDraftValue(payload: Prisma.JsonValue) {
+    return payload === null ? Prisma.JsonNull : (payload as Prisma.InputJsonValue);
+  }
+
+  private pickDraftPayload(task: TaskAssignment, selector: DraftSelector) {
+    if (selector.role === ParticipantRole.A) return task.aDraft;
+    if (selector.section === 'feedback') return task.bFeedbackDraft;
+    return task.bDraft;
+  }
+
+  private serializeCompany(company: Record<string, unknown>, fallbackCompany?: Record<string, unknown> | null) {
+    const usingFallback = !this.hasUsableMaterials(company) && fallbackCompany && this.hasUsableMaterials(fallbackCompany);
+    const sourceCompany = usingFallback ? fallbackCompany : company;
+    const sourceCompanyId = String(sourceCompany.id);
+    const materials = normalizeMaterials(sourceCompany.materials)
+      .filter((item) => !this.isResearchOnlyMaterial(item))
+      .map((item) => ({
+        ...item,
+        url: buildMaterialPublicUrl(sourceCompanyId, item.storageKey),
+      }));
+    return {
+      id: String(company.id),
+      name: String(company.name ?? ''),
+      roundLabel: String(company.roundLabel ?? ''),
+      sector: String(company.sector ?? ''),
+      tags: Array.isArray(company.tags) ? company.tags : [],
+      summary: String(company.summary ?? ''),
+      materials,
+      researchProfile: usingFallback ? sourceCompany.researchProfile ?? null : company.researchProfile ?? null,
+      autoFillSourceMaterialId: usingFallback
+        ? sourceCompany.autoFillSourceMaterialId ?? null
+        : company.autoFillSourceMaterialId ?? null,
+    };
+  }
+
+  private hasUsableMaterials(company: Record<string, unknown>) {
+    const materials = normalizeMaterials(company.materials);
+    return materials.length > 0 && materials.every((item) => Boolean(item.storageKey));
+  }
+
+  private isResearchOnlyMaterial(item: {
+    displayName?: string;
+    sourceFilename?: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    if (item.metadata?.audience === 'research') return true;
+    const joined = `${item.displayName ?? ''} ${item.sourceFilename ?? ''}`;
+    return joined.includes('研究者用') || joined.includes('信息点记录');
+  }
+
+  private getSessionStream(sessionCode: string) {
+    let stream = this.sessionStreams.get(sessionCode);
+    if (!stream) {
+      stream = new Subject<SessionStreamEnvelope>();
+      this.sessionStreams.set(sessionCode, stream);
+    }
+    return stream;
+  }
+
+  private emitSessionEvent(sessionCode: string, event: SessionStreamEnvelope) {
+    this.getSessionStream(sessionCode).next({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      ...event,
+    });
+  }
+
+  private emitRuntimeInvalidated(sessionCode: string) {
+    this.emitSessionEvent(sessionCode, {
+      type: 'runtime_invalidated',
+      data: { at: new Date().toISOString() },
+    });
+  }
+
+  private async ensureConfig() {
+    let config = await this.prisma.experimentConfig.findUnique({
+      where: { id: 'default' },
+      include: { activeQuestionnaireTemplate: true },
+    });
+
+    if (!config) {
+      const template = await this.prisma.questionnaireTemplate.upsert({
+        where: { id: 'default-break-questionnaire' },
+        update: { isActive: true },
+        create: {
+          id: 'default-break-questionnaire',
+          title: '默认休息问卷',
+          items: [
+            {
+              id: 'q1',
+              prompt: '你当前的认知负荷感受如何？',
+              options: ['很低', '较低', '中等', '较高', '很高'],
+            },
+          ] as Prisma.InputJsonValue,
+          isActive: true,
+        },
+      });
+
+      config = await this.prisma.experimentConfig.create({
+        data: {
+          id: 'default',
+          workDurationMinutes: 20,
+          breakDurationMinutes: 5,
+          segmentOneAiLevel: AiLevel.BASIC,
+          segmentTwoAiLevel: AiLevel.ADVANCED,
+          segmentThreeAiLevel: AiLevel.ADVANCED,
+          activeQuestionnaireTemplateId: template.id,
+        },
+        include: { activeQuestionnaireTemplate: true },
+      });
+    }
+
+    return config;
+  }
+}

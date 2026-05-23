@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+apps/*/node_modules/
+
+# Build outputs
+.next/
+apps/web/.next/
+dist/
+apps/server/dist/
+coverage/
+apps/server/coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+!apps/server/.env.example
+!apps/web/.env.local.example
+
+# Local runtime storage
+storage/
+apps/server/storage/
+output/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Tooling caches
+.turbo/
+.cache/
+apps/web/.cache/
+apps/server/.cache/
+*.tsbuildinfo
+
+# Keep project documents and source materials trackable by default.
+# Do not globally ignore docx/pdf/xlsx/png because this project stores real source materials in-repo.

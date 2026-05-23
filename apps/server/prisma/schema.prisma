@@ -1,0 +1,283 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ParticipantRole {
+  A
+  B
+}
+
+enum SessionStatus {
+  WAITING
+  MATCHED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum RuntimePhase {
+  INSTRUCTION
+  PRACTICE
+  FORMAL_WORK
+  FORMAL_BREAK
+  END
+}
+
+enum SegmentType {
+  PRACTICE
+  WORK
+  BREAK
+}
+
+enum ExperimentPhase {
+  PRACTICE
+  FORMAL
+}
+
+enum AiLevel {
+  BASIC
+  ADVANCED
+}
+
+model Participant {
+  id                    String                  @id @default(cuid())
+  phone                 String?                 @unique
+  nickname              String?
+  role                  ParticipantRole?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  pairingsAsA           Pairing[]               @relation("PairingParticipantA")
+  pairingsAsB           Pairing[]               @relation("PairingParticipantB")
+  progresses            TaskProgress[]
+  questionnaireAnswers  QuestionnaireResponse[]
+  sideTaskResponses     SideTaskResponseLog[]
+}
+
+model Session {
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  status               SessionStatus         @default(WAITING)
+  runtimePhase         RuntimePhase          @default(INSTRUCTION)
+  currentSegmentIndex  Int                   @default(0)
+  currentSegmentType   SegmentType?
+  currentPhase         ExperimentPhase?
+  currentSegmentStarts DateTime?
+  currentSegmentEnds   DateTime?
+  practiceCompletedAt  DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  pairings             Pairing[]
+  progresses           TaskProgress[]
+  tasks                TaskAssignment[]
+  segmentStates        SessionSegmentState[]
+  snapshots            TaskSnapshot[]
+  questionnaireAnswers QuestionnaireResponse[]
+  aiMessages           AiMessageLog[]
+  sideTaskResponses    SideTaskResponseLog[]
+}
+
+model Pairing {
+  id             String       @id @default(cuid())
+  sessionId      String
+  participantAId String?
+  participantBId String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  session        Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participantA   Participant? @relation("PairingParticipantA", fields: [participantAId], references: [id])
+  participantB   Participant? @relation("PairingParticipantB", fields: [participantBId], references: [id])
+
+  @@index([sessionId])
+}
+
+model TaskProgress {
+  id            String       @id @default(cuid())
+  sessionId     String
+  participantId String
+  stage         String
+  payload       Json?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  session       Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([participantId])
+}
+
+model Company {
+  id          String         @id @default(cuid())
+  name        String
+  roundLabel  String
+  sector      String
+  tags        Json
+  summary     String
+  materials   Json
+  researchProfile Json?
+  autoFillSourceMaterialId String?
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  assignments TaskAssignment[]
+}
+
+model TaskAssignment {
+  id               String          @id @default(cuid())
+  sessionId        String
+  companyId        String
+  phase            ExperimentPhase @default(FORMAL)
+  sortOrder        Int
+  sequenceIndex    Int
+  aStartedAt       DateTime?
+  aDeadlineAt      DateTime?
+  aRemainingSeconds Int            @default(300)
+  aSubmittedAt     DateTime?
+  aUnlockedForBAt  DateTime?
+  bViewedAInfoAt   DateTime?
+  bCanSubmitAt     DateTime?
+  bCompletedAt     DateTime?
+  frozenAt         DateTime?
+  resumedAt        DateTime?
+  aDraft           Json?
+  bDraft           Json?
+  bFeedbackDraft   Json?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  session          Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  company          Company         @relation(fields: [companyId], references: [id])
+  snapshots        TaskSnapshot[]
+
+  @@index([sessionId])
+  @@index([sessionId, phase, sortOrder])
+}
+
+model ExperimentConfig {
+  id                           String                @id @default("default")
+  workDurationMinutes          Int                   @default(20)
+  breakDurationMinutes         Int                   @default(5)
+  segmentOneAiLevel            AiLevel               @default(BASIC)
+  segmentTwoAiLevel            AiLevel               @default(BASIC)
+  segmentThreeAiLevel          AiLevel               @default(ADVANCED)
+  activeQuestionnaireTemplateId String?
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+  activeQuestionnaireTemplate  QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
+}
+
+model SessionSegmentState {
+  id          String          @id @default(cuid())
+  sessionId   String
+  phase       ExperimentPhase
+  segmentIndex Int
+  type        SegmentType
+  startedAt   DateTime?
+  endsAt      DateTime?
+  completedAt DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  session     Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, phase, segmentIndex])
+}
+
+model TaskSnapshot {
+  id               String          @id @default(cuid())
+  sessionId        String
+  taskAssignmentId String
+  participantId    String?
+  snapshotType     String
+  scope            String?
+  role             String?
+  section          String?
+  segmentIndex     Int?
+  restoreSourceSnapshotId String?
+  takenReason      String?
+  schemaVersion    Int             @default(1)
+  label            String
+  payload          Json
+  createdAt        DateTime        @default(now())
+  session          Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskAssignment   TaskAssignment  @relation(fields: [taskAssignmentId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, taskAssignmentId])
+  @@index([sessionId, taskAssignmentId, snapshotType])
+}
+
+model QuestionnaireTemplate {
+  id          String                 @id @default(cuid())
+  title       String
+  items       Json
+  isActive    Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  responses   QuestionnaireResponse[]
+  configs     ExperimentConfig[]
+}
+
+model QuestionnaireResponse {
+  id            String                @id @default(cuid())
+  sessionId     String
+  participantId String
+  templateId    String?
+  phase         ExperimentPhase       @default(FORMAL)
+  segmentIndex  Int
+  answers       Json
+  submittedAt   DateTime              @default(now())
+  session       Session               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant           @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  template      QuestionnaireTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([sessionId, participantId, segmentIndex])
+}
+
+model AiSettings {
+  id                  String   @id @default("default")
+  basicBaseUrl        String   @default("https://api.deepseek.com")
+  basicModel          String   @default("deepseek-chat")
+  basicApiKey         String   @default("")
+  basicContextLimit   Int      @default(20)
+  advancedBaseUrl     String   @default("https://api.deepseek.com")
+  advancedModel       String   @default("deepseek-chat")
+  advancedApiKey      String   @default("")
+  advancedContextLimit Int     @default(20)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AiMessageLog {
+  id            String          @id @default(cuid())
+  sessionId     String
+  participantId String?
+  companyId     String?
+  contextType   String
+  phase         ExperimentPhase?
+  segmentIndex  Int?
+  aiLevel       AiLevel
+  messageRole   String
+  requestId     String
+  content       String
+  attachments   Json?
+  createdAt     DateTime        @default(now())
+  session       Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, contextType, phase, segmentIndex])
+}
+
+model SideTaskResponseLog {
+  id            String       @id @default(cuid())
+  sessionId     String
+  participantId String
+  segmentIndex  Int
+  itemId        String
+  prompt        String
+  response      String
+  createdAt     DateTime     @default(now())
+  session       Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, participantId, segmentIndex])
+}

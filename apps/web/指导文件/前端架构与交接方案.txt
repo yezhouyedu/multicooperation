@@ -1,0 +1,65 @@
+🚀 AI 投资决策实验平台 - 最终版架构与交接方案
+第一部分：前端架构与交互设计方案 (Design Scheme)
+1. 整体布局与自适应策略
+SaaS/IDE 级视口约束： 根节点 body 锁定 100vh 和 100vw 并隐藏溢出 (overflow-hidden)。页面划分出顶部导航、副线传送带轨道，以及主工作区。
+多维局部滚动： A 区（材料）、B 区（表单）、C 区（对话）以及副线全屏弹窗的内部，统一使用 flex-1 overflow-y-auto no-scrollbar，确保内容无论多长都不会撑破外层 UI。
+面板互斥放大机制 (Maximize/Restore)： B 区和 C 区共享右侧高度。点击任一区的“全屏”按钮时，将另一区设置为 hidden，当前区自然占据 100% 高度。再次点击则恢复双排布局。
+2. 核心创新：副线任务“传送带 + 收件箱”模型
+CSS 驱动的物理滚动： 任务气泡从屏幕右侧生成，应用 animation 向左平移。通过 JavaScript 定时器控制生成的频率，完美映射 PDF 中要求的**“Continuous (连续)”** 与 “Batch (批量)” 两种调度策略。
+事件驱动的状态流转：
+被拦截： 气泡在滚动时被点击 
+→
+→
+ 销毁气泡 DOM 
+→
+→
+ 弹出全屏打标页。
+被积压： 气泡滚动结束 (onAnimationEnd) 
+→
+→
+ 销毁气泡 DOM 
+→
+→
+ 收件箱 pendingCount 状态 +1 
+→
+→
+ 触发 Inbox 按钮呼吸灯动画。
+3. 组件化与 UI 质感细节
+A区 (Tab 切换阅读器)： 顶部包含“原始材料”与“尽调表”的 Tab 切换。内容区使用 Tailwind 的 prose 排版插件库，提供极佳的行高、间距和富文本阅读体验。
+B区与全屏打标页 (高级表单 UX)： 单选框 (Radio) 抛弃传统的默认小圆点，采用**“卡片式单选”**。利用 Tailwind 的 has-[:checked]:border-primary 伪类，实现点击 Radio 时整个外层卡片高亮，极大提升点击手感。
+C区 (非阻塞异步对话)： 采用 Chat UI 布局。AI 返回数据期间（Loading），用户依然可以上下滚动材料区或填写 B 区表单，系统状态为“异步处理”而非“全局锁定”。
+第二部分：与代码 AI 的交接指南 (Prompting Guide)
+在与 Cursor、ChatGPT 等 AI 开始写 React / Vue 代码时，请务必提醒 AI：“原型 HTML 中使用的是原生 JS 直接操作 DOM，但在现代框架中，请全部转化为响应式 State (状态) 驱动！”
+按照以下 5 个 Prompt 依次投喂，你将获得一个极其干净的工程：
+💡 Prompt 1：初始化骨架与面板放缩逻辑
+复制发送给 AI：
+“我正在开发一个类似 LeetCode 的在线实验平台，使用 [React/Vue] + Tailwind CSS。
+请搭建 100vh w-screen overflow-hidden 的基础骨架，包含 NavBar(48px)、SubTaskBar(48px) 和剩余的 MainWorkspace。
+MainWorkspace 左侧为 PaneA，右侧为 RightContainer（内含上下排列的 PaneB 和 PaneC）。左右分割请使用 react-resizable-panels。
+核心逻辑： 请在 RightContainer 维护一个状态 maximizedPane (值为 'none' | 'B' | 'C')。如果值为 'B'，则隐藏 PaneC；如果为 'C'，则隐藏 PaneB。PaneB 和 PaneC 的标题栏需要一个按钮来切换这个状态。”
+💡 Prompt 2：实现“传送带+收件箱”副线机制
+复制发送给 AI：
+“现在实现 SubTaskBar。它分为左侧的 Inbox 和右侧的 Track。
+请维护两个状态：pendingCount (数字) 和 scrollItems (数组，存放当前滚动的任务对象，包含 id, text 等)。
+Track 区域渲染 scrollItems。每个 item 需要应用一个从右到左的 CSS animation (如 10s)。
+事件监听： 给每个 item 绑定 onAnimationEnd 事件，触发时从数组中移除该 item，并将 pendingCount + 1。
+点击拦截： 如果 item 被点击，从数组移除它（但不增加 pendingCount），并设置状态 isSubTaskModalOpen = true。
+Inbox 按钮显示 pendingCount，点击也会打开 Modal（如果有积压，处理时 pendingCount - 1）。”
+💡 Prompt 3：A 区 Tab 切换与排版
+复制发送给 AI：
+“现在开发 PaneA。
+顶部实现一个 Tab 栏，维护 activeTab 状态，用于在‘原始材料’和‘A 的尽调表’之间切换。选中的 Tab 文本变蓝且有蓝色下划线，未选中的是灰色。
+内容区域请使用 flex-1 overflow-y-auto no-scrollbar。
+内容的包裹层加上 Tailwind 的 prose max-w-none 类名，以获得良好的长文本阅读排版。请在里面模拟一些富文本内容（包含标题、列表和被高亮的警示段落）。”
+💡 Prompt 4：B 区、C 区与高级表单 UX
+复制发送给 AI：
+“现在开发 PaneB 和 PaneC。内部同样需要 flex-1 overflow-y-auto no-scrollbar。
+PaneB 是一份投资表单。请实现包含 Textarea、Select 和 Radio 的结构。
+重点交互： Radio 选项请做成卡片样式。使用 Tailwind 的 has-[:checked] 伪类（例如 has-[:checked]:border-success has-[:checked]:bg-green-50），使得选中单选框时，外层卡片自动高亮变色。
+PaneC 是 AI 助手对话框。实现上下布局：上方为消息列表（一左一右的 Chat 气泡样式，AI 头像用机器标，用户用人像标），下方为 border-t 的固定输入框区，包含一个回车发送按钮。”
+💡 Prompt 5：全屏副线打标页 Modal
+复制发送给 AI：
+“最后实现副线全屏弹窗 SubTaskModal。
+这是一个覆盖全局的弹窗 (fixed inset-0 z-50 bg-bgGray)。由 isSubTaskModalOpen 状态控制显示/隐藏。
+顶部有一个 Navbar，左侧是‘暂不处理，退回主界面’的按钮。
+主体内容横向排列，gap-6 p-6。左侧占 60% 宽度，使用 prose 排版显示一篇新闻快讯（带有标签、时间、来源）。右侧占 40% 宽度，是一个打标表单（同样使用 has-[:checked] 实现高亮卡片单选），底部有一个‘提交并拉取下一条’的按钮。”
