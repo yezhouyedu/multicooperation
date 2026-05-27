@@ -10,12 +10,28 @@ type TabItem = {
   onSelect?: () => void;
 };
 
-export function MaterialTabs({ items }: { items: TabItem[] }) {
-  const [active, setActive] = useState(items[0]?.key ?? '');
+export function MaterialTabs({
+  items,
+  activeKey,
+  onActiveChange,
+}: {
+  items: TabItem[];
+  activeKey?: string;
+  onActiveChange?: (key: string) => void;
+}) {
+  const [internalActive, setInternalActive] = useState(items[0]?.key ?? '');
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const active = activeKey ?? internalActive;
   const current = items.find((item) => item.key === active) ?? items[0];
+
+  function activateTab(key: string) {
+    if (activeKey === undefined) {
+      setInternalActive(key);
+    }
+    onActiveChange?.(key);
+  }
 
   function syncScrollState() {
     const el = tabsRef.current;
@@ -45,7 +61,7 @@ export function MaterialTabs({ items }: { items: TabItem[] }) {
 
   useEffect(() => {
     if (!items.some((item) => item.key === active)) {
-      setActive(items[0]?.key ?? '');
+      activateTab(items[0]?.key ?? '');
     }
   }, [active, items]);
 
@@ -69,7 +85,7 @@ export function MaterialTabs({ items }: { items: TabItem[] }) {
                 key={item.key}
                 type="button"
                 onClick={() => {
-                  setActive(item.key);
+                  activateTab(item.key);
                   item.onSelect?.();
                 }}
                 className={`h-11 flex-none whitespace-nowrap rounded-lg px-4 text-sm transition ${

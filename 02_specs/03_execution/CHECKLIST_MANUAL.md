@@ -188,8 +188,8 @@ http://localhost:3000/admin
   - A 信息区显示锁定态
   - 提交按钮不可用
 - A 信息解锁后：
-  - B 必须明确打开 A 信息区一次
-  - 之后才能进入反馈页并完成提交
+  - B 可以直接进入反馈页并完成提交
+  - 若点开 A 信息区，应只影响记录，不影响是否可提交
 
 ### A/B 共用顺序检查
 
@@ -223,15 +223,16 @@ http://localhost:3000/admin
 - A 提交前，B 端 runtime 里 `aInfoUnlocked` 应为 `false`
 - A 提交后，或 A 到 `5` 分钟自动解锁后，B 端 runtime 里 `aInfoUnlocked` 应为 `true`
 
-## 2）B 必须先查看 A 信息才能提交
+## 2）B 在 A 解锁后才能提交
 
 目标：
 
-- B 不能跳过 A 信息直接完成任务
+- B 不能在 A 信息未解锁时完成任务
+- A 信息一旦解锁，B 无需先点开 A 信息区也可完成任务
 
 检查方式：
 
-1. 在 A 信息已解锁，但 B 还没点“打开 A 信息区”时，直接调：
+1. 在 A 信息尚未解锁时，直接调：
 
 ```text
 POST /experiment/session/:code/tasks/:taskId/b-complete
@@ -239,13 +240,21 @@ POST /experiment/session/:code/tasks/:taskId/b-complete
 
 应该返回 `400`。
 
-2. 之后先调：
+2. 等 A 信息解锁后，不先调用：
 
 ```text
 POST /experiment/session/:code/tasks/:taskId/view-a-info
 ```
 
-再调 `b-complete`，这时才应成功。
+直接再调 `b-complete`，这时应成功。
+
+3. 若再调用：
+
+```text
+POST /experiment/session/:code/tasks/:taskId/view-a-info
+```
+
+应只补充行为记录，不改变“已可提交”这一事实。
 
 ## 3）完成态是否落到 session.status
 
@@ -350,7 +359,7 @@ GET /experiment/session/:code
 5. 观察自动配对
 6. 走完 `/instruction -> /practice -> /workspace/a or /workspace/b`
 7. 检查 A/B 表单结构
-8. 检查 A 解锁、B 查看门槛、B 提交
+8. 检查 A 解锁、B 提交门槛、B 提交
 9. 至少走过一次 `/break`
 10. 最后查 session 是否变成 `COMPLETED`
 

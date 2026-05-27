@@ -62,6 +62,8 @@ type RuntimeSession = Session & {
   questionnaireAnswers: { participantId: string; segmentIndex: number }[];
 };
 
+type BarrierTarget = 'practice' | 'formal';
+
 @Injectable()
 export class ExperimentService {
   private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
@@ -135,28 +137,18 @@ export class ExperimentService {
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
 
     const now = new Date();
-    const endsAt = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
     await this.prisma.$transaction(async (tx) => {
-      await tx.session.update({
-        where: { id: session.id },
-        data: {
-          status: SessionStatus.IN_PROGRESS,
-          runtimePhase: RuntimePhase.PRACTICE,
-          currentPhase: ExperimentPhase.PRACTICE,
-          currentSegmentIndex: 0,
-          currentSegmentType: SegmentType.PRACTICE,
-          currentSegmentStarts: now,
-          currentSegmentEnds: endsAt,
-        },
-      });
-      await tx.sessionSegmentState.updateMany({
-        where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
-        data: { startedAt: now, endsAt },
-      });
+      await this.startPracticePhase(tx, session.id, config, now);
     });
 
     this.emitRuntimeInvalidated(sessionCode);
     return { ok: true };
+  }
+
+  async readyPractice(sessionCode: string, participantId: string) {
+    const result = await this.markBarrierReady(sessionCode, participantId, 'practice');
+    this.emitRuntimeInvalidated(sessionCode);
+    return result;
   }
 
   async completePractice(sessionCode: string) {
@@ -165,6 +157,12 @@ export class ExperimentService {
     await this.startFormalWorkSegment(session.id, 1);
     this.emitRuntimeInvalidated(sessionCode);
     return { ok: true };
+  }
+
+  async readyFormal(sessionCode: string, participantId: string) {
+    const result = await this.markBarrierReady(sessionCode, participantId, 'formal');
+    this.emitRuntimeInvalidated(sessionCode);
+    return result;
   }
 
   async getSessionState(sessionCode: string) {
@@ -227,6 +225,7 @@ export class ExperimentService {
       currentCompany && !this.hasUsableMaterials(currentCompany)
         ? await this.prisma.company.findUnique({ where: { id: 'company-p01-baseline' } })
         : null;
+    const syncState = await this.getSyncState(session, assignedRole);
 
     return {
       ok: true,
@@ -251,7 +250,7 @@ export class ExperimentService {
         assignedRole === ParticipantRole.A && roleTask ? this.getRemainingSeconds(roleTask.aDeadlineAt) : null,
       aInfoUnlocked: Boolean(roleTask?.aUnlockedForBAt),
       bHasViewedAInfo: Boolean(roleTask?.bViewedAInfoAt),
-      bCanSubmit: Boolean(roleTask?.bCanSubmitAt),
+      bCanSubmit: Boolean(roleTask?.aUnlockedForBAt),
       isIdle: !roleTask,
       isFrozen: Boolean(roleTask?.frozenAt),
       questionnaireSubmitted: participantId
@@ -267,6 +266,7 @@ export class ExperimentService {
         tickerMessage: '您有新事项入库，请尽快处理',
         scrollIntervalSeconds: 30,
       },
+      syncState,
       questionnaireTemplate:
         session.runtimePhase === RuntimePhase.FORMAL_BREAK && config.activeQuestionnaireTemplate
           ? {
@@ -628,6 +628,9 @@ export class ExperimentService {
     if (!task) throw new NotFoundException('Task not found');
 
     const now = new Date();
+    if (task.aDeadlineAt && now < task.aDeadlineAt) {
+      throw new BadRequestException('5 分钟窗口尚未结束，请继续完成尽调表');
+    }
     await this.prisma.taskAssignment.update({
       where: { id: taskId },
       data: {
@@ -654,7 +657,6 @@ export class ExperimentService {
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
-    if (!task.bViewedAInfoAt) throw new BadRequestException('请先查看 A 信息区后再提交');
 
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.taskAssignment.update({
@@ -694,6 +696,90 @@ export class ExperimentService {
       data: { taskId, sortOrder: task.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
+
+    return result;
+  }
+
+  private async markBarrierReady(sessionCode: string, participantId: string, target: BarrierTarget) {
+    const config = await this.ensureConfig();
+    const stage = target === 'practice' ? 'practice_ready' : 'formal_ready';
+    const waitingPhase = target === 'practice' ? RuntimePhase.PRACTICE_READY : RuntimePhase.FORMAL_READY;
+    const activePhase = target === 'practice' ? RuntimePhase.PRACTICE : RuntimePhase.FORMAL_WORK;
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { code: sessionCode },
+        include: {
+          pairings: { include: { participantA: true, participantB: true } },
+        },
+      });
+      if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+      const pairing = session.pairings[0];
+      if (!pairing) throw new BadRequestException('Session pairing record is missing');
+      if (participantId !== pairing.participantAId && participantId !== pairing.participantBId) {
+        throw new BadRequestException('Participant does not belong to this session');
+      }
+
+      if (session.runtimePhase === activePhase) {
+        return { ok: true, started: true, waiting: false };
+      }
+
+      const expectedPhase: RuntimePhase[] =
+        target === 'practice'
+          ? [RuntimePhase.INSTRUCTION, RuntimePhase.PRACTICE_READY]
+          : [RuntimePhase.PRACTICE, RuntimePhase.FORMAL_READY];
+      if (!expectedPhase.includes(session.runtimePhase)) {
+        throw new BadRequestException('Current session phase does not support this readiness action');
+      }
+
+      const existing = await tx.taskProgress.findFirst({
+        where: { sessionId: session.id, participantId, stage },
+      });
+      if (!existing) {
+        await tx.taskProgress.create({
+          data: {
+            sessionId: session.id,
+            participantId,
+            stage,
+            payload: { target } satisfies Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      const readyIds = new Set(
+        (
+          await tx.taskProgress.findMany({
+            where: { sessionId: session.id, stage },
+            select: { participantId: true },
+          })
+        ).map((item) => item.participantId),
+      );
+      const aReady = Boolean(pairing.participantAId && readyIds.has(pairing.participantAId));
+      const bReady = Boolean(pairing.participantBId && readyIds.has(pairing.participantBId));
+      const bothReady = aReady && bReady;
+      const now = new Date();
+
+      if (!bothReady) {
+        await tx.session.update({
+          where: { id: session.id },
+          data: {
+            runtimePhase: waitingPhase,
+            currentSegmentStarts: null,
+            currentSegmentEnds: null,
+          },
+        });
+        return { ok: true, started: false, waiting: true };
+      }
+
+      if (target === 'practice') {
+        await this.startPracticePhase(tx, session.id, config, now);
+      } else {
+        await this.startFormalWorkSegmentTx(tx, session.id, 1, config, now);
+      }
+
+      return { ok: true, started: true, waiting: false };
+    });
 
     return result;
   }
@@ -743,39 +829,8 @@ export class ExperimentService {
       if (session.runtimePhase === RuntimePhase.FORMAL_WORK) {
         const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
         if (currentATask) {
-          if (!currentATask.aStartedAt) {
-            const remaining = currentATask.aRemainingSeconds || 300;
-            const deadline = new Date(
-              Math.min(
-                now.getTime() + remaining * 1000,
-                session.currentSegmentEnds?.getTime() ?? now.getTime() + remaining * 1000,
-              ),
-            );
-            await tx.taskAssignment.update({
-              where: { id: currentATask.id },
-              data: {
-                aStartedAt: now,
-                resumedAt: currentATask.resumedAt ?? now,
-                frozenAt: null,
-                aDeadlineAt: deadline,
-              },
-            });
-          } else if (currentATask.frozenAt) {
-            const remaining = currentATask.aRemainingSeconds || 300;
-            const deadline = new Date(
-              Math.min(
-                now.getTime() + remaining * 1000,
-                session.currentSegmentEnds?.getTime() ?? now.getTime() + remaining * 1000,
-              ),
-            );
-            await tx.taskAssignment.update({
-              where: { id: currentATask.id },
-              data: {
-                resumedAt: now,
-                frozenAt: null,
-                aDeadlineAt: deadline,
-              },
-            });
+          if (!currentATask.aStartedAt || currentATask.frozenAt) {
+            await this.activateCurrentATask(tx, currentATask, session.currentSegmentEnds, now);
           }
         }
       }
@@ -828,6 +883,7 @@ export class ExperimentService {
         data: {
           aSubmittedAt: snapshotAt,
           aUnlockedForBAt: snapshotAt,
+          bCanSubmitAt: snapshotAt,
           aRemainingSeconds: 0,
         },
       });
@@ -971,22 +1027,7 @@ export class ExperimentService {
       return;
     }
 
-    const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
-    await tx.session.update({
-      where: { id: session.id },
-      data: {
-        runtimePhase: RuntimePhase.FORMAL_WORK,
-        currentPhase: ExperimentPhase.FORMAL,
-        currentSegmentIndex: nextWorkIndex,
-        currentSegmentType: SegmentType.WORK,
-        currentSegmentStarts: now,
-        currentSegmentEnds: workEnds,
-      },
-    });
-    await tx.sessionSegmentState.updateMany({
-      where: { sessionId: session.id, segmentIndex: nextWorkIndex },
-      data: { startedAt: now, endsAt: workEnds },
-    });
+    await this.startFormalWorkSegmentTx(tx, session.id, nextWorkIndex, config, now, false);
 
     const nextTask = session.tasks.find((task) => !task.bCompletedAt || !task.aSubmittedAt);
     if (nextTask) {
@@ -997,30 +1038,8 @@ export class ExperimentService {
   private async startFormalWorkSegment(sessionId: string, segmentIndex: number) {
     const config = await this.ensureConfig();
     const now = new Date();
-    const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
-
     await this.prisma.$transaction(async (tx) => {
-      await tx.session.update({
-        where: { id: sessionId },
-        data: {
-          status: SessionStatus.IN_PROGRESS,
-          runtimePhase: RuntimePhase.FORMAL_WORK,
-          currentPhase: ExperimentPhase.FORMAL,
-          currentSegmentIndex: segmentIndex,
-          currentSegmentType: SegmentType.WORK,
-          currentSegmentStarts: now,
-          currentSegmentEnds: workEnds,
-          practiceCompletedAt: now,
-        },
-      });
-      await tx.sessionSegmentState.updateMany({
-        where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
-        data: { completedAt: now },
-      });
-      await tx.sessionSegmentState.updateMany({
-        where: { sessionId, phase: ExperimentPhase.FORMAL, segmentIndex },
-        data: { startedAt: now, endsAt: workEnds },
-      });
+      await this.startFormalWorkSegmentTx(tx, sessionId, segmentIndex, config, now);
     });
   }
 
@@ -1034,8 +1053,12 @@ export class ExperimentService {
     switch (phase) {
       case RuntimePhase.INSTRUCTION:
         return 'instruction';
+      case RuntimePhase.PRACTICE_READY:
+        return 'practice_ready';
       case RuntimePhase.PRACTICE:
         return 'practice';
+      case RuntimePhase.FORMAL_READY:
+        return 'formal_ready';
       case RuntimePhase.FORMAL_WORK:
         return 'formal_work';
       case RuntimePhase.FORMAL_BREAK:
@@ -1044,6 +1067,137 @@ export class ExperimentService {
       default:
         return 'end';
     }
+  }
+
+  private async getSyncState(session: RuntimeSession, assignedRole: ParticipantRole) {
+    const barrier =
+      session.runtimePhase === RuntimePhase.PRACTICE_READY
+        ? 'practice'
+        : session.runtimePhase === RuntimePhase.FORMAL_READY
+          ? 'formal'
+          : null;
+    if (!barrier) return null;
+
+    const stage = barrier === 'practice' ? 'practice_ready' : 'formal_ready';
+    const progressRows = await this.prisma.taskProgress.findMany({
+      where: { sessionId: session.id, stage },
+      select: { participantId: true },
+    });
+    const readyIds = new Set(progressRows.map((item) => item.participantId));
+    const readyRoles: ParticipantRole[] = [];
+    if (session.pairings[0]?.participantAId && readyIds.has(session.pairings[0].participantAId!)) {
+      readyRoles.push(ParticipantRole.A);
+    }
+    if (session.pairings[0]?.participantBId && readyIds.has(session.pairings[0].participantBId!)) {
+      readyRoles.push(ParticipantRole.B);
+    }
+
+    return {
+      barrier,
+      readyRoles,
+      readyCount: readyRoles.length,
+      selfReady: readyRoles.includes(assignedRole),
+      waitingForPeer: readyRoles.length < 2,
+    };
+  }
+
+  private async startPracticePhase(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    const endsAt = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    await tx.session.update({
+      where: { id: sessionId },
+      data: {
+        status: SessionStatus.IN_PROGRESS,
+        runtimePhase: RuntimePhase.PRACTICE,
+        currentPhase: ExperimentPhase.PRACTICE,
+        currentSegmentIndex: 0,
+        currentSegmentType: SegmentType.PRACTICE,
+        currentSegmentStarts: now,
+        currentSegmentEnds: endsAt,
+      },
+    });
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+      data: { startedAt: now, endsAt },
+    });
+  }
+
+  private async startFormalWorkSegmentTx(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    segmentIndex: number,
+    config: ExperimentConfig,
+    now: Date,
+    completePractice = true,
+  ) {
+    const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    await tx.session.update({
+      where: { id: sessionId },
+      data: {
+        status: SessionStatus.IN_PROGRESS,
+        runtimePhase: RuntimePhase.FORMAL_WORK,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: segmentIndex,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: now,
+        currentSegmentEnds: workEnds,
+        ...(completePractice ? { practiceCompletedAt: now } : {}),
+      },
+    });
+    if (completePractice) {
+      await tx.sessionSegmentState.updateMany({
+        where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+        data: { completedAt: now },
+      });
+    }
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId, phase: ExperimentPhase.FORMAL, segmentIndex },
+      data: { startedAt: now, endsAt: workEnds },
+    });
+
+    const currentATask = await tx.taskAssignment.findFirst({
+      where: {
+        sessionId,
+        phase: ExperimentPhase.FORMAL,
+        aSubmittedAt: null,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+    if (currentATask) {
+      await this.activateCurrentATask(tx, currentATask, workEnds, now);
+    }
+  }
+
+  private async activateCurrentATask(
+    tx: Prisma.TransactionClient,
+    task: TaskAssignment,
+    segmentEndsAt: Date | null | undefined,
+    now: Date,
+  ) {
+    const remaining = task.aRemainingSeconds || 300;
+    const deadline = new Date(
+      Math.min(now.getTime() + remaining * 1000, segmentEndsAt?.getTime() ?? now.getTime() + remaining * 1000),
+    );
+
+    await tx.taskAssignment.update({
+      where: { id: task.id },
+      data: !task.aStartedAt
+        ? {
+            aStartedAt: now,
+            resumedAt: task.resumedAt ?? now,
+            frozenAt: null,
+            aDeadlineAt: deadline,
+          }
+        : {
+            resumedAt: now,
+            frozenAt: null,
+            aDeadlineAt: deadline,
+          },
+    });
   }
 
   private getCurrentAiLevel(

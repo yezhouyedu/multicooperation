@@ -12,12 +12,10 @@ import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
-const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
-
 export default function WorkspaceAPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
-  const { bootstrap, runtime, loading, countdownLabel, taskCountdownLabel, refresh } = useSessionRuntime();
+  const { bootstrap, runtime, loading, countdownLabel, taskCountdownLabel } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'A', 'main');
 
@@ -26,27 +24,23 @@ export default function WorkspaceAPage() {
       ? '/login'
       : !loading && runtime?.assignedRole === 'B'
         ? '/workspace/b'
-        : !loading && runtime?.phase === 'practice'
-          ? '/practice'
-          : !loading && runtime?.phase === 'formal_break'
-            ? '/break'
-            : !loading && runtime?.phase === 'end'
-              ? '/workspace/end'
-              : null;
+        : !loading && runtime?.phase === 'practice_ready'
+          ? '/ready?target=practice'
+          : !loading && runtime?.phase === 'practice'
+            ? '/practice'
+            : !loading && runtime?.phase === 'formal_ready'
+              ? '/ready?target=formal'
+              : !loading && runtime?.phase === 'formal_break'
+                ? '/break'
+                : !loading && runtime?.phase === 'end'
+                  ? '/workspace/end'
+                  : null;
 
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath);
   }, [redirectPath, router]);
 
   if (redirectPath) return null;
-
-  async function handleSubmit() {
-    if (!bootstrap || !runtime?.currentTask) return;
-    await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/a-submit`, {
-      method: 'POST',
-    });
-    await refresh();
-  }
 
   const company = runtime?.currentTask?.company;
 
@@ -84,14 +78,10 @@ export default function WorkspaceAPage() {
               taskPane={
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between border-b border-[#e5e6eb] px-5 py-3 text-xs text-[#86909c]">
-                    <span>请先完成尽调表填写。提交后，投资经理会在自己的材料区查看你的信息。</span>
-                    <button
-                      type="button"
-                      onClick={() => void handleSubmit()}
-                      className="rounded-md bg-[#28a745] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-green-600"
-                    >
-                      提交给投资经理
-                    </button>
+                    <span>5分钟后系统自动提交，无需手动操作。</span>
+                    <span className="rounded-full bg-[#e8f3ff] px-3 py-1 text-xs font-semibold text-[#1e80ff]">
+                      自动提交，无需手动操作
+                    </span>
                   </div>
                   <ScopedZoomSurface className="min-h-0 flex-1 overflow-y-auto" contentClassName="min-h-full">
                     {bootstrap ? (
@@ -131,7 +121,9 @@ export default function WorkspaceAPage() {
           )}
         </div>
       </div>
-      {bootstrap ? <AFeedbackNotification sessionCode={bootstrap.sessionCode} participantId={bootstrap.participantId} /> : null}
+      {bootstrap ? (
+        <AFeedbackNotification sessionCode={bootstrap.sessionCode} participantId={bootstrap.participantId} />
+      ) : null}
     </main>
   );
 }

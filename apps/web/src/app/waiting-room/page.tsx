@@ -5,23 +5,46 @@ import { useEffect, useRef, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
+function formatRoleLabel(role: string | null) {
+  if (role === 'A') return '尽调员';
+  if (role === 'B') return '投资经理';
+  return '等待随机分配';
+}
+
 export default function WaitingRoomPage() {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
   const [sessionCode, setSessionCode] = useState<string | null>(null);
+  const [participantId, setParticipantId] = useState<string | null>(null);
   const [status, setStatus] = useState('WAITING');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const storedRole = sessionStorage.getItem('exp_role');
     const storedCode = sessionStorage.getItem('exp_session_code');
-    if (!storedRole || !storedCode) {
+    const storedParticipantId = sessionStorage.getItem('exp_participant_id');
+    if (!storedCode || !storedParticipantId) {
       router.replace('/login');
       return;
     }
 
     setRole(storedRole);
     setSessionCode(storedCode);
+    setParticipantId(storedParticipantId);
+
+    async function enterInstructionIfReady() {
+      const runtimeRes = await fetch(
+        `${serverBaseUrl}/experiment/session/${storedCode}/runtime?participantId=${storedParticipantId}`,
+        { cache: 'no-store' },
+      );
+      if (!runtimeRes.ok) return false;
+      const runtime = (await runtimeRes.json()) as { assignedRole?: 'A' | 'B' };
+      if (!runtime.assignedRole) return false;
+      sessionStorage.setItem('exp_role', runtime.assignedRole);
+      setRole(runtime.assignedRole);
+      router.push('/instruction');
+      return true;
+    }
 
     async function poll() {
       try {
@@ -29,15 +52,20 @@ export default function WaitingRoomPage() {
         if (!response.ok) return;
         const data = (await response.json()) as { session: { status: string } };
         setStatus(data.session.status);
+
         if (data.session.status === 'MATCHED' || data.session.status === 'IN_PROGRESS') {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          router.push('/instruction');
+          const entered = await enterInstructionIfReady();
+          if (entered && intervalRef.current) clearInterval(intervalRef.current);
+          return;
         }
+
         if (data.session.status === 'COMPLETED') {
           if (intervalRef.current) clearInterval(intervalRef.current);
           router.push('/workspace/end');
         }
-      } catch {}
+      } catch {
+        // ignore polling errors in waiting room
+      }
     }
 
     void poll();
@@ -47,7 +75,10 @@ export default function WaitingRoomPage() {
     };
   }, [router]);
 
-  const roleLabel = role === 'A' ? '尽调员' : role === 'B' ? '投资经理' : '加载中';
+  const statusMessage =
+    status === 'WAITING'
+      ? '系统正在等待另一位参与者进入。两人配对后，会先随机分配角色，再进入指导语页面。'
+      : '已完成配对，系统正在分配角色并准备进入指导语页面。';
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
@@ -58,7 +89,9 @@ export default function WaitingRoomPage() {
       <div className="flex flex-1 items-center justify-center">
         <div className="w-full max-w-md rounded-xl border border-[#e5e6eb] bg-white p-10 text-center shadow-sm">
           <div className="mb-6 flex justify-center">
-            <span className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-[#1e80ff]">当前身份：{roleLabel}</span>
+            <span className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-[#1e80ff]">
+              当前角色：{formatRoleLabel(role)}
+            </span>
           </div>
 
           <div className="mb-6 flex justify-center">
@@ -69,11 +102,13 @@ export default function WaitingRoomPage() {
           </div>
 
           <div className="mb-2 text-base font-bold text-[#1d2129]">正在等待开始</div>
-          <div className="text-sm text-[#86909c]">
-            {status === 'MATCHED' || status === 'IN_PROGRESS' ? '即将进入实验...' : '请保持页面开启，系统准备完成后会自动进入下一步。'}
-          </div>
+          <div className="text-sm text-[#86909c]">{statusMessage}</div>
 
-          {sessionCode ? <div className="mt-6 rounded-lg bg-gray-50 px-4 py-2 text-xs text-[#86909c]">系统已记录本次实验身份，请保持页面开启。</div> : null}
+          {sessionCode && participantId ? (
+            <div className="mt-6 rounded-lg bg-gray-50 px-4 py-2 text-xs text-[#86909c]">
+              已记录本次实验登录信息，请保持页面开启。
+            </div>
+          ) : null}
         </div>
       </div>
     </main>

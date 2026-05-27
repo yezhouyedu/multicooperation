@@ -669,8 +669,16 @@ function CompanyOverview({ company }: { company: CompanyData }) {
   );
 }
 
-export const CompanyMaterialPanel = forwardRef<CompanyMaterialPanelHandle, { company: CompanyData; prependItems?: PrependItem[] }>(
-  function CompanyMaterialPanel({ company, prependItems = [] }, ref) {
+export const CompanyMaterialPanel = forwardRef<
+  CompanyMaterialPanelHandle,
+  {
+    company: CompanyData;
+    prependItems?: PrependItem[];
+    activeItemKey?: string;
+    onActiveItemChange?: (key: string) => void;
+  }
+>(
+  function CompanyMaterialPanel({ company, prependItems = [], activeItemKey, onActiveItemChange }, ref) {
     const captureRootRef = useRef<HTMLDivElement>(null);
     const captureSessionRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
     const [captureMode, setCaptureMode] = useState(false);
@@ -849,7 +857,7 @@ export const CompanyMaterialPanel = forwardRef<CompanyMaterialPanelHandle, { com
 
     return (
       <div ref={captureRootRef} className="relative h-full">
-        <MaterialTabs items={items} />
+        <MaterialTabs items={items} activeKey={activeItemKey} onActiveChange={onActiveItemChange} />
         {captureMode ? (
           <div
             data-capture-ignore="true"

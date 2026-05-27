@@ -27,9 +27,13 @@ export default function LoginPage() {
       });
       if (res.status === 403) { setError('手机号未在被试名单中，请核对后重试'); return; }
       if (!res.ok) { setError('登录失败，请稍后重试'); return; }
-      const data = (await res.json()) as { participantId: string; role: string; sessionCode: string };
+      const data = (await res.json()) as { participantId: string; role: string | null; sessionCode: string };
       sessionStorage.setItem('exp_participant_id', data.participantId);
-      sessionStorage.setItem('exp_role', data.role);
+      if (data.role) {
+        sessionStorage.setItem('exp_role', data.role);
+      } else {
+        sessionStorage.removeItem('exp_role');
+      }
       sessionStorage.setItem('exp_session_code', data.sessionCode);
       router.push('/waiting-room');
     } catch {

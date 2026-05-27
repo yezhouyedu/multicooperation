@@ -21,7 +21,9 @@ enum SessionStatus {
 
 enum RuntimePhase {
   INSTRUCTION
+  PRACTICE_READY
   PRACTICE
+  FORMAL_READY
   FORMAL_WORK
   FORMAL_BREAK
   END
@@ -78,6 +80,7 @@ model Session {
   questionnaireAnswers QuestionnaireResponse[]
   aiMessages           AiMessageLog[]
   sideTaskResponses    SideTaskResponseLog[]
+  randomizationAudit   RandomizationAudit?
 }
 
 model Pairing {
@@ -280,4 +283,21 @@ model SideTaskResponseLog {
   participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, participantId, segmentIndex])
+}
+
+model RandomizationAudit {
+  id                        String   @id @default(cuid())
+  sessionId                 String   @unique
+  roleAssignmentMethod      String
+  roleAssignmentSeed        String
+  roleAssignedAt            DateTime
+  companySequenceMethod     String
+  companySequenceSeed       String
+  companySequenceGeneratedAt DateTime
+  companySequence           Json
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  session                   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
 }

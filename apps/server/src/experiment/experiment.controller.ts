@@ -33,9 +33,19 @@ export class ExperimentController {
     return this.experimentService.startPractice(code.toUpperCase());
   }
 
+  @Post('session/:code/ready-practice')
+  readyPractice(@Param('code') code: string, @Body() body: { participantId: string }) {
+    return this.experimentService.readyPractice(code.toUpperCase(), body.participantId);
+  }
+
   @Post('session/:code/complete-practice')
   completePractice(@Param('code') code: string) {
     return this.experimentService.completePractice(code.toUpperCase());
+  }
+
+  @Post('session/:code/ready-formal')
+  readyFormal(@Param('code') code: string, @Body() body: { participantId: string }) {
+    return this.experimentService.readyFormal(code.toUpperCase(), body.participantId);
   }
 
   @Get('session/:code')

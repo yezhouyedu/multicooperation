@@ -61,7 +61,7 @@ export type QuestionnaireTemplate = {
 
 export type RuntimeState = {
   assignedRole: 'A' | 'B';
-  phase: 'instruction' | 'practice' | 'formal_work' | 'formal_break' | 'end';
+  phase: 'instruction' | 'practice_ready' | 'practice' | 'formal_ready' | 'formal_work' | 'formal_break' | 'end';
   segmentIndex: number;
   segmentType: 'PRACTICE' | 'WORK' | 'BREAK' | null;
   segmentRemainingSeconds: number | null;
@@ -79,6 +79,13 @@ export type RuntimeState = {
     tickerMessage: string;
     scrollIntervalSeconds: number;
   };
+  syncState: {
+    barrier: 'practice' | 'formal';
+    readyRoles: Array<'A' | 'B'>;
+    readyCount: number;
+    selfReady: boolean;
+    waitingForPeer: boolean;
+  } | null;
   questionnaireTemplate: QuestionnaireTemplate | null;
 };
 

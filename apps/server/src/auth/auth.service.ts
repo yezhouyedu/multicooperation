@@ -1,4 +1,5 @@
-﻿import { ForbiddenException, Injectable } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
   ExperimentPhase,
   ParticipantRole,
@@ -41,9 +42,18 @@ export class AuthService {
         });
 
         if (existingSession) {
-          const pairing = existingSession.pairings[0];
-          const role = pairing?.participantAId === participant.id ? ParticipantRole.A : ParticipantRole.B;
-          await tx.participant.update({ where: { id: participant.id }, data: { role } });
+          const pairing = existingSession.pairings[0] ?? null;
+          const role = pairing
+            ? this.resolveAssignedRole(
+                existingSession.status,
+                pairing.participantAId,
+                pairing.participantBId,
+                participant.id,
+              )
+            : null;
+          if (role) {
+            await tx.participant.update({ where: { id: participant.id }, data: { role } });
+          }
           return { sessionCode: existingSession.code, role };
         }
 
@@ -65,30 +75,46 @@ export class AuthService {
             },
           });
           await tx.pairing.create({ data: { sessionId: session.id, participantAId: participant.id } });
-          await tx.participant.update({ where: { id: participant.id }, data: { role: ParticipantRole.A } });
-          return { sessionCode: session.code, role: ParticipantRole.A };
+          await tx.participant.update({ where: { id: participant.id }, data: { role: null } });
+          return { sessionCode: session.code, role: null };
         }
 
         const pairing = waitingSession.pairings[0];
-        if (!pairing || pairing.participantBId !== null) {
+        if (!pairing || pairing.participantAId === null || pairing.participantBId !== null) {
           throw new Prisma.PrismaClientKnownRequestError('Session already taken', {
             code: 'P2034',
             clientVersion: '',
           });
         }
 
+        const roleAssignmentSeed = this.generateSeed();
+        const existingParticipantId = pairing.participantAId;
+        const existingIsA = this.seedToBoolean(roleAssignmentSeed);
+        const participantAId = existingIsA ? existingParticipantId : participant.id;
+        const participantBId = existingIsA ? participant.id : existingParticipantId;
+        const roleAssignedAt = new Date();
+
         await tx.pairing.update({
           where: { id: pairing.id },
-          data: { participantBId: participant.id },
+          data: { participantAId, participantBId },
         });
-        await tx.participant.update({ where: { id: participant.id }, data: { role: ParticipantRole.B } });
+        await tx.participant.update({ where: { id: participantAId }, data: { role: ParticipantRole.A } });
+        await tx.participant.update({ where: { id: participantBId }, data: { role: ParticipantRole.B } });
         await tx.session.update({
           where: { id: waitingSession.id },
           data: { status: SessionStatus.MATCHED, runtimePhase: RuntimePhase.INSTRUCTION },
         });
 
-        await this.initializeSessionData(tx, waitingSession.id);
-        return { sessionCode: waitingSession.code, role: ParticipantRole.B };
+        await this.initializeSessionData(tx, waitingSession.id, {
+          roleAssignmentMethod: 'seeded_coin_flip_after_pairing',
+          roleAssignmentSeed,
+          roleAssignedAt,
+        });
+
+        return {
+          sessionCode: waitingSession.code,
+          role: participantAId === participant.id ? ParticipantRole.A : ParticipantRole.B,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
@@ -101,20 +127,34 @@ export class AuthService {
     };
   }
 
-  private async initializeSessionData(tx: Prisma.TransactionClient, sessionId: string) {
+  private async initializeSessionData(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    roleAudit: {
+      roleAssignmentMethod: string;
+      roleAssignmentSeed: string;
+      roleAssignedAt: Date;
+    },
+  ) {
     const companies = await tx.company.findMany({ orderBy: { sortOrder: 'asc' } });
-    const shuffled = [...companies].sort(() => Math.random() - 0.5);
+    const companySequenceSeed = this.generateSeed();
+    const shuffled = this.shuffleWithSeed(companies, companySequenceSeed);
+    const companySequenceSnapshot = shuffled.map((company, index) => ({
+      sequenceIndex: index + 1,
+      companyId: company.id,
+      companyName: company.name,
+    }));
 
     await tx.taskAssignment.deleteMany({ where: { sessionId } });
 
-    for (let i = 0; i < shuffled.length; i++) {
+    for (let index = 0; index < shuffled.length; index += 1) {
       await tx.taskAssignment.create({
         data: {
           sessionId,
-          companyId: shuffled[i].id,
+          companyId: shuffled[index].id,
           phase: ExperimentPhase.FORMAL,
-          sortOrder: i + 1,
-          sequenceIndex: i + 1,
+          sortOrder: index + 1,
+          sequenceIndex: index + 1,
         },
       });
     }
@@ -130,9 +170,78 @@ export class AuthService {
         { sessionId, phase: ExperimentPhase.FORMAL, segmentIndex: 5, type: SegmentType.WORK },
       ],
     });
+
+    const auditClient = tx as Prisma.TransactionClient & {
+      randomizationAudit: typeof this.prisma.randomizationAudit;
+    };
+
+    await auditClient.randomizationAudit.upsert({
+      where: { sessionId },
+      update: {
+        roleAssignmentMethod: roleAudit.roleAssignmentMethod,
+        roleAssignmentSeed: roleAudit.roleAssignmentSeed,
+        roleAssignedAt: roleAudit.roleAssignedAt,
+        companySequenceMethod: 'seeded_fisher_yates_v1',
+        companySequenceSeed,
+        companySequenceGeneratedAt: roleAudit.roleAssignedAt,
+        companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
+      },
+      create: {
+        sessionId,
+        roleAssignmentMethod: roleAudit.roleAssignmentMethod,
+        roleAssignmentSeed: roleAudit.roleAssignmentSeed,
+        roleAssignedAt: roleAudit.roleAssignedAt,
+        companySequenceMethod: 'seeded_fisher_yates_v1',
+        companySequenceSeed,
+        companySequenceGeneratedAt: roleAudit.roleAssignedAt,
+        companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
+      },
+    });
   }
 
   private generateCode() {
     return Math.random().toString(36).slice(2, 8).toUpperCase();
+  }
+
+  private generateSeed() {
+    return randomBytes(16).toString('hex');
+  }
+
+  private seedToBoolean(seed: string) {
+    const hash = createHash('sha256').update(seed).digest();
+    return (hash[0] & 1) === 0;
+  }
+
+  private shuffleWithSeed<T>(items: T[], seed: string) {
+    const random = this.createSeededRandom(seed);
+    const copy = [...items];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1));
+      [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+    }
+    return copy;
+  }
+
+  private createSeededRandom(seed: string) {
+    let counter = 0;
+    return () => {
+      const hash = createHash('sha256').update(`${seed}:${counter}`).digest();
+      counter += 1;
+      return hash.readUInt32BE(0) / 0x100000000;
+    };
+  }
+
+  private resolveAssignedRole(
+    sessionStatus: SessionStatus,
+    participantAId: string | null,
+    participantBId: string | null,
+    participantId: string,
+  ) {
+    if (sessionStatus === SessionStatus.WAITING && participantBId === null) {
+      return null;
+    }
+    if (participantAId === participantId) return ParticipantRole.A;
+    if (participantBId === participantId) return ParticipantRole.B;
+    return null;
   }
 }
