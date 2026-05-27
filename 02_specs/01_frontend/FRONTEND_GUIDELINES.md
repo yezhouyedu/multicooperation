@@ -70,7 +70,47 @@
 - 主线区权重最高，副线区克制，AI 区高频但不喧宾夺主
 - 保留现有拖拽与全屏能力，但不能牺牲默认初始可用性
 
-## 10. 本轮不做
-- 截图按钮
+## 10. 设计系统规范
+
+### 字体
+- 主字体：Inter（通过 `next/font/google` 加载，400/500/600/700 字重，variable font）
+- 兜底字体栈：`-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+- CSS 变量：`--font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`
+
+### 阴影层级
+三级阴影系统，通过 CSS 变量统一管理：
+- `--shadow-card`：`0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)` — 普通卡片
+- `--shadow-elevated`：`0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)` — 流程页居中卡片（登录/等待/指导语/准备/休息/结束）
+- `--shadow-topbar`：`0 1px 4px rgba(0,0,0,0.06)` — 顶部导航栏
+
+### 交互过渡
+- 所有 `button` 和 `a` 元素默认加 `transition-colors duration-150`
+- 主按钮点击反馈：`active:scale-[0.98]`
+- 主按钮 hover 颜色：`hover:bg-[#1168e3]`（比主蓝 `#1e80ff` 深一档）
+
+### 面板头规范（工作台三区）
+- 统一背景：`bg-[#fafbfc]`（极浅灰，不用白色避免与内容区混淆）
+- 左侧色条区分区域：
+  - 材料区：`border-l-2 border-l-emerald-400/60`
+  - 任务区：`border-l-2 border-l-[#1e80ff]/50`
+  - AI 区：`border-l-2 border-l-violet-400/60`
+- 分割线颜色：`bg-[#e2e5ea]`，hover：`hover:bg-[#93c5fd]/40`
+
+### 颜色规范
+- 主蓝：`#1e80ff`
+- 深蓝（hover）：`#1168e3`
+- 柔和蓝（分割线 hover / 加载动画）：`#93c5fd`（blue-300）
+- 卡片边框：`#eaecf0`
+- 表格边框：`#dde1e7`
+- 表头背景：`#f5f7fa`
+- 正文主色：`#1d2129`
+- 次要文字：`#4e5969`
+- 辅助文字：`#86909c`
+
+### 加载动画
+- 双色 spinner：`border-[#93c5fd] border-t-[#1e80ff]`（不用 `border-t-transparent`）
+- ping 圆背景：`bg-blue-50`（不用实色）
+
+## 11. 本轮不做
 - 大规模动画重写
 - 通用文档管理后台

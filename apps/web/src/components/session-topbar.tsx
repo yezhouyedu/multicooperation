@@ -20,24 +20,28 @@ export function SessionTopbar({
   useExperimentFullscreen();
 
   return (
-    <nav className="flex h-[52px] shrink-0 items-center justify-between border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
-      <div className="flex min-w-0 items-center gap-4">
-        <div className="shrink-0 text-lg font-bold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
-        <div className="rounded border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs text-[#86909c]">
-          角色：{roleLabel}
+    <nav
+      className="flex h-[52px] shrink-0 items-center justify-between border-b border-[#eaecf0] bg-white px-5"
+      style={{ boxShadow: 'var(--shadow-topbar)' }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="shrink-0 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+        <div className="h-4 w-px bg-[#eaecf0]" />
+        <div className="rounded-md border border-[#eaecf0] bg-[#f5f7fa] px-2.5 py-1 text-xs font-medium text-[#4e5969]">
+          {roleLabel}
         </div>
-        <div className="truncate rounded border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs text-[#86909c]">
-          当前项目：{currentLabel}
+        <div className="hidden truncate rounded-md border border-[#eaecf0] bg-[#f5f7fa] px-2.5 py-1 text-xs font-medium text-[#4e5969] sm:block">
+          {currentLabel}
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
-        <div className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-[#1e80ff]">
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-[#1e80ff]">
           {stageLabel}：{countdownLabel}
         </div>
         {taskCountdownLabel ? (
-          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
-            当前任务剩余时间：{taskCountdownLabel}
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+            任务剩余：{taskCountdownLabel}
           </div>
         ) : null}
       </div>

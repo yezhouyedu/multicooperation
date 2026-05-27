@@ -23,19 +23,25 @@ export default function ExperimentEndPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
-      <nav className="flex h-[52px] shrink-0 items-center border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
-        <div className="text-lg font-bold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+      <nav
+        className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
+        style={{ boxShadow: 'var(--shadow-topbar)' }}
+      >
+        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
       </nav>
 
       <div className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-md rounded-xl border border-[#e5e6eb] bg-white p-12 shadow-sm text-center">
+        <div
+          className="w-full max-w-md rounded-2xl border border-[#eaecf0] bg-white p-12 text-center"
+          style={{ boxShadow: 'var(--shadow-elevated)' }}
+        >
           <div className="mb-4 text-4xl">🎉</div>
-          <div className="mb-3 text-xl font-bold text-[#1d2129]">实验已完成</div>
+          <div className="mb-3 text-xl font-semibold text-[#1d2129]">实验已完成</div>
           <div className="mb-6 text-sm leading-relaxed text-[#86909c]">
             感谢您的参与！您的所有作答已记录完毕。<br />
             请向实验人员告知您已完成，然后关闭此页面。
           </div>
-          <div className="rounded-lg bg-blue-50 border border-blue-100 px-5 py-3 text-sm text-[#1e80ff]">
+          <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-5 py-3 text-sm text-[#1e80ff]">
             您的贡献对我们的研究非常重要，谢谢！
           </div>
         </div>

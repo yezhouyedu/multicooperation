@@ -45,9 +45,12 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f0f2f5]">
-      <div className="w-full max-w-sm rounded-xl border border-[#e5e6eb] bg-white p-8 shadow-sm">
+      <div
+        className="w-full max-w-sm rounded-2xl border border-[#eaecf0] bg-white p-8"
+        style={{ boxShadow: 'var(--shadow-elevated)' }}
+      >
         <div className="mb-8 text-center">
-          <div className="mb-2 text-lg font-bold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+          <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
           <div className="text-sm text-[#86909c]">请使用实验账号登录</div>
         </div>
 
@@ -60,7 +63,7 @@ export default function LoginPage() {
               onChange={(e) => setPhone(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && void handleLogin()}
               placeholder="请输入参与实验的手机号"
-              className="w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2.5 text-sm text-[#1d2129] outline-none transition focus:border-[#1e80ff] focus:bg-white focus:ring-1 focus:ring-[#1e80ff]"
+              className="w-full rounded-lg border border-[#eaecf0] bg-[#f5f7fa] px-3 py-2.5 text-sm text-[#1d2129] outline-none transition focus:border-[#1e80ff] focus:bg-white focus:ring-2 focus:ring-[#1e80ff]/20"
             />
           </div>
 
@@ -70,7 +73,7 @@ export default function LoginPage() {
             type="button"
             onClick={() => void handleLogin()}
             disabled={loading}
-            className="w-full rounded-lg bg-[#1e80ff] py-2.5 text-sm font-bold text-white transition hover:bg-blue-600 disabled:opacity-60"
+            className="w-full rounded-lg bg-[#1e80ff] py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
           >
             {loading ? '登录中…' : '进入实验'}
           </button>

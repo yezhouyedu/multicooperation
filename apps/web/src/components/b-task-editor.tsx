@@ -69,11 +69,11 @@ function DocTable({ children, minWidth }: { children: ReactNode; minWidth?: stri
 }
 
 function Th({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <th className={`border border-[#bfc6d1] bg-[#f7f8fa] px-3 py-2 text-left font-semibold ${className}`}>{children}</th>;
+  return <th className={`border border-[#dde1e7] bg-[#f5f7fa] px-3 py-2 text-left font-semibold ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <td className={`border border-[#bfc6d1] px-3 py-2 align-top ${className}`}>{children}</td>;
+  return <td className={`border border-[#dde1e7] px-3 py-2 align-top ${className}`}>{children}</td>;
 }
 
 function InfoPointSection({
@@ -128,7 +128,7 @@ function InfoPointSection({
                   onChange={(event) => onTextChange(index, event.target.value.slice(0, maxInfoLength))}
                   disabled={disabled || checked}
                   rows={2}
-                  className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-6 outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                  className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-6 outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                   placeholder="尽量写成会影响投资判断的事实或线索"
                 />
               </Td>
@@ -153,7 +153,7 @@ function InfoPointSection({
                   type="button"
                   onClick={() => onRemoveRow(index)}
                   disabled={disabled || checked || rows.length <= minInfoRows}
-                  className="rounded border border-[#d0d7e2] px-2 py-1 text-xs text-[#4e5969] disabled:opacity-50"
+                  className="rounded border border-[#d0d7e2] px-2 py-1 text-xs text-[#4e5969] transition-colors duration-150 hover:bg-[#f5f7fa] disabled:opacity-50"
                 >
                   删除
                 </button>
@@ -169,7 +169,7 @@ function InfoPointSection({
                 type="button"
                 onClick={onAddRow}
                 disabled={disabled || checked}
-                className="rounded border border-[#1e80ff] px-2 py-1 text-xs text-[#1e80ff] disabled:opacity-50"
+                className="rounded border border-[#1e80ff] px-2 py-1 text-xs text-[#1e80ff] transition-colors duration-150 hover:bg-blue-50 disabled:opacity-50"
               >
                 新增
               </button>
@@ -276,7 +276,7 @@ export function BTaskEditor({ sessionCode, taskId, initialData, company, disable
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-6 text-[#1d2129]">
-      <div className="rounded-md border border-[#d4d8de] bg-white px-8 py-7 shadow-sm">
+      <div className="rounded-lg border border-[#e2e5ea] bg-white px-8 py-7 shadow-sm">
         <div className="space-y-6">
           <div>
             <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">B端投资判断表</h2>
@@ -407,7 +407,7 @@ export function BTaskEditor({ sessionCode, taskId, initialData, company, disable
                       }}
                       disabled={disabled}
                       rows={5}
-                      className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-7 outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                      className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-7 outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                     />
                   </Td>
                 </tr>

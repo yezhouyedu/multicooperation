@@ -701,3 +701,25 @@
 - `workspace/a/page.tsx` + `workspace/b/page.tsx` 传入 `onScreenshot={() => materialPanelRef.current?.startCapture()}`，复用 CompanyMaterialPanel 的框选截图
 - 基础版 AI 显示灰色不可用图标，无 onScreenshot 时保留原文件上传
 - web build + server build 通过
+
+### 2026-05-28 前端 UI 审美升级
+
+**背景**：在 git 备份后对全站前端做一轮审美升级，目标是"精致、舒适、专业"的工具感，不做绚丽特效。
+
+**改动范围**：
+
+- `apps/web/src/app/layout.tsx` — 引入 `next/font/google` 的 Inter 字体（400/500/600/700），注入 `inter.variable` 到 `<html>` className
+- `apps/web/src/app/globals.css` — `--font-sans` 改为 Inter + 系统字体栈；新增三级阴影 CSS 变量（`--shadow-card`、`--shadow-elevated`、`--shadow-topbar`）；全局 `button, a` 加 `transition-colors duration-150`；改善 `:focus-visible` 样式
+- `apps/web/src/components/session-topbar.tsx` — nav 阴影改为 `var(--shadow-topbar)`；角色/项目标签精修为 `bg-[#f5f7fa] border border-[#eaecf0] text-[#4e5969] rounded-md`
+- `apps/web/src/components/workbench-layout.tsx` — 三个面板头统一改为 `bg-[#fafbfc]`，加左侧色条区分区域（材料区 emerald-400/60、任务区 #1e80ff/50、AI 区 violet-400/60）；分割线 hover 颜色从主蓝改为柔和蓝 `#93c5fd`
+- `apps/web/src/app/login/page.tsx` — 卡片 `rounded-2xl` + `var(--shadow-elevated)`；输入框 focus ring；按钮 `hover:bg-[#1168e3] active:scale-[0.98]`
+- `apps/web/src/app/waiting-room/page.tsx` — 同上；加载动画改为双色 spinner `border-[#93c5fd] border-t-[#1e80ff]`
+- `apps/web/src/app/instruction/page.tsx` — 同上；角色卡片 `rounded-xl bg-blue-50/70`
+- `apps/web/src/app/ready/ready-client-page.tsx` — 同上；状态框 `rounded-xl border border-blue-100 bg-blue-50/70`
+- `apps/web/src/app/break/page.tsx` — 卡片 `rounded-2xl border-[#eaecf0]` + `var(--shadow-elevated)`；问题选项 `rounded-xl transition-colors duration-150`
+- `apps/web/src/app/workspace/end/page.tsx` — 卡片 `rounded-2xl border-[#eaecf0]` + `var(--shadow-elevated)`；信息框 `rounded-xl border border-blue-100 bg-blue-50/70`
+- `apps/web/src/components/a-task-editor.tsx` — 表格边框 `#bfc6d1` → `#dde1e7`；表头背景 `#f7f8fa` → `#f5f7fa`；外层卡片边框 `#d4d8de` → `#e2e5ea`；所有输入框加 `focus:bg-[#fafbff]`
+- `apps/web/src/components/b-task-editor.tsx` — 同上；删除/新增按钮加 `transition-colors duration-150`
+- `02_specs/01_frontend/FRONTEND_GUIDELINES.md` — 新增第 10 节"设计系统规范"，记录字体、阴影层级、交互过渡、面板头规范、颜色规范、加载动画标准
+
+**验证**：`corepack pnpm --filter web build` 通过（21 个页面全部生成）。

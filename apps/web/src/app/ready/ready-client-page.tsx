@@ -70,23 +70,29 @@ export default function ReadyClientPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
-      <nav className="flex h-[52px] shrink-0 items-center border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
-        <div className="text-lg font-bold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+      <nav
+        className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
+        style={{ boxShadow: 'var(--shadow-topbar)' }}
+      >
+        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
       </nav>
 
       <div className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-xl rounded-xl border border-[#e5e6eb] bg-white p-8 text-center shadow-sm">
+        <div
+          className="w-full max-w-xl rounded-2xl border border-[#eaecf0] bg-white p-8 text-center"
+          style={{ boxShadow: 'var(--shadow-elevated)' }}
+        >
           <div className="mb-6 flex justify-center">
-            <div className="relative h-16 w-16">
-              <div className="absolute inset-0 animate-ping rounded-full bg-blue-100" />
-              <div className="absolute inset-2 animate-spin rounded-full border-4 border-[#1e80ff] border-t-transparent" />
+            <div className="relative h-14 w-14">
+              <div className="absolute inset-0 animate-ping rounded-full bg-blue-50" />
+              <div className="absolute inset-2 animate-spin rounded-full border-4 border-[#93c5fd] border-t-[#1e80ff]" />
             </div>
           </div>
 
-          <div className="mb-2 text-2xl font-bold text-[#1d2129]">{title}</div>
+          <div className="mb-2 text-2xl font-semibold text-[#1d2129]">{title}</div>
           <div className="text-sm leading-7 text-[#4e5969]">{desc}</div>
 
-          <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-left text-sm text-[#1e80ff]">
+          <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-left text-sm text-[#1e80ff]">
             <div>你的状态：{selfReady ? '已准备' : '等待提交准备状态'}</div>
             <div>当前已准备人数：{runtime?.syncState?.readyCount ?? 0}/2</div>
             <div>已准备角色：{readyRoles.length ? readyRoles.join(' / ') : '暂无'}</div>
@@ -100,7 +106,7 @@ export default function ReadyClientPage() {
                 type="button"
                 onClick={() => void handleReady()}
                 disabled={submitting || !bootstrap}
-                className="rounded-lg bg-[#1e80ff] px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-600 disabled:opacity-60"
+                className="rounded-lg bg-[#1e80ff] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
               >
                 {submitting ? '正在提交准备状态...' : '我已准备'}
               </button>

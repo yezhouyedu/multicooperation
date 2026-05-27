@@ -82,30 +82,36 @@ export default function WaitingRoomPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
-      <nav className="flex h-[52px] shrink-0 items-center border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
-        <div className="text-lg font-bold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+      <nav
+        className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
+        style={{ boxShadow: 'var(--shadow-topbar)' }}
+      >
+        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
       </nav>
 
       <div className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-md rounded-xl border border-[#e5e6eb] bg-white p-10 text-center shadow-sm">
+        <div
+          className="w-full max-w-md rounded-2xl border border-[#eaecf0] bg-white p-10 text-center"
+          style={{ boxShadow: 'var(--shadow-elevated)' }}
+        >
           <div className="mb-6 flex justify-center">
-            <span className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-[#1e80ff]">
+            <span className="rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-sm font-medium text-[#1e80ff]">
               当前角色：{formatRoleLabel(role)}
             </span>
           </div>
 
           <div className="mb-6 flex justify-center">
-            <div className="relative h-16 w-16">
-              <div className="absolute inset-0 animate-ping rounded-full bg-blue-100" />
-              <div className="absolute inset-2 animate-spin rounded-full border-4 border-[#1e80ff] border-t-transparent" />
+            <div className="relative h-14 w-14">
+              <div className="absolute inset-0 animate-ping rounded-full bg-blue-50" />
+              <div className="absolute inset-2 animate-spin rounded-full border-4 border-[#93c5fd] border-t-[#1e80ff]" />
             </div>
           </div>
 
-          <div className="mb-2 text-base font-bold text-[#1d2129]">正在等待开始</div>
-          <div className="text-sm text-[#86909c]">{statusMessage}</div>
+          <div className="mb-2 text-base font-semibold text-[#1d2129]">正在等待开始</div>
+          <div className="text-sm leading-relaxed text-[#86909c]">{statusMessage}</div>
 
           {sessionCode && participantId ? (
-            <div className="mt-6 rounded-lg bg-gray-50 px-4 py-2 text-xs text-[#86909c]">
+            <div className="mt-6 rounded-lg bg-[#f5f7fa] px-4 py-2.5 text-xs text-[#86909c]">
               已记录本次实验登录信息，请保持页面开启。
             </div>
           ) : null}

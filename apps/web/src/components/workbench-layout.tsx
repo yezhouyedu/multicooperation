@@ -109,7 +109,7 @@ export function WorkbenchLayout({
       <button
         type="button"
         onClick={() => toggle(target)}
-        className="rounded px-2 py-1 text-xs transition hover:bg-gray-200 hover:text-[#1e80ff]"
+        className="rounded-md px-2 py-1 text-xs text-[#86909c] hover:bg-gray-100 hover:text-[#1e80ff]"
       >
         {active ? '退出全屏' : label}
       </button>
@@ -122,10 +122,10 @@ export function WorkbenchLayout({
 
   const saveBtnClass =
     draftStatus === 'saved'
-      ? 'rounded border border-green-200 bg-green-50 px-2 py-1 text-xs font-bold text-[#28a745] transition'
+      ? 'rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-[#28a745]'
       : draftStatus === 'dirty'
-        ? 'rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-[#86909c] transition hover:bg-gray-100'
-        : 'rounded px-2 py-1 text-xs transition hover:bg-gray-200 hover:text-[#28a745]';
+        ? 'rounded-md border border-[#eaecf0] bg-[#f5f7fa] px-2 py-1 text-xs text-[#86909c] hover:bg-gray-100'
+        : 'rounded-md px-2 py-1 text-xs text-[#86909c] hover:bg-gray-100 hover:text-[#28a745]';
 
   const saveBtnLabel = draftStatus === 'saved' ? '已保存' : '保存草稿';
 
@@ -137,17 +137,21 @@ export function WorkbenchLayout({
           style={{
             width: mode === 'sidebar' ? '100%' : '42%',
             display: showSidebar ? undefined : 'none',
+            boxShadow: 'var(--shadow-card)',
           }}
-          className="flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[#e5e6eb] bg-white shadow-sm"
+          className="flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden rounded-xl border border-[#eaecf0] bg-white"
         >
-          <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#e5e6eb] bg-gray-50/60 px-4">
-            <span className="font-bold text-gray-800">{sidebarTitle}</span>
+          <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#eaecf0] bg-[#fafbfc] px-4">
+            <div className="flex items-center gap-2">
+              <div className="h-3.5 w-0.5 rounded-full bg-emerald-400/60" />
+              <span className="text-sm font-semibold text-[#1d2129]">{sidebarTitle}</span>
+            </div>
             <div className="flex items-center gap-1">
               {onSidebarCapture ? (
                 <button
                   type="button"
                   onClick={onSidebarCapture}
-                  className="rounded px-2 py-1 text-xs transition hover:bg-gray-200 hover:text-[#1e80ff]"
+                  className="rounded-md px-2 py-1 text-xs text-[#86909c] hover:bg-gray-100 hover:text-[#1e80ff]"
                 >
                   截图
                 </button>
@@ -161,9 +165,9 @@ export function WorkbenchLayout({
         {isSplit ? (
           <div
             onMouseDown={startHorizontalDrag}
-            className="mx-0.5 flex w-2 shrink-0 cursor-col-resize items-center justify-center rounded bg-transparent transition-colors hover:bg-blue-100"
+            className="mx-0.5 flex w-2 shrink-0 cursor-col-resize items-center justify-center rounded bg-transparent transition-colors hover:bg-[#93c5fd]/40"
           >
-            <div className="h-12 w-1 rounded-full bg-gray-300" />
+            <div className="h-12 w-1 rounded-full bg-[#e2e5ea]" />
           </div>
         ) : null}
 
@@ -177,11 +181,15 @@ export function WorkbenchLayout({
             style={{
               height: isSplit ? '50%' : undefined,
               display: showTask ? undefined : 'none',
+              boxShadow: 'var(--shadow-card)',
             }}
-            className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#e5e6eb] bg-white shadow-sm ${isSplit ? 'shrink-0' : 'flex-1'}`}
+            className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#eaecf0] bg-white ${isSplit ? 'shrink-0' : 'flex-1'}`}
           >
-            <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#e5e6eb] bg-blue-50/30 px-4">
-              <span className="font-bold text-gray-800">{taskTitle}</span>
+            <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#eaecf0] bg-[#fafbfc] px-4">
+              <div className="flex items-center gap-2">
+                <div className="h-3.5 w-0.5 rounded-full bg-[#1e80ff]/50" />
+                <span className="text-sm font-semibold text-[#1d2129]">{taskTitle}</span>
+              </div>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -199,18 +207,24 @@ export function WorkbenchLayout({
           {isSplit ? (
             <div
               onMouseDown={startVerticalDrag}
-              className="my-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center rounded bg-transparent transition-colors hover:bg-blue-100"
+              className="my-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center rounded bg-transparent transition-colors hover:bg-[#93c5fd]/40"
             >
-              <div className="h-1 w-12 rounded-full bg-gray-300" />
+              <div className="h-1 w-12 rounded-full bg-[#e2e5ea]" />
             </div>
           ) : null}
 
           <section
-            style={{ display: showAi ? undefined : 'none' }}
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#e5e6eb] bg-white shadow-sm"
+            style={{
+              display: showAi ? undefined : 'none',
+              boxShadow: 'var(--shadow-card)',
+            }}
+            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#eaecf0] bg-white"
           >
-            <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#e5e6eb] bg-purple-50/30 px-4">
-              <span className="font-bold text-gray-800">{aiTitle}</span>
+            <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#eaecf0] bg-[#fafbfc] px-4">
+              <div className="flex items-center gap-2">
+                <div className="h-3.5 w-0.5 rounded-full bg-violet-400/60" />
+                <span className="text-sm font-semibold text-[#1d2129]">{aiTitle}</span>
+              </div>
               {fullscreenButton('ai')}
             </header>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{aiPane}</div>

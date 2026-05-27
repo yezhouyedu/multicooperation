@@ -99,11 +99,11 @@ function DocTable({ children, minWidth }: { children: ReactNode; minWidth?: stri
 }
 
 function Th({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <th className={`border border-[#bfc6d1] bg-[#f7f8fa] px-3 py-2 text-left font-semibold ${className}`}>{children}</th>;
+  return <th className={`border border-[#dde1e7] bg-[#f5f7fa] px-3 py-2 text-left font-semibold ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <td className={`border border-[#bfc6d1] px-3 py-2 align-top ${className}`}>{children}</td>;
+  return <td className={`border border-[#dde1e7] px-3 py-2 align-top ${className}`}>{children}</td>;
 }
 
 function choiceLabel(value: '' | 'HAS' | 'NONE') {
@@ -226,7 +226,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-6 text-[#1d2129]">
-      <div className="rounded-md border border-[#d4d8de] bg-white px-8 py-7 shadow-sm">
+      <div className="rounded-lg border border-[#e2e5ea] bg-white px-8 py-7 shadow-sm">
         <div className="space-y-6">
           <div>
             <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">A端尽调表</h2>
@@ -294,7 +294,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                         onChange={(event) => updateMetric(metric.key, event.target.value)}
                         disabled={disabled}
                         placeholder="如无则填写“材料未包含”"
-                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                       />
                     </Td>
                     <Td>{metric.sourceMaterialNo}</Td>
@@ -353,7 +353,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                         }
                         disabled={disabled || row.opportunityStatus !== 'HAS'}
                         placeholder={choiceLabel(row.opportunityStatus) === '有' ? '选择“有”后必填，≤30字' : ''}
-                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                       />
                     </Td>
                     <Td>
@@ -386,7 +386,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                         }
                         disabled={disabled || row.riskStatus !== 'HAS'}
                         placeholder={choiceLabel(row.riskStatus) === '有' ? '选择“有”后必填，≤30字' : ''}
-                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                       />
                     </Td>
                   </tr>
@@ -438,7 +438,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                       disabled={disabled}
                       rows={6}
                       placeholder="没有特别需要提醒的内容，可保持留空。"
-                      className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-7 outline-none placeholder:text-[#b0b7c3] disabled:opacity-60"
+                      className="w-full resize-none border-none bg-transparent px-0 py-0 text-[13px] leading-7 outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                     />
                   </Td>
                 </tr>
