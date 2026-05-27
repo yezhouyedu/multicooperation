@@ -69,9 +69,14 @@ const metricLabels: { key: keyof NormalizedADraft['metrics']; label: string }[] 
 export default function WorkspaceBPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
-  const { bootstrap, runtime, loading, countdownLabel, refresh } = useSessionRuntime();
+  const { bootstrap, runtime, loading, countdownLabel, refresh, lastEvent } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
-  const { draft: diligenceDraftPayload } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'A', 'main');
+  const { draft: diligenceDraftPayload, refresh: refreshDiligenceDraft } = useTaskDraft(
+    bootstrap?.sessionCode,
+    currentTaskId,
+    'A',
+    'main',
+  );
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'main');
   const [activeSidebarKey, setActiveSidebarKey] = useState('overview');
 
@@ -104,14 +109,13 @@ export default function WorkspaceBPage() {
     setActiveSidebarKey('overview');
   }, [currentTaskId]);
 
-  if (redirectPath) return null;
-
   async function openDiligenceInfo() {
     if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
     await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/view-a-info`, {
       method: 'POST',
     });
     setActiveSidebarKey('diligence-info');
+    await refreshDiligenceDraft();
     await refresh();
   }
 
@@ -121,6 +125,24 @@ export default function WorkspaceBPage() {
     () => diligenceDraft.materialClues.filter((row) => row.opportunityStatus === 'HAS' || row.riskStatus === 'HAS'),
     [diligenceDraft.materialClues],
   );
+
+  useEffect(() => {
+    if (!runtime?.aInfoUnlocked || !currentTaskId) return;
+    void refreshDiligenceDraft();
+  }, [currentTaskId, refreshDiligenceDraft, runtime?.aInfoUnlocked]);
+
+  useEffect(() => {
+    if (!runtime?.aInfoUnlocked || !currentTaskId) return;
+    if (lastEvent?.type !== 'a_task_auto_submitted' && lastEvent?.type !== 'a_task_submitted') return;
+    const payload =
+      lastEvent.data && typeof lastEvent.data === 'object'
+        ? (lastEvent.data as { taskId?: string })
+        : null;
+    if (payload?.taskId && payload.taskId !== currentTaskId) return;
+    void refreshDiligenceDraft();
+  }, [currentTaskId, lastEvent, refreshDiligenceDraft, runtime?.aInfoUnlocked]);
+
+  if (redirectPath) return null;
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">

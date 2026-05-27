@@ -51,6 +51,9 @@ type LibraryCaseOverview = {
   companyName: string;
   sector: string;
   participantMaterialCount: number;
+  diligenceMaterialCount: number;
+  managerMaterialCount: number;
+  sharedMaterialCount: number;
   researchMaterialCount: number;
   autoFillSourceRelativePath: string | null;
 };
@@ -796,6 +799,158 @@ function MaterialsTab() {
   );
 }
 
+function MaterialsLibraryTab() {
+  const [companies, setCompanies] = useState<CompanyData[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [status, setStatus] = useState('');
+  const [libraryRoot, setLibraryRoot] = useState('');
+  const [libraryCases, setLibraryCases] = useState<LibraryCaseOverview[]>([]);
+
+  const selectedCompany = useMemo(
+    () => companies.find((company) => company.id === selectedId) ?? companies[0] ?? null,
+    [companies, selectedId],
+  );
+
+  async function loadCompanies(preferId?: string) {
+    setStatus('正在加载材料库...');
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/companies`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('companies failed');
+      const data = (await response.json()) as { companies: CompanyData[] };
+      const nextCompanies = data.companies ?? [];
+      setCompanies(nextCompanies);
+      setSelectedId(preferId ?? selectedId ?? nextCompanies[0]?.id ?? '');
+      setStatus('');
+    } catch {
+      setCompanies([]);
+      setStatus('材料库加载失败');
+    }
+  }
+
+  async function loadLibraryOverview() {
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/companies/library/overview`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('library overview failed');
+      const data = (await response.json()) as { rootDir: string; cases: LibraryCaseOverview[] };
+      setLibraryRoot(data.rootDir ?? '');
+      setLibraryCases(data.cases ?? []);
+    } catch {
+      setLibraryRoot('');
+      setLibraryCases([]);
+    }
+  }
+
+  useEffect(() => {
+    void loadCompanies();
+    void loadLibraryOverview();
+  }, []);
+
+  async function importLibrary() {
+    setStatus('正在自动识别并导入题库目录...');
+    const response = await fetch(`${serverBaseUrl}/admin/companies/import-library`, { method: 'POST' });
+    if (!response.ok) {
+      setStatus('题库目录导入失败');
+      return;
+    }
+    await loadCompanies();
+    await loadLibraryOverview();
+    setStatus('题库目录已导入');
+  }
+
+  return (
+    <div className="grid min-h-[720px] gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="space-y-5">
+        <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="font-bold text-[#1d2129]">公司与材料库</div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void loadCompanies()}
+                className="rounded-lg border border-[#e5e6eb] p-2 text-[#4e5969] hover:bg-gray-50"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => void importLibrary()}
+                className="rounded-lg bg-[#1e80ff] px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+              >
+                自动导入题库目录
+              </button>
+            </div>
+          </div>
+          <div className="mb-4 rounded-lg border border-[#d9e7ff] bg-blue-50 px-3 py-3 text-xs leading-6 text-[#1e80ff]">
+            <div className="font-semibold">当前导入口径</div>
+            <div className="mt-1 break-all">{libraryRoot || '未检测到题库目录'}</div>
+            <div className="mt-2 text-[#4e5969]">
+              推荐目录为 `participant/shared`、`participant/diligence`、`participant/manager`、`research`。
+              `shared` 两个角色都能看到；`diligence` 只发给尽调员；`manager` 只发给投资经理；`research` 只给研究者使用。
+            </div>
+          </div>
+          {libraryCases.length > 0 ? (
+            <div className="mb-4 space-y-2 rounded-lg border border-[#e5e6eb] bg-[#fafbfc] p-3">
+              <div className="text-xs font-semibold text-[#4e5969]">本地题库扫描结果</div>
+              {libraryCases.map((item) => (
+                <div key={item.folderName} className="rounded-lg border border-[#eef0f3] bg-white px-3 py-2 text-xs text-[#4e5969]">
+                  <div className="font-medium text-[#1d2129]">
+                    {item.companyName} <span className="text-[#86909c]">({item.caseCode})</span>
+                  </div>
+                  <div className="mt-1">
+                    {item.folderName} / 共享 {item.sharedMaterialCount} / 尽调员 {item.diligenceMaterialCount} / 投资经理 {item.managerMaterialCount} / 研究者 {item.researchMaterialCount}
+                  </div>
+                  <div className="mt-1 text-[#86909c]">自动填充源：{item.autoFillSourceRelativePath ?? '未识别'}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            {companies.map((company) => (
+              <button
+                key={company.id}
+                type="button"
+                onClick={() => setSelectedId(company.id)}
+                className={`w-full rounded-lg border px-4 py-3 text-left transition ${
+                  selectedCompany?.id === company.id ? 'border-[#1e80ff] bg-blue-50' : 'border-[#e5e6eb] hover:bg-gray-50'
+                }`}
+              >
+                <div className="font-medium text-[#1d2129]">{company.name}</div>
+                <div className="mt-1 text-xs text-[#86909c]">
+                  {company.roundLabel} / {company.sector} / {company.materials.length} 份已入库材料
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+          <div className="mb-3 font-bold text-[#1d2129]">使用说明</div>
+          <div className="space-y-2 text-xs leading-6 text-[#4e5969]">
+            <div>1. 材料目录在线下维护，不在后台逐个上传或编辑文件。</div>
+            <div>2. 准备好案例文件夹后，在这里点击“自动导入题库目录”。</div>
+            <div>3. 左侧选择公司，右侧只检查导入结果和预览效果。</div>
+            <div>4. 研究者材料继续放在 `research/`，不会发给参与者。</div>
+          </div>
+          {status ? <div className="mt-3 text-xs text-[#86909c]">{status}</div> : null}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+        <div className="mb-4 font-bold text-[#1d2129]">材料预览</div>
+        {selectedCompany ? (
+          <div className="h-[760px] min-h-0">
+            <CompanyMaterialPanel company={selectedCompany} />
+          </div>
+        ) : (
+          <div className="flex h-[760px] items-center justify-center rounded-lg border border-dashed border-[#d0d7e2] text-sm text-[#86909c]">
+            请选择一家公司以预览材料。
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabId>('sessions');
 
@@ -827,7 +982,7 @@ export default function AdminPage() {
         {activeTab === 'sessions' ? <SessionsTab /> : null}
         {activeTab === 'participants' ? <ParticipantsTab /> : null}
         {activeTab === 'config' ? <ConfigTab /> : null}
-        {activeTab === 'materials' ? <MaterialsTab /> : null}
+        {activeTab === 'materials' ? <MaterialsLibraryTab /> : null}
         {activeTab === 'sidefeed' ? <AdminSidefeedPanel /> : null}
         {activeTab === 'ai-settings' ? <AdminAiSettingsPanel /> : null}
       </div>

@@ -405,6 +405,9 @@ export class AdminService {
         companyName: item.companyName,
         sector: item.sector,
         participantMaterialCount: item.participantMaterials.length,
+        diligenceMaterialCount: item.participantMaterials.filter((material) => material.participantRole === 'A').length,
+        managerMaterialCount: item.participantMaterials.filter((material) => material.participantRole === 'B').length,
+        sharedMaterialCount: item.participantMaterials.filter((material) => material.participantRole === 'shared').length,
         researchMaterialCount: item.researchMaterials.length,
         autoFillSourceRelativePath: item.autoFillSourceRelativePath,
       })),
@@ -458,6 +461,9 @@ export class AdminService {
 
       const allMaterials = [...definition.participantMaterials, ...definition.researchMaterials];
       const participantPaths = new Set(definition.participantMaterials.map((item) => item.relativePath));
+      const participantRoleByPath = new Map(
+        definition.participantMaterials.map((item) => [item.relativePath, item.participantRole] as const),
+      );
       const materials: StoredMaterialItem[] = allMaterials.map((file, index) =>
         createStoredMaterialItem({
           companyId,
@@ -467,6 +473,7 @@ export class AdminService {
           sortOrder: index,
           metadata: {
             audience: participantPaths.has(file.relativePath) ? 'participant' : 'research',
+            participantRole: participantRoleByPath.get(file.relativePath) ?? 'shared',
             importRelativePath: file.relativePath,
             importFolderName: definition.folderName,
             importedFromLibrary: true,

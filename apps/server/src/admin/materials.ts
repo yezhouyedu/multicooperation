@@ -15,6 +15,7 @@ export type MaterialKind = 'txt' | 'docx' | 'pdf' | 'xlsx';
 export type RenderMode = 'text' | 'docx-preview' | 'pdf' | 'spreadsheet';
 export type ParseStatus = 'ready' | 'error';
 export type MaterialAudience = 'participant' | 'research';
+export type MaterialParticipantRole = 'A' | 'B' | 'shared';
 
 export type StoredMaterialItem = {
   id: string;
@@ -54,6 +55,7 @@ export type LibraryCaseDefinition = {
     fullPath: string;
     relativePath: string;
     displayName: string;
+    participantRole: MaterialParticipantRole;
   }>;
   researchMaterials: Array<{
     fullPath: string;
@@ -72,6 +74,9 @@ type CaseManifest = {
   tags?: string[];
   participantDir?: string;
   researchDir?: string;
+  diligenceDir?: string;
+  managerDir?: string;
+  sharedDir?: string;
   autoFillSource?: string;
   sortOrder?: number;
 };
@@ -296,10 +301,16 @@ function parseCaseFolder(folderPath: string, folderName: string, index: number):
   const participantDir = resolveCaseSubdir(folderPath, manifest?.participantDir, 'participant');
   const researchDir = resolveCaseSubdir(folderPath, manifest?.researchDir, 'research');
   const directFiles = listMaterialFiles(folderPath, folderPath);
-
-  const participantMaterials = participantDir
-    ? listMaterialFiles(participantDir, folderPath)
-    : directFiles.filter((entry) => classifyAudience(entry.displayName, entry.relativePath) === 'participant');
+  const roleScopedParticipantMaterials = participantDir
+    ? listParticipantMaterials(participantDir, folderPath, manifest)
+    : directFiles
+        .filter((entry) => classifyAudience(entry.displayName, entry.relativePath) === 'participant')
+        .map((entry) => ({ ...entry, participantRole: 'shared' as const }));
+  const participantMaterials = roleScopedParticipantMaterials.length
+    ? roleScopedParticipantMaterials
+    : directFiles
+        .filter((entry) => classifyAudience(entry.displayName, entry.relativePath) === 'participant')
+        .map((entry) => ({ ...entry, participantRole: 'shared' as const }));
   const researchMaterials = researchDir
     ? listMaterialFiles(researchDir, folderPath)
     : directFiles.filter((entry) => classifyAudience(entry.displayName, entry.relativePath) === 'research');
@@ -343,6 +354,37 @@ function resolveCaseSubdir(folderPath: string, configuredDirName: string | undef
   const fallback = join(folderPath, fallbackDirName);
   if (existsSync(fallback) && statSync(fallback).isDirectory()) return fallback;
   return null;
+}
+
+function listParticipantMaterials(folderPath: string, relativeBaseDir: string, manifest?: CaseManifest | null) {
+  const sharedDir = resolveCaseSubdir(folderPath, manifest?.sharedDir, 'shared');
+  const diligenceDir = resolveCaseSubdir(folderPath, manifest?.diligenceDir, 'diligence');
+  const managerDir = resolveCaseSubdir(folderPath, manifest?.managerDir, 'manager');
+
+  const scopedMaterials = [
+    ...listRoleScopedMaterialFiles(sharedDir, relativeBaseDir, 'shared'),
+    ...listRoleScopedMaterialFiles(diligenceDir, relativeBaseDir, 'A'),
+    ...listRoleScopedMaterialFiles(managerDir, relativeBaseDir, 'B'),
+  ];
+
+  if (scopedMaterials.length > 0) return scopedMaterials;
+
+  return listMaterialFiles(folderPath, relativeBaseDir).map((entry) => ({
+    ...entry,
+    participantRole: 'shared' as const,
+  }));
+}
+
+function listRoleScopedMaterialFiles(
+  dir: string | null,
+  relativeBaseDir: string,
+  participantRole: MaterialParticipantRole,
+) {
+  if (!dir) return [];
+  return listMaterialFiles(dir, relativeBaseDir).map((entry) => ({
+    ...entry,
+    participantRole,
+  }));
 }
 
 function listMaterialFiles(dir: string, relativeBaseDir: string) {

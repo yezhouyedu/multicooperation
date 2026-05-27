@@ -15,7 +15,8 @@ import { useEffect, useRef } from 'react';
 export default function WorkspaceAPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
-  const { bootstrap, runtime, loading, countdownLabel, taskCountdownLabel } = useSessionRuntime();
+  const finalFlushTaskRef = useRef<string | null>(null);
+  const { bootstrap, runtime, loading, countdownLabel, taskCountdownLabel, taskCountdown } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'A', 'main');
 
@@ -25,11 +26,15 @@ export default function WorkspaceAPage() {
       : !loading && runtime?.assignedRole === 'B'
         ? '/workspace/b'
         : !loading && runtime?.phase === 'practice_ready'
-          ? '/ready?target=practice'
+          ? runtime.syncState?.selfReady
+            ? '/ready?target=practice'
+            : null
           : !loading && runtime?.phase === 'practice'
             ? '/practice'
             : !loading && runtime?.phase === 'formal_ready'
-              ? '/ready?target=formal'
+              ? runtime.syncState?.selfReady
+                ? '/ready?target=formal'
+                : null
               : !loading && runtime?.phase === 'formal_break'
                 ? '/break'
                 : !loading && runtime?.phase === 'end'
@@ -39,6 +44,17 @@ export default function WorkspaceAPage() {
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath);
   }, [redirectPath, router]);
+
+  useEffect(() => {
+    if (!currentTaskId) {
+      finalFlushTaskRef.current = null;
+      return;
+    }
+    if (taskCountdown === null || taskCountdown > 1) return;
+    if (finalFlushTaskRef.current === currentTaskId) return;
+    finalFlushTaskRef.current = currentTaskId;
+    window.dispatchEvent(new CustomEvent('workbench-save-draft'));
+  }, [currentTaskId, taskCountdown]);
 
   if (redirectPath) return null;
 

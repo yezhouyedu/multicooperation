@@ -239,7 +239,7 @@ export class ExperimentService {
             id: roleTask.id,
             sortOrder: roleTask.sortOrder,
             sequenceIndex: roleTask.sequenceIndex,
-            company: currentCompany ? this.serializeCompany(currentCompany, fallbackCompany) : null,
+            company: currentCompany ? this.serializeCompany(currentCompany, assignedRole, fallbackCompany) : null,
             aSubmittedAt: roleTask.aSubmittedAt,
             aUnlockedForBAt: roleTask.aUnlockedForBAt,
             bViewedAInfoAt: roleTask.bViewedAInfoAt,
@@ -395,6 +395,7 @@ export class ExperimentService {
         company: companyMap.get(task.companyId)
           ? this.serializeCompany(
               companyMap.get(task.companyId)!,
+              null,
               this.hasUsableMaterials(companyMap.get(task.companyId)!)
                 ? null
                 : baselineCompany,
@@ -1311,12 +1312,17 @@ export class ExperimentService {
     return task.bDraft;
   }
 
-  private serializeCompany(company: Record<string, unknown>, fallbackCompany?: Record<string, unknown> | null) {
+  private serializeCompany(
+    company: Record<string, unknown>,
+    assignedRole?: ParticipantRole | null,
+    fallbackCompany?: Record<string, unknown> | null,
+  ) {
     const usingFallback = !this.hasUsableMaterials(company) && fallbackCompany && this.hasUsableMaterials(fallbackCompany);
     const sourceCompany = usingFallback ? fallbackCompany : company;
     const sourceCompanyId = String(sourceCompany.id);
     const materials = normalizeMaterials(sourceCompany.materials)
       .filter((item) => !this.isResearchOnlyMaterial(item))
+      .filter((item) => this.isVisibleToRole(item, assignedRole))
       .map((item) => ({
         ...item,
         url: buildMaterialPublicUrl(sourceCompanyId, item.storageKey),
@@ -1349,6 +1355,18 @@ export class ExperimentService {
     if (item.metadata?.audience === 'research') return true;
     const joined = `${item.displayName ?? ''} ${item.sourceFilename ?? ''}`;
     return joined.includes('研究者用') || joined.includes('信息点记录');
+  }
+
+  private isVisibleToRole(
+    item: {
+      metadata?: Record<string, unknown>;
+    },
+    assignedRole?: ParticipantRole | null,
+  ) {
+    const participantRole = item.metadata?.participantRole;
+    if (!assignedRole) return true;
+    if (participantRole === undefined || participantRole === null || participantRole === 'shared') return true;
+    return participantRole === assignedRole;
   }
 
   private getSessionStream(sessionCode: string) {
