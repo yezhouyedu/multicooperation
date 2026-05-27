@@ -261,11 +261,7 @@ export class ExperimentService {
           )
         : false,
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex),
-      sideTaskState: {
-        pendingLabel: '待处理事宜',
-        tickerMessage: '您有新事项入库，请尽快处理',
-        scrollIntervalSeconds: 30,
-      },
+      ...(await this.getSideTaskRuntime(session.id, session.currentSegmentIndex, config, participantId)),
       syncState,
       questionnaireTemplate:
         session.runtimePhase === RuntimePhase.FORMAL_BREAK && config.activeQuestionnaireTemplate
@@ -622,6 +618,87 @@ export class ExperimentService {
     return { ok: true };
   }
 
+  async answerSideTask(
+    sessionCode: string,
+    planId: string,
+    participantId: string,
+    answer: string,
+  ) {
+    const synced = await this.syncRuntime(sessionCode);
+    const plan = await this.prisma.sideTaskPlan.findUnique({
+      where: { id: planId },
+      select: { id: true, sessionId: true },
+    });
+    if (!plan || plan.sessionId !== synced.session.id) {
+      throw new NotFoundException('副线题目不存在');
+    }
+
+    // Check if already answered (idempotent)
+    const existing = await this.prisma.sideTaskExposureLog.findFirst({
+      where: { sideTaskPlanId: planId, eventType: 'side_task_answered' },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      await this.prisma.sideTaskExposureLog.create({
+        data: {
+          sessionId: synced.session.id,
+          participantId,
+          sideTaskPlanId: planId,
+          eventType: 'side_task_answered',
+          payload: { answer } as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true };
+  }
+
+  async recordSideTaskExposure(
+    sessionCode: string,
+    planId: string,
+    participantId: string,
+    eventType: string,
+    payload?: Record<string, unknown>,
+  ) {
+    const synced = await this.syncRuntime(sessionCode);
+    const plan = await this.prisma.sideTaskPlan.findUnique({
+      where: { id: planId },
+      select: { id: true, sessionId: true, releasedAt: true },
+    });
+    if (!plan || plan.sessionId !== synced.session.id) {
+      throw new NotFoundException('副线题目不存在');
+    }
+
+    const now = new Date();
+
+    // For side_task_released: update plan.releasedAt (idempotent)
+    if (eventType === 'side_task_released' && !plan.releasedAt) {
+      await this.prisma.sideTaskPlan.update({
+        where: { id: planId },
+        data: { releasedAt: now },
+      });
+    }
+
+    await this.prisma.sideTaskExposureLog.create({
+      data: {
+        sessionId: synced.session.id,
+        participantId,
+        sideTaskPlanId: planId,
+        eventType,
+        eventAt: now,
+        payload: (payload ?? null) as Prisma.InputJsonValue,
+      },
+    });
+
+    if (eventType === 'side_task_released') {
+      this.emitRuntimeInvalidated(sessionCode);
+    }
+
+    return { ok: true };
+  }
+
   async aSubmitTask(sessionCode: string, taskId: string) {
     const synced = await this.syncRuntime(sessionCode);
     const session = synced.session;
@@ -974,6 +1051,19 @@ export class ExperimentService {
       data: { completedAt: now },
     });
 
+    // Archive unanswered side task plans for this segment
+    const sidetaskTx = tx as Prisma.TransactionClient & {
+      sideTaskPlan: typeof this.prisma.sideTaskPlan;
+    };
+    await sidetaskTx.sideTaskPlan.updateMany({
+      where: {
+        sessionId: session.id,
+        segmentIndex: session.currentSegmentIndex,
+        isArchivedAtSegmentEnd: false,
+      },
+      data: { isArchivedAtSegmentEnd: true },
+    });
+
     if (session.currentSegmentIndex >= 5) {
       await tx.session.update({
         where: { id: session.id },
@@ -1171,6 +1261,201 @@ export class ExperimentService {
     if (currentATask) {
       await this.activateCurrentATask(tx, currentATask, workEnds, now);
     }
+
+    // Schedule side task plans for this segment
+    await this.scheduleSideTaskPlans(tx, sessionId, segmentIndex, config, now);
+  }
+
+  private async scheduleSideTaskPlans(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    segmentIndex: number,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    const sidetaskTx = tx as Prisma.TransactionClient & {
+      sideTaskPlan: typeof this.prisma.sideTaskPlan;
+      sideTaskSessionConfig: typeof this.prisma.sideTaskSessionConfig;
+    };
+
+    const sessionConfig = await sidetaskTx.sideTaskSessionConfig.findUnique({
+      where: { sessionId },
+    });
+    if (!sessionConfig) return;
+
+    const plans = await sidetaskTx.sideTaskPlan.findMany({
+      where: { sessionId, segmentIndex, scheduledAt: null },
+      orderBy: { queueOrder: 'asc' },
+    });
+    if (plans.length === 0) return;
+
+    const dispatchMode = sessionConfig.dispatchMode;
+
+    if (dispatchMode === 'continuous') {
+      const interval = config.sideTaskContinuousIntervalSec;
+      const jitter = config.sideTaskContinuousJitterSec;
+      let offset = 0;
+      for (const plan of plans) {
+        const jitterOffset = jitter > 0
+          ? Math.floor(this.seededRandom(`${sessionId}:${plan.id}:jitter`) * (jitter * 2 + 1)) - jitter
+          : 0;
+        const scheduledAt = new Date(now.getTime() + (offset + jitterOffset) * 1000);
+        await sidetaskTx.sideTaskPlan.update({
+          where: { id: plan.id },
+          data: { scheduledAt },
+        });
+        offset += interval;
+      }
+    } else {
+      // batch mode
+      const batchSizesRaw = config.sideTaskBatchSizes;
+      const batchSizes = batchSizesRaw.split(',').map((s) => Number(s.trim()));
+      const trigger = config.sideTaskBatchTriggerSec;
+
+      let offset = 0;
+      let batchNo = 1;
+      let idx = 0;
+
+      for (const size of batchSizes) {
+        for (let j = 0; j < size && idx < plans.length; j++) {
+          const scheduledAt = new Date(now.getTime() + offset * 1000);
+          await sidetaskTx.sideTaskPlan.update({
+            where: { id: plans[idx].id },
+            data: { scheduledAt, batchNo },
+          });
+          idx++;
+        }
+        offset += trigger;
+        batchNo++;
+      }
+    }
+  }
+
+  private seededRandom(seed: string): number {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(seed).digest();
+    return hash.readUInt32BE(0) / 0x100000000;
+  }
+
+  private async getSideTaskRuntime(
+    sessionId: string,
+    currentSegmentIndex: number,
+    config: ExperimentConfig,
+    participantId?: string,
+  ) {
+    const sessionConfig = await this.prisma.sideTaskSessionConfig.findUnique({
+      where: { sessionId },
+    });
+
+    if (!sessionConfig) {
+      return {
+        sideTaskQueue: [],
+        sideTaskConfig: {
+          dispatchMode: 'continuous' as const,
+          scrollDurationSec: config.sideTaskScrollDurationSec,
+          holdSec: config.sideTaskHoldSec,
+          fadeSec: config.sideTaskFadeSec,
+          pauseSec: config.sideTaskContinuousPauseSec,
+          totalPlanned: 0,
+          totalReleased: 0,
+          totalAnswered: 0,
+          totalArchived: 0,
+          nextScheduledAt: null as string | null,
+          pendingLabel: '待处理事宜',
+          tickerMessage: '您有新事项入库，请尽快处理',
+        },
+      };
+    }
+
+    const now = new Date();
+    const isWorkSegment = currentSegmentIndex % 2 === 1 && currentSegmentIndex >= 1 && currentSegmentIndex <= 5;
+
+    if (!isWorkSegment) {
+      return {
+        sideTaskQueue: [],
+        sideTaskConfig: {
+          dispatchMode: sessionConfig.dispatchMode as 'continuous' | 'batch',
+          scrollDurationSec: config.sideTaskScrollDurationSec,
+          holdSec: config.sideTaskHoldSec,
+          fadeSec: config.sideTaskFadeSec,
+          pauseSec: sessionConfig.dispatchMode === 'continuous'
+            ? config.sideTaskContinuousPauseSec
+            : config.sideTaskBatchPauseSec,
+          totalPlanned: 0,
+          totalReleased: 0,
+          totalAnswered: 0,
+          totalArchived: 0,
+          nextScheduledAt: null,
+          pendingLabel: '待处理事宜',
+          tickerMessage: '您有新事项入库，请尽快处理',
+        },
+      };
+    }
+
+    // participantId filter for per-participant answered tracking
+    const answeredWhere = participantId
+      ? { eventType: 'side_task_answered' as const, participantId }
+      : { eventType: 'side_task_answered' as const };
+
+    const plans = await this.prisma.sideTaskPlan.findMany({
+      where: { sessionId, segmentIndex: currentSegmentIndex },
+      include: {
+        item: { select: { text: true, question: true, optionA: true, optionB: true, directAiFlag: true, narrativeCategory: true } },
+        exposureLogs: {
+          where: answeredWhere,
+          select: { id: true, payload: true },
+          take: 1,
+        },
+      },
+      orderBy: { queueOrder: 'asc' },
+    });
+
+    // queue: visible plans (scheduledAt <= now, not archived) for frontend display
+    const visiblePlans = plans.filter(
+      (p) => p.scheduledAt && p.scheduledAt <= now && !p.isArchivedAtSegmentEnd,
+    );
+    // totalReleased: frontend真实首次看到 = releasedAt !== null (服务端认定)
+    const releasedCount = plans.filter((p) => p.releasedAt !== null).length;
+    // totalAnswered: per-participant (当前 participant 答了多少)
+    const answeredCount = plans.filter((p) => p.exposureLogs.length > 0).length;
+    const archivedUnansweredCount = plans.filter(
+      (p) => p.isArchivedAtSegmentEnd && p.exposureLogs.length === 0,
+    ).length;
+    const nextPlan = plans.find((p) => p.scheduledAt && p.scheduledAt > now);
+
+    const queue = visiblePlans.map((p) => ({
+      planId: p.id,
+      text: p.item.text,
+      question: p.item.question,
+      optionA: p.item.optionA,
+      optionB: p.item.optionB,
+      directAiFlag: p.item.directAiFlag,
+      narrativeCategory: p.item.narrativeCategory,
+      queueOrder: p.queueOrder,
+      batchNo: p.batchNo,
+      answered: p.exposureLogs.length > 0,
+      answer: p.exposureLogs.length > 0 ? (p.exposureLogs[0].payload as Record<string, unknown>)?.answer ?? null : null,
+    }));
+
+    return {
+      sideTaskQueue: queue,
+      sideTaskConfig: {
+        dispatchMode: sessionConfig.dispatchMode as 'continuous' | 'batch',
+        scrollDurationSec: config.sideTaskScrollDurationSec,
+        holdSec: config.sideTaskHoldSec,
+        fadeSec: config.sideTaskFadeSec,
+        pauseSec: sessionConfig.dispatchMode === 'continuous'
+          ? config.sideTaskContinuousPauseSec
+          : config.sideTaskBatchPauseSec,
+        totalPlanned: plans.length,
+        totalReleased: releasedCount,
+        totalAnswered: answeredCount,
+        totalArchived: archivedUnansweredCount,
+        nextScheduledAt: nextPlan?.scheduledAt?.toISOString() ?? null,
+        pendingLabel: '待处理事宜',
+        tickerMessage: '您有新事项入库，请尽快处理',
+      },
+    };
   }
 
   private async activateCurrentATask(

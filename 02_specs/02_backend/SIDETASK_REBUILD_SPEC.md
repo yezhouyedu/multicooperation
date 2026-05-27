@@ -688,3 +688,47 @@ batch（分批到达）:
 6. 展开页是否要改成“副线队列工作台”而不是现在的单题 demo
 
 如果这 6 件事拍定了，后面的代码实现就会顺很多。
+
+---
+
+## 11. 统计口径定义
+
+### 11.1 totalReleased（已到达数）
+
+**定义**：`releasedAt !== null` 的 plan 数量。
+
+**为什么不用 `scheduledAt <= now`**：
+- `scheduledAt` 是服务端预计算的"计划到达时间"，是理想值
+- `releasedAt` 是前端真实首次在 sideTaskQueue 中检测到该 plan 后，POST `side_task_released` 到服务端，服务端用**服务端时间**写入的
+- 两者可能有偏差（网络延迟、SSE 断线重连、前端检测延迟）
+- 实验分析关心的是"参与者实际什么时候看到题"，不是"计划什么时候到"
+
+**前端 SSE 断线恢复**：前端维护本地 `Set<string>` 记录已知 planId 集合。SSE 重连后对比新队列与本地集合，差集即"断线期间到达的题"，一次性补发 `side_task_released`。服务端幂等保证 `releasedAt` 不被覆盖。
+
+### 11.2 totalAnswered（已回答数）
+
+**定义**：当前 participant 有 `side_task_answered` ExposureLog 的 plan 数量。
+
+**per-participant 而非 per-session**：
+- 前端显示"已回答 X / 40"是当前参与者自己的进度
+- 一个 session 只有一个 participant，所以 per-session 和 per-participant 结果一致
+- 但代码按 per-participant 实现，为未来多人同 session 场景预留
+
+**Admin 端**：Admin session 视图额外展示完整 plan 列表（不受 `scheduledAt <= now` 过滤），含每条的 scheduledAt、releasedAt、answered 状态（按 participant 过滤），用于实验监控。
+
+### 11.3 totalPlanned（计划总数）
+
+**定义**：当前段 SideTaskPlan 总数（固定 40）。
+
+### 11.4 totalArchived（已归档未答题数）
+
+**定义**：`isArchivedAtSegmentEnd = true` 且当前 participant 无 `side_task_answered` log 的 plan 数量。
+
+### 11.5 队列显示 vs 统计的分离
+
+| 用途 | 过滤条件 | 说明 |
+|------|----------|------|
+| 前端队列显示 | `scheduledAt <= now && !isArchivedAtSegmentEnd` | 显示"此刻应该看到的题" |
+| totalReleased 统计 | `releasedAt !== null` | 统计"实际什么时候看到" |
+| totalAnswered 统计 | participantId 过滤的 `side_task_answered` log | 统计"该参与者答了多少" |
+| totalArchived 统计 | `isArchivedAtSegmentEnd && 无 answered log` | 统计"段结束时漏答多少" |

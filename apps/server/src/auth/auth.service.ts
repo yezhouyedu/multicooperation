@@ -197,6 +197,138 @@ export class AuthService {
         companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
       },
     });
+
+    await this.generateSideTaskPlans(tx, sessionId);
+  }
+
+  private async generateSideTaskPlans(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+  ) {
+    const sidetaskTx = tx as Prisma.TransactionClient & {
+      sideTaskItem: typeof this.prisma.sideTaskItem;
+      sideTaskPlan: typeof this.prisma.sideTaskPlan;
+      sideTaskSessionConfig: typeof this.prisma.sideTaskSessionConfig;
+    };
+
+    // 1. Generate experiment variables
+    const dispatchSeed = this.generateSeed();
+    const dispatchMode = this.seedToBoolean(dispatchSeed) ? 'continuous' : 'batch';
+    const narrativeSeed = this.generateSeed();
+    const narrativeGroup = this.seedToBoolean(narrativeSeed) ? 'coop_narrative' : 'neutral_info';
+
+    const allThemes = ['互补分工', '验证留痕', '共同责任'];
+    let themeOrder: string[] = [];
+    let segmentThemes: (string | null)[] = [null, null, null];
+
+    if (narrativeGroup === 'coop_narrative') {
+      const themeSeed = this.generateSeed();
+      themeOrder = this.shuffleWithSeed(allThemes, themeSeed);
+      segmentThemes = themeOrder;
+    }
+
+    // 2. Create SideTaskSessionConfig
+    await sidetaskTx.sideTaskSessionConfig.create({
+      data: {
+        sessionId,
+        dispatchMode,
+        narrativeGroup,
+        themeOrder: themeOrder as Prisma.InputJsonValue,
+        segment1Theme: segmentThemes[0],
+        segment2Theme: segmentThemes[1],
+        segment3Theme: segmentThemes[2],
+        segment1PlannedCount: 40,
+        segment2PlannedCount: 40,
+        segment3PlannedCount: 40,
+        newsSequenceSeed: this.generateSeed(),
+        distributionVersion: 'v1',
+      },
+    });
+
+    // 3. For each formal work segment (workSegment 1/2/3 → segmentIndex 1/3/5)
+    const usedItemCodes = new Set<string>();
+
+    for (let workSegment = 1; workSegment <= 3; workSegment++) {
+      const segmentIndex = workSegment * 2 - 1; // 1→1, 2→3, 3→5
+      const segmentTheme = segmentThemes[workSegment - 1];
+
+      // Fetch available items
+      const neutralItems = await sidetaskTx.sideTaskItem.findMany({
+        where: {
+          isActive: true,
+          poolType: '普通中性池',
+          workSegment,
+          itemCode: { notIn: Array.from(usedItemCodes) },
+        },
+        select: { id: true, itemCode: true },
+      });
+
+      let coopItems: { id: string; itemCode: string }[] = [];
+      if (narrativeGroup === 'coop_narrative' && segmentTheme) {
+        coopItems = await sidetaskTx.sideTaskItem.findMany({
+          where: {
+            isActive: true,
+            poolType: '合作叙事池',
+            workSegment,
+            narrativeCategory: segmentTheme,
+            itemCode: { notIn: Array.from(usedItemCodes) },
+          },
+          select: { id: true, itemCode: true },
+        });
+      }
+
+      // Determine how many to sample from each pool
+      const neutralCount = narrativeGroup === 'coop_narrative' ? 20 : 40;
+      const coopCount = narrativeGroup === 'coop_narrative' ? 20 : 0;
+
+      if (neutralItems.length < neutralCount) {
+        throw new Error(
+          `段${workSegment}普通中性池不足：需要${neutralCount}题，仅有${neutralItems.length}题可用`,
+        );
+      }
+      if (coopItems.length < coopCount) {
+        throw new Error(
+          `段${workSegment}合作叙事池(${segmentTheme ?? 'N/A'})不足：需要${coopCount}题，仅有${coopItems.length}题可用`,
+        );
+      }
+
+      // Sample using seeded random
+      const sampleSeed = `${sessionId}:segment:${workSegment}`;
+      const sampledNeutral: { id: string; itemCode: string }[] = this.sampleWithSeed(neutralItems, neutralCount, sampleSeed);
+      const sampledCoop: { id: string; itemCode: string }[] = coopCount > 0
+        ? this.sampleWithSeed(coopItems, coopCount, `${sampleSeed}:coop`)
+        : [];
+
+      // Track used items
+      for (const item of [...sampledNeutral, ...sampledCoop]) {
+        usedItemCodes.add(item.itemCode);
+      }
+
+      // Merge and shuffle
+      const allSampled: { id: string; itemCode: string }[] = [...sampledCoop, ...sampledNeutral];
+      const shuffled = this.shuffleWithSeed(allSampled, `${sampleSeed}:shuffle`);
+
+      // Create plan records
+      for (let queueOrder = 0; queueOrder < shuffled.length; queueOrder++) {
+        const item = shuffled[queueOrder];
+        await sidetaskTx.sideTaskPlan.create({
+          data: {
+            sessionId,
+            segmentIndex,
+            itemId: item.id,
+            dispatchMode,
+            narrativeGroup,
+            themeLabel: segmentTheme,
+            queueOrder: queueOrder + 1,
+          },
+        });
+      }
+    }
+  }
+
+  private sampleWithSeed<T>(items: T[], count: number, seed: string): T[] {
+    const shuffled = this.shuffleWithSeed(items, seed);
+    return shuffled.slice(0, count);
   }
 
   private generateCode() {

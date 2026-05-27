@@ -245,14 +245,14 @@ export class AiService {
     const isAdvanced = requestedLevel === AiLevel.ADVANCED;
     const settings = await this.prisma.aiSettings.findUnique({ where: { id: 'default' } });
     const endpointBase = isAdvanced
-      ? settings?.advancedBaseUrl || this.configService.get<string>('OPENAI_BASE_URL')
+      ? settings?.advancedBaseUrl || this.configService.get<string>('OPENAI_ADVANCED_BASE_URL') || this.configService.get<string>('OPENAI_BASE_URL')
       : settings?.basicBaseUrl || this.configService.get<string>('OPENAI_BASE_URL');
     const endpoint = endpointBase ? this.buildEndpoint(endpointBase) : null;
     const apiKey = isAdvanced
       ? settings?.advancedApiKey || this.configService.get<string>('OPENAI_API_KEY') || null
       : settings?.basicApiKey || this.configService.get<string>('OPENAI_API_KEY') || null;
     const model = isAdvanced
-      ? settings?.advancedModel || this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini'
+      ? settings?.advancedModel || this.configService.get<string>('OPENAI_ADVANCED_MODEL') || 'gpt-4o-mini'
       : settings?.basicModel || this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
     const contextLimit = isAdvanced ? settings?.advancedContextLimit ?? 20 : settings?.basicContextLimit ?? 20;
     const trimmed = input.message?.trim() || '';

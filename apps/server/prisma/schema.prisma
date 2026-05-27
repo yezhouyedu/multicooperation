@@ -57,6 +57,7 @@ model Participant {
   progresses            TaskProgress[]
   questionnaireAnswers  QuestionnaireResponse[]
   sideTaskResponses     SideTaskResponseLog[]
+  sideTaskExposureLogs  SideTaskExposureLog[]
 }
 
 model Session {
@@ -80,6 +81,9 @@ model Session {
   questionnaireAnswers QuestionnaireResponse[]
   aiMessages           AiMessageLog[]
   sideTaskResponses    SideTaskResponseLog[]
+  sideTaskPlans        SideTaskPlan[]
+  sideTaskExposureLogs SideTaskExposureLog[]
+  sideTaskConfig       SideTaskSessionConfig?
   randomizationAudit   RandomizationAudit?
 }
 
@@ -166,6 +170,15 @@ model ExperimentConfig {
   segmentTwoAiLevel            AiLevel               @default(BASIC)
   segmentThreeAiLevel          AiLevel               @default(ADVANCED)
   activeQuestionnaireTemplateId String?
+  sideTaskContinuousIntervalSec Int                  @default(45)
+  sideTaskContinuousJitterSec   Int                  @default(15)
+  sideTaskScrollDurationSec     Int                  @default(12)
+  sideTaskHoldSec               Int                  @default(5)
+  sideTaskFadeSec               Int                  @default(2)
+  sideTaskContinuousPauseSec    Int                  @default(15)
+  sideTaskBatchSizes            String               @default("10,15,15")
+  sideTaskBatchTriggerSec       Int                  @default(180)
+  sideTaskBatchPauseSec         Int                  @default(60)
   createdAt                    DateTime              @default(now())
   updatedAt                    DateTime              @updatedAt
   activeQuestionnaireTemplate  QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
@@ -283,6 +296,100 @@ model SideTaskResponseLog {
   participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, participantId, segmentIndex])
+}
+
+model SideTaskItem {
+  id                String   @id @default(cuid())
+  itemCode          String   @unique
+  poolType          String
+  workSegment       Int
+  surfaceScenario   String?
+  skeletonType      String?
+  narrativeCategory String?
+  narrativeSubtype  String?
+  directAiFlag      Boolean  @default(false)
+  text              String
+  question          String
+  questionVariantId String?
+  optionA           String
+  optionB           String
+  goldAnswer        String?
+  evidenceSpan      String?
+  distractorType    String?
+  distractorNote    String?
+  spilloverRiskFlag Boolean  @default(false)
+  spilloverRiskNote String?
+  difficulty        String?
+  version           String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  plans             SideTaskPlan[]
+
+  @@index([poolType, workSegment])
+  @@index([narrativeCategory, workSegment])
+  @@index([isActive])
+}
+
+model SideTaskPlan {
+  id                     String    @id @default(cuid())
+  sessionId              String
+  segmentIndex           Int
+  itemId                 String
+  dispatchMode           String
+  narrativeGroup         String
+  themeLabel             String?
+  queueOrder             Int
+  batchNo                Int?
+  scheduledAt            DateTime?
+  releasedAt             DateTime?
+  isArchivedAtSegmentEnd Boolean  @default(false)
+  createdAt              DateTime @default(now())
+
+  session                Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  item                   SideTaskItem         @relation(fields: [itemId], references: [id])
+  exposureLogs           SideTaskExposureLog[]
+
+  @@index([sessionId, segmentIndex])
+  @@index([sessionId, segmentIndex, queueOrder])
+}
+
+model SideTaskExposureLog {
+  id             String   @id @default(cuid())
+  sessionId      String
+  participantId  String
+  sideTaskPlanId String
+  eventType      String
+  eventAt        DateTime @default(now())
+  payload        Json?
+
+  session        Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant    Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  plan           SideTaskPlan @relation(fields: [sideTaskPlanId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, participantId])
+  @@index([sideTaskPlanId])
+  @@index([eventType])
+}
+
+model SideTaskSessionConfig {
+  sessionId            String   @id
+  dispatchMode         String
+  narrativeGroup       String
+  themeOrder           Json?
+  segment1Theme        String?
+  segment2Theme        String?
+  segment3Theme        String?
+  segment1PlannedCount Int      @default(40)
+  segment2PlannedCount Int      @default(40)
+  segment3PlannedCount Int      @default(40)
+  newsSequenceSeed     String
+  distributionVersion  String   @default("v1")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  session              Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model RandomizationAudit {

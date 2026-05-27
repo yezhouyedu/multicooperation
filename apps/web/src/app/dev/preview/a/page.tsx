@@ -4,7 +4,7 @@ import { ATaskEditor } from '@/components/a-task-editor';
 import { MaterialTabs } from '@/components/material-tabs';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
-import { mockAForm, mockCompany, mockSideFeedItems } from '@/lib/mock-experiment-data';
+import { mockAForm, mockCompany } from '@/lib/mock-experiment-data';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -41,7 +41,25 @@ export default async function PreviewAPage(props: { searchParams: SearchParams }
             <button className="rounded-md bg-[#28a745] px-5 py-1.5 font-bold text-white shadow-sm hover:bg-green-600">提交</button>
           </div>
         </nav>
-        <SideTaskStrip sessionCode={code} role={role} items={mockSideFeedItems} />
+        <SideTaskStrip
+          sessionCode={code}
+          role={role}
+          sideTaskQueue={[]}
+          sideTaskConfig={{
+            dispatchMode: 'continuous',
+            scrollDurationSec: 12,
+            holdSec: 5,
+            fadeSec: 2,
+            pauseSec: 15,
+            totalPlanned: 0,
+            totalReleased: 0,
+            totalAnswered: 0,
+            totalArchived: 0,
+            nextScheduledAt: null,
+            pendingLabel: '待处理事宜',
+            tickerMessage: '您有新事项入库，请尽快处理',
+          }}
+        />
         <div className="min-h-0 flex-1 p-2">
           <WorkbenchLayout
             sidebar={sidebar}

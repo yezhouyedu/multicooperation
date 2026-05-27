@@ -42,6 +42,17 @@ export class AdminController {
     segmentAiLevels: string[];
     questionnaireTitle?: string;
     questionnaireItems: { id?: string; prompt: string; options: string[] }[];
+    sideTask?: {
+      continuousIntervalSec?: number;
+      continuousJitterSec?: number;
+      scrollDurationSec?: number;
+      holdSec?: number;
+      fadeSec?: number;
+      continuousPauseSec?: number;
+      batchSizes?: string;
+      batchTriggerSec?: number;
+      batchPauseSec?: number;
+    };
   }) {
     return this.adminService.saveExperimentConfig(body);
   }

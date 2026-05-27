@@ -83,6 +83,17 @@ export class AdminService {
               items: config.activeQuestionnaireTemplate.items,
             }
           : null,
+        sideTask: {
+          continuousIntervalSec: config.sideTaskContinuousIntervalSec,
+          continuousJitterSec: config.sideTaskContinuousJitterSec,
+          scrollDurationSec: config.sideTaskScrollDurationSec,
+          holdSec: config.sideTaskHoldSec,
+          fadeSec: config.sideTaskFadeSec,
+          continuousPauseSec: config.sideTaskContinuousPauseSec,
+          batchSizes: config.sideTaskBatchSizes,
+          batchTriggerSec: config.sideTaskBatchTriggerSec,
+          batchPauseSec: config.sideTaskBatchPauseSec,
+        },
       },
     };
   }
@@ -93,6 +104,17 @@ export class AdminService {
     segmentAiLevels: string[];
     questionnaireTitle?: string;
     questionnaireItems: { id?: string; prompt: string; options: string[] }[];
+    sideTask?: {
+      continuousIntervalSec?: number;
+      continuousJitterSec?: number;
+      scrollDurationSec?: number;
+      holdSec?: number;
+      fadeSec?: number;
+      continuousPauseSec?: number;
+      batchSizes?: string;
+      batchTriggerSec?: number;
+      batchPauseSec?: number;
+    };
   }) {
     const cleanItems = (input.questionnaireItems ?? [])
       .map((item, index) => ({
@@ -120,6 +142,21 @@ export class AdminService {
     const [segmentOneAiLevel, segmentTwoAiLevel, segmentThreeAiLevel] =
       this.normalizeAiLevels(input.segmentAiLevels);
 
+    const st = input.sideTask;
+    const sideTaskData = st
+      ? {
+          sideTaskContinuousIntervalSec: Math.max(1, Number(st.continuousIntervalSec) || 45),
+          sideTaskContinuousJitterSec: Math.max(0, Number(st.continuousJitterSec) || 15),
+          sideTaskScrollDurationSec: Math.max(1, Number(st.scrollDurationSec) || 12),
+          sideTaskHoldSec: Math.max(0, Number(st.holdSec) || 5),
+          sideTaskFadeSec: Math.max(0, Number(st.fadeSec) || 2),
+          sideTaskContinuousPauseSec: Math.max(1, Number(st.continuousPauseSec) || 15),
+          sideTaskBatchSizes: this.validateBatchSizes(st.batchSizes ?? '10,15,15'),
+          sideTaskBatchTriggerSec: Math.max(1, Number(st.batchTriggerSec) || 180),
+          sideTaskBatchPauseSec: Math.max(1, Number(st.batchPauseSec) || 60),
+        }
+      : {};
+
     const config = await this.prisma.experimentConfig.upsert({
       where: { id: 'default' },
       update: {
@@ -129,6 +166,7 @@ export class AdminService {
         segmentTwoAiLevel,
         segmentThreeAiLevel,
         activeQuestionnaireTemplateId: template.id,
+        ...sideTaskData,
       },
       create: {
         id: 'default',
@@ -138,6 +176,7 @@ export class AdminService {
         segmentTwoAiLevel,
         segmentThreeAiLevel,
         activeQuestionnaireTemplateId: template.id,
+        ...sideTaskData,
       },
       include: { activeQuestionnaireTemplate: true },
     });
@@ -561,9 +600,46 @@ export class AdminService {
           orderBy: { sortOrder: 'asc' },
           include: { company: { select: { id: true, name: true } } },
         },
+        sideTaskConfig: true,
       },
     });
-    return { ok: true, sessions };
+
+    // Attach plan stats per session
+    const sessionsWithSideTask = await Promise.all(
+      sessions.map(async (session) => {
+        const plans = await this.prisma.sideTaskPlan.findMany({
+          where: { sessionId: session.id },
+          select: {
+            segmentIndex: true,
+            isArchivedAtSegmentEnd: true,
+            releasedAt: true,
+            exposureLogs: {
+              where: { eventType: 'side_task_answered' },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        });
+
+        const segmentMap = new Map<number, { total: number; released: number; answered: number; archived: number }>();
+        for (const plan of plans) {
+          const existing = segmentMap.get(plan.segmentIndex) ?? { total: 0, released: 0, answered: 0, archived: 0 };
+          existing.total++;
+          if (plan.releasedAt) existing.released++;
+          if (plan.exposureLogs.length > 0) existing.answered++;
+          if (plan.isArchivedAtSegmentEnd && plan.exposureLogs.length === 0) existing.archived++;
+          segmentMap.set(plan.segmentIndex, existing);
+        }
+
+        const planStats = Array.from(segmentMap.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([segmentIndex, stats]) => ({ segmentIndex, ...stats }));
+
+        return { ...session, planStats };
+      }),
+    );
+
+    return { ok: true, sessions: sessionsWithSideTask };
   }
 
   async exportData() {
@@ -658,6 +734,18 @@ export class AdminService {
       normalize(levels?.[1]),
       normalize(levels?.[2]),
     ] as const;
+  }
+
+  private validateBatchSizes(raw: string): string {
+    const parts = raw.split(',').map((s) => Number(s.trim()));
+    if (parts.some((n) => isNaN(n) || n < 1 || !Number.isInteger(n))) {
+      throw new BadRequestException('batchSizes 必须是逗号分隔的正整数');
+    }
+    const sum = parts.reduce((a, b) => a + b, 0);
+    if (sum !== 40) {
+      throw new BadRequestException(`batchSizes 总和必须等于 40，当前为 ${sum}`);
+    }
+    return parts.join(',');
   }
 
   private async ensureExperimentConfig() {

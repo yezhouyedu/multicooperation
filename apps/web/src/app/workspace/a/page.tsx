@@ -75,9 +75,9 @@ export default function WorkspaceAPage() {
             sessionCode={bootstrap.sessionCode}
             participantId={bootstrap.participantId}
             role="A"
-            phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
-            segmentIndex={runtime.segmentIndex}
             aiLevel={runtime.aiLevel}
+            sideTaskQueue={runtime.sideTaskQueue}
+            sideTaskConfig={runtime.sideTaskConfig}
           />
         ) : null}
         <div className="min-h-0 flex-1 p-2">

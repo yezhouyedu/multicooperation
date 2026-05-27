@@ -142,4 +142,28 @@ export class ExperimentController {
   ) {
     return this.experimentService.submitQuestionnaire(code.toUpperCase(), body.participantId, body.answers);
   }
+
+  @Post('session/:code/sidetask/:planId/answer')
+  answerSideTask(
+    @Param('code') code: string,
+    @Param('planId') planId: string,
+    @Body() body: { participantId: string; answer: string },
+  ) {
+    return this.experimentService.answerSideTask(code.toUpperCase(), planId, body.participantId, body.answer);
+  }
+
+  @Post('session/:code/sidetask/:planId/exposure')
+  recordSideTaskExposure(
+    @Param('code') code: string,
+    @Param('planId') planId: string,
+    @Body() body: { participantId: string; eventType: string; payload?: Record<string, unknown> },
+  ) {
+    return this.experimentService.recordSideTaskExposure(
+      code.toUpperCase(),
+      planId,
+      body.participantId,
+      body.eventType,
+      body.payload,
+    );
+  }
 }

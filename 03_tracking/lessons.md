@@ -40,3 +40,81 @@
 1. **Tailwind v4 + styled-jsx 的 @keyframes 是雷区**：两者都会干预 CSS 的作用域和优先级，`@keyframes` 在这个组合下几乎不可用
 2. **动画不要用 React state 驱动**：`requestAnimationFrame` 每秒 60 帧，如果每帧调 `setState`，会触发 60 次 re-render，轻则卡顿，重则动画被打断。应该用 `useRef` 直接操作 DOM
 3. **母版的实现方式就是最佳实践**：`index.html` 里用 `document.createElement` + `addEventListener('animationend')` 的纯 JS 方式能稳定工作，说明这个项目环境下，动画就该走 JS 路线，不要信任 CSS 动画
+
+## 2026-05-27 反思补充：progress.md 编码损坏事件
+
+### 事件经过
+
+2026-05-27 Codex 会话在向 `03_tracking/progress.md` 追加内容时，产生了严重的编码损坏：
+- 前 527 行：中文字符末尾被截断，替换为 U+FFFD（`�`）
+- 第 538-562 行：整段乱码，U+FFFD 替换字符遍布全文
+- 第 580-587 行：spec 补充段落同样乱码
+
+### 根因分析（已通过字节级验证）
+
+**直接原因**：Codex 使用的 shell 命令是 `@' ... '@ | Add-Content -Path 'progress.md'`
+
+**编码链**：
+1. Codex 模型生成的中文完全正确（JSONL 中 Unicode 码点验证正确：`U+FF08=（, U+8865=补, U+8BB0=记`）
+2. PowerShell here-string `@'...'@` 在内存中正确（PowerShell 内部用 UTF-16）
+3. **`Add-Content` 在 PowerShell 5.1 中默认使用系统 ANSI 代码页写入文件**，中文 Windows 上是 GBK/CP936，不是 UTF-8
+4. 文件中存储的是 GBK 字节（已验证：`a3 a8 b2 b9 bc c7 a3 a9` = GBK 的 `（补记）`）
+5. 后续 git/编辑器/Python 按 UTF-8 读取 → GBK 字节是无效 UTF-8 序列 → 产生 U+FFFD 替换字符
+
+**关键证据**：git commit `65b6c4c` 中 progress.md 的字节 `a3 a8 b2 b9 bc c7 a3 a9` 是标准 GBK 编码，不是 UTF-8。文件中 U+FFFD 计数为 0（因为文件整体是 GBK，不是"UTF-8 中的无效字节"）。
+
+**为什么不是其他原因**：
+- 不是 Codex 模型输出乱码 → JSONL 码点正确
+- 不是 here-string 编码问题 → PowerShell 内部 UTF-16 正确保留中文
+- 不是传输层编码问题 → 命令字符串中的中文在 JSONL 中可正确解码
+- **就是 `Add-Content` 默认编码问题** → 字节级证据确凿
+
+### 恢复过程
+
+1. 前 527 行：从 git commit `3e6e4fd` 恢复干净版本（该 commit 在损坏发生前创建）
+2. 第 538-562 行：从 Codex 会话的 rollout JSONL 文件中提取原始内容（JSONL 中 Unicode 正确），重建为 UTF-8
+3. 第 580-587 行：根据上下文重建
+4. 恢复后仍有零星乱码行（532-537, 567-568, 592-594），逐行手动替换
+
+### 核心教训
+
+1. **`Add-Content` 在 PowerShell 5.1 中默认用 GBK，不是 UTF-8**
+   - 这是 Windows 上写中文文件的头号陷阱
+   - 即使 here-string 内容正确、即使文件本身是 UTF-8，`Add-Content` 也会用 GBK 覆盖写入
+   - 必须用 `Add-Content -Encoding utf8` 或 `Set-Content -Encoding utf8`
+
+2. **写 .md 文件必须用 Write 工具或 Python 脚本，不能用 shell 命令**
+   - Write 工具直接写 UTF-8，不经过 shell 编码层，是最安全的方式
+   - 如果必须用脚本，用 Python `open(path, 'w', encoding='utf-8')`
+   - 如果必须用 PowerShell，必须加 `-Encoding utf8`
+
+3. **中文内容写入后必须验证**
+   - 写入后立即用 Python 读取文件原始字节，检查编码是否为 UTF-8
+   - 检查是否有 U+FFFD 字符
+   - 特别注意追加操作（`Add-Content` / `>>`），容易引入不同编码
+
+4. **版本控制是最后防线**
+   - 损坏发生前的 git commit 是恢复的关键来源
+   - 重要文件写入前先 commit，写入后验证无误再 commit
+
+5. **Codex rollout JSONL 文件是意外的备份源**
+   - Codex 会话的完整交互记录保存在 `~/.codex/sessions/` 下
+   - JSONL 中的文本是正确的 Unicode（不受 shell 编码影响）
+   - 不应依赖此方式作为常规备份，但损坏时值得尝试
+
+### 写入 .md 文件的强制准则
+
+**必须遵守**：
+- 使用 Write 工具写入完整文件内容
+- 使用 Python 脚本 + `open(path, 'w', encoding='utf-8')` 做追加或局部修改
+- 写入后立即读取验证，检查原始字节是否为有效 UTF-8
+
+**严禁**：
+- 用 PowerShell `Add-Content` 或 `>>` 追加中文（默认 GBK 编码，会破坏 UTF-8 文件）
+- 用 PowerShell `@' ... '@` here-string 管道写中文到文件（同样的问题）
+- 用 bash `echo "中文"` 或 `cat <<EOF` 写中文到文件
+- 用 Codex 的 `shell_command` 直接写中文到 .md 文件（经过 shell 编码层）
+
+**如果必须用 PowerShell**：
+- 必须加 `-Encoding utf8`：`Set-Content -Path $path -Value $text -Encoding utf8`
+- 写入后用 `[System.IO.File]::ReadAllBytes($path)` 验证前几字节是否为正确 UTF-8

@@ -74,10 +74,32 @@ export type RuntimeState = {
   isFrozen: boolean;
   questionnaireSubmitted: boolean;
   aiLevel: 'BASIC' | 'ADVANCED';
-  sideTaskState: {
+  sideTaskQueue: Array<{
+    planId: string;
+    text: string;
+    question: string;
+    optionA: string;
+    optionB: string;
+    directAiFlag: boolean;
+    narrativeCategory: string | null;
+    queueOrder: number;
+    batchNo: number | null;
+    answered: boolean;
+    answer: string | null;
+  }>;
+  sideTaskConfig: {
+    dispatchMode: 'continuous' | 'batch';
+    scrollDurationSec: number;
+    holdSec: number;
+    fadeSec: number;
+    pauseSec: number;
+    totalPlanned: number;
+    totalReleased: number;
+    totalAnswered: number;
+    totalArchived: number;
+    nextScheduledAt: string | null;
     pendingLabel: string;
     tickerMessage: string;
-    scrollIntervalSeconds: number;
   };
   syncState: {
     barrier: 'practice' | 'formal';
