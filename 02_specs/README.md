@@ -29,10 +29,16 @@
 
 ### 02_backend
 - `BACKEND_STRUCTURE.md`
+- `SIDETASK_REBUILD_SPEC.md`
+- `VARIABLE_PERSISTENCE_SPEC.md`
+- `admin材料库上传手册.md`
 
 ### 03_execution
 - `IMPLEMENTATION_PLAN.md`
 - `CHECKLIST_MANUAL.md`
+
+### 04_pre_deploy
+- `STORAGE_AND_IMPORT_SPEC.md`
 
 ## 后续约定
 

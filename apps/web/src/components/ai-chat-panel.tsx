@@ -2,6 +2,7 @@
 
 import { ClipboardEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import { Camera } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -28,6 +29,7 @@ type Props = {
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   aiLevel?: 'BASIC' | 'ADVANCED';
+  onScreenshot?: () => void;
 };
 
 type StreamStartChunk = {
@@ -209,6 +211,7 @@ export function AiChatPanel({
   phase = 'formal',
   segmentIndex = 0,
   aiLevel = 'BASIC',
+  onScreenshot,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -591,12 +594,21 @@ export function AiChatPanel({
         ) : null}
 
         <div className="flex items-end gap-2">
-          {imageEnabled ? (
+          {imageEnabled && onScreenshot ? (
+            <button
+              type="button"
+              onClick={onScreenshot}
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition hover:bg-purple-50 hover:text-purple-500"
+              title="点击使用截图功能"
+            >
+              <Camera size={18} />
+            </button>
+          ) : imageEnabled ? (
             <label
               className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition hover:bg-purple-50 hover:text-purple-500"
               title="上传图片"
             >
-              图
+              <Camera size={18} />
               <input
                 type="file"
                 accept="image/*"
@@ -607,10 +619,10 @@ export function AiChatPanel({
             </label>
           ) : (
             <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs text-gray-400"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400"
               title="基础 AI 不支持图片"
             >
-              图
+              <Camera size={18} className="opacity-40" />
             </div>
           )}
           <div className="flex flex-1 items-center rounded-2xl border border-gray-200 bg-gray-50 p-1.5 transition-all focus-within:border-purple-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-purple-100">

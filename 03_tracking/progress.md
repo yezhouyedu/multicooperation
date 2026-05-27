@@ -694,3 +694,10 @@
 - `.env` 新增 `OPENAI_ADVANCED_BASE_URL` 和 `OPENAI_ADVANCED_MODEL` 环境变量
 - 基础版: qwen-turbo / 高级版: qwen3.6-plus，两者共用同一个 apiKey，endpoint 统一用 dashscope
 - `ai.service.ts` 高级版 fallback 从 `OPENAI_BASE_URL`/`OPENAI_MODEL` 改为优先读 `OPENAI_ADVANCED_BASE_URL`/`OPENAI_ADVANCED_MODEL`，数据库 AiSettings 优先级最高
+
+### 2026-05-28 AI 输入框截图按钮
+
+- `ai-chat-panel.tsx` 新增 `onScreenshot` prop，高级版 AI 输入框左侧图文字按钮改为 SVG 图片图标（山景+太阳），点击触发材料区截图功能，hover 提示点击使用截图功能
+- `workspace/a/page.tsx` + `workspace/b/page.tsx` 传入 `onScreenshot={() => materialPanelRef.current?.startCapture()}`，复用 CompanyMaterialPanel 的框选截图
+- 基础版 AI 显示灰色不可用图标，无 onScreenshot 时保留原文件上传
+- web build + server build 通过

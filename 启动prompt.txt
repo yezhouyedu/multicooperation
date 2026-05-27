@@ -1,0 +1,98 @@
+你好，我们继续一个项目。
+
+你先不要急着改代码，先完成“理解项目并同步当前进度”这一步，再开始任何实现。
+
+## 1. 项目根目录
+
+项目根目录：
+`E:\Own_program\multi cooperation`
+
+## 2. 你这次开局必须先读的文档
+
+请优先完整阅读这些 Markdown：
+
+1. `E:\Own_program\multi cooperation\README.md`
+2. `E:\Own_program\multi cooperation\01_rules\PROJECT_RULES.md`
+3. `E:\Own_program\multi cooperation\01_rules\CLAUDE.md`
+4. `E:\Own_program\multi cooperation\01_rules\experiment_necessary.md`
+5. `E:\Own_program\multi cooperation\02_specs\README.md`
+6. `E:\Own_program\multi cooperation\02_specs\00_overview\APP_FLOW.md`
+7. `E:\Own_program\multi cooperation\03_tracking\progress.md`
+8. 根据你当前任务，再补读对应模块的 specs
+
+其中请特别注意：
+
+- `03_tracking/progress.md` 是项目进度真相源，要先看最新进度再判断现在做到哪里
+- `02_specs` 下面的文档已经整理过，不要凭旧印象理解项目
+- `APP_FLOW.md` 是主流程真相源
+- `experiment_necessary.md` 是实验方法与论文回溯相关的真相源
+
+## 3. 你需要知道的当前项目口径
+
+请先按下面这些口径理解项目，避免被旧历史记录误导：
+
+- 参与者前台不要暴露 `A/B` 字母角色，统一使用“尽调员 / 投资经理”
+- 系统不是“先来固定 A、后来固定 B”，而是先按进入顺序成组，再随机分配角色
+- 公司顺序是 session 内共享的 seed 随机顺序，需要可复现
+- 尽调员对单家公司 5 分钟内不能提前提交，5 分钟到点系统自动提交
+- 投资经理可以提前看自己材料并写草稿；尽调信息解锁后可以直接提交
+- 是否点击过“查看尽调员信息”要记录，但不再作为提交门槛
+- 副线任务系统已经不是原型，而是正式队列式系统
+- AI 区已经支持 Markdown、流式输出、图片上传/粘贴、追问条
+- 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`
+
+## 4. 代码位置
+
+主要代码在这里：
+
+- `E:\Own_program\multi cooperation\apps`
+- `E:\Own_program\multi cooperation\infra`
+- `E:\Own_program\multi cooperation\packages`
+- `E:\Own_program\multi cooperation\scripts`
+
+这些目录通常不需要你优先看：
+
+- `node_modules`
+- `04_archive`
+
+除非我明确让你看，否则不要把主要精力花在这些地方。
+
+## 5. 启动与环境
+
+一键启动脚本：
+`E:\Own_program\multi cooperation\启动本地开发环境.bat`
+
+如果你要理解环境，也请顺手确认：
+
+- `apps/web/README.md`
+- `apps/server/README.md`
+
+## 6. 本次对话的工作方式
+
+你开始工作后，请先做这三步：
+
+1. 先用自己的话总结你理解到的“项目当前状态”
+2. 明确告诉我：你这次准备先看哪些文件、为什么
+3. 如果发现文档与代码冲突，优先相信最新代码与最新 specs，再向我汇报冲突点
+
+## 7. 文档修改规则
+
+如果这次任务涉及改 Markdown，请严格遵守：
+
+- 只删错的内容，不删对的内容
+- 优先补齐和现代码不一致的口径
+- 不要随意重写历史追踪文档
+- `progress.md`、`lessons.md` 这类文档是记录，不要把它们当成“全部重写目标”
+
+编码注意：
+
+- 在这个项目里，严禁用 PowerShell 的 `Add-Content` 或 `>>` 直接写中文 `.md`
+- 修改中文 Markdown 时，优先用安全编辑方式，避免编码损坏
+
+## 8. 这次开始后先回复我什么
+
+请先回复我一版简短同步：
+
+1. 你已经读了哪些核心文档
+2. 你理解的当前项目阶段是什么
+3. 你接下来准备先做什么

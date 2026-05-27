@@ -59,6 +59,9 @@
 - [00_overview/PRD.md](</E:/Own_program/multi cooperation/02_specs/00_overview/PRD.md>)
 - [01_frontend/WORKBENCH_REFINEMENT_MASTER.md](</E:/Own_program/multi cooperation/02_specs/01_frontend/WORKBENCH_REFINEMENT_MASTER.md>)
 - [02_backend/admin材料库上传手册.md](</E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md>)
+- [02_backend/SIDETASK_REBUILD_SPEC.md](</E:/Own_program/multi cooperation/02_specs/02_backend/SIDETASK_REBUILD_SPEC.md>)
+- [02_backend/VARIABLE_PERSISTENCE_SPEC.md](</E:/Own_program/multi cooperation/02_specs/02_backend/VARIABLE_PERSISTENCE_SPEC.md>)
+- [04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](</E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md>)
 
 ### `03_tracking/`
 过程跟踪区。
@@ -253,6 +256,15 @@
 4. 若没有分层子目录，则按文件名自动判断研究者材料
 5. `研究者用 / 信息点记录 / 答案` 这类材料不会出现在参与者材料区
 
+材料目录当前已支持按角色分层：
+
+- `participant/shared`
+- `participant/diligence`
+- `participant/manager`
+- `research`
+
+前台显示口径仍然是“尽调员 / 投资经理”，不会向参与者暴露 A/B 字母角色。
+
 ---
 
 ### 模块 G：AI 上下文系统
@@ -279,6 +291,14 @@
 - `phase`
 - `segmentIndex`
 
+当前已实现能力补充：
+
+- 主线与副线复用同一套 `AiChatPanel`
+- AI 回复支持 Markdown 渲染
+- 支持流式输出
+- 支持“追问提示条 + 隐藏上下文注入”
+- `advanced` 支持图片上传与粘贴
+
 ---
 
 ## 4. 题库系统现在怎么用
@@ -286,6 +306,7 @@
 如果你只是想快速导入案例材料，优先看：
 
 - [02_specs/02_backend/admin材料库上传手册.md](</E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md>)
+- [02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](</E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md>)
 
 一句话版本：
 

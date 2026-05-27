@@ -1,126 +1,309 @@
-﻿# BACKEND_STRUCTURE.md
+# BACKEND_STRUCTURE.md
 
-> 状态：2026-05-12 第二轮后端结构版
+> 状态：2026-05-28 已对齐当前实现
 > 位置：`02_specs/02_backend/BACKEND_STRUCTURE.md`
 
-## 1. 后端目标
-后端要同时承担：
-- 轻量登录与合格名单校验
-- 自动配对与 session 建立
-- 阶段引擎与主线冻结恢复
-- 公司顺序生成与任务推进
-- 问卷、快照、AI、日志记录
-- admin 配置与导出
+## 1. 后端现在负责什么
 
-## 2. 模块分工
-### 2.1 Auth / Participant
+当前后端不是一个普通 API 壳子，而是 6 个东西一起承担：
+
+- 登录与手机号准入
+- 两人配对、角色随机化、公司顺序随机化
+- 实验主状态机与统一 runtime
+- 主线草稿、快照、恢复、问卷、行为记录
+- 副线题库、计划生成、到达节奏、曝光与作答记录
+- AI 接口、admin 配置、材料系统、数据导出
+
+---
+
+## 2. 当前模块划分
+
+### 2.1 `src/auth/`
+
+负责：
+
 - 手机号登录
-- 合格名单校验
-- 记录进入顺序
-- 自动分配 `A/B`
+- 白名单校验
+- 按进入顺序成组
+- 配对完成后随机分配尽调员 / 投资经理
+- 为 session 生成公司随机序列
+- 为 session 生成副线任务计划
 
-### 2.2 Experiment Runtime
-- 建立 session 与 pairing
-- 生成 session 内固定公司顺序
-- 维护当前阶段、当前工作段和剩余时间
-- 判断主线是否冻结
-- 提供统一运行态接口
+关键点：
 
-### 2.3 Task / Workflow
-- A 任务进度
-- B 任务进度
-- A 信息解锁
-- B 提交门槛（仅依赖 A 信息已解锁）
-- `5` 分钟快照
+- 先成组，再随机角色
+- 角色随机化使用 seed，可复现
+- 公司顺序随机化使用 seed，可复现
+- 副线实验条件也在 session 创建时一起确定
 
-### 2.4 Questionnaire
-- 休息问卷模板
-- 休息问卷作答记录
-- 超时结束记录
+### 2.2 `src/experiment/`
 
-### 2.5 Side Task
-- 副线内容集
-- 副线调度参数
-- 当前工作段副线累计进度
-- 工作段切换时的重置逻辑
+负责：
 
-### 2.6 AI
-- 主线 AI 请求与消息日志
-- 副线 AI 请求与消息日志
-- 按工作段切换 `basic/advanced`
-- `basic` 模式图片拒绝
+- 统一 runtime 读取
+- 正式段 / 休息段 / 结束段推进
+- A 的 5 分钟自动提交
+- B 查看尽调员信息的解锁与记录
+- 草稿保存、快照冻结、恢复
+- SSE 事件流
+- 副线运行时、曝光记录、作答、归档
 
-### 2.7 Admin
-- 上传手机号名单
-- 保存实验配置
-- 查看 session 与任务状态
-- 导出数据
+这是整个系统的主状态机。
 
-## 3. 核心运行规则
-### 3.1 配对器
-- 第 `1` 个进入的合格参与者为 `A`
-- 第 `2` 个进入的合格参与者为 `B` 并与前一个 `A` 配对
-- 第 `3/4` 个进入者形成下一组
-- 不再依赖 `Participant.role` 作为真源
+### 2.3 `src/ai/`
+
+负责：
+
+- 主线 / 副线 AI 聊天
+- `basic` / `advanced` 两档能力切换
+- 图片附件处理
+- 追问上下文注入
+- 普通回复与流式回复
+- AI 消息日志
+
+### 2.4 `src/admin/`
+
+负责：
+
+- 手机号名单导入
+- 实验配置保存
+- session 概览
+- 数据导出
+- AI 设置
+- 公司与材料库
+- 副线题库导入与副线 admin 面板
+
+### 2.5 `src/prisma/`
+
+负责：
+
+- Prisma 连接
+- 数据库访问基础设施
+
+---
+
+## 3. 当前已确定的核心运行规则
+
+### 3.1 成组与角色
+
+- 两位参与者先按进入顺序组成一组
+- 配对完成时才随机决定谁是尽调员、谁是投资经理
+- 角色随机化写入 `RandomizationAudit`
+- `Participant.role` 现在是运行结果，不再是预设输入
 
 ### 3.2 公司顺序
-- session 启动时一次性生成随机、无放回的公司序列
-- A/B 共用同一序列
-- 不再按稳健/成长、简单/复杂做派单分类
 
-### 3.3 阶段引擎
-- 正式实验固定为 `3` 个工作段、`2` 个休息问卷段
-- 工作段结束时冻结主线，恢复后继续
-- 如果工作段结束早于 A 的单公司 `5` 分钟，则下段继续剩余公司时间
-- 休息问卷段按单选题实现
+- 每个 session 生成一条独立公司序列
+- 同组两人共享同一条序列
+- 使用 seed 随机化并保存审计信息
+- 目标是可复现、可回溯，不靠 `sort(() => Math.random() - 0.5)`
 
-### 3.4 B 主线规则
-- B 不再有独立等待页状态机节点
-- B 统一进入 `/workspace/b` 主工作台
-- 空窗态只是一种工作台显示状态，不是独立页面流程
-- A 信息解锁后，B 即可提交；是否打开过 A 信息区只作为行为记录保留
+### 3.3 正式段状态机
 
-## 4. 建议数据对象
+- 指导语后先过一次同步准备页
+- 测试轮后再过一次同步准备页
+- 两人同时进入正式工作段 1
+- 正式流程固定为 3 个工作段 + 2 个休息问卷段
+- 工作段与休息段切换由服务端统一判定
+
+### 3.4 尽调员 / 投资经理规则
+
+- 尽调员对单家公司有固定 5 分钟窗口
+- 5 分钟内不能提前提交
+- 到点后系统自动提交
+- 自动提交时解锁给投资经理
+- 投资经理可在解锁前先看自己的材料、写草稿、用 AI
+- 投资经理解锁后可直接提交
+- 是否点击过“查看尽调员信息”不再作为提交门槛，但仍要记录行为
+
+### 3.5 副线规则
+
+- 测试轮没有副线计划
+- 正式 3 个工作段各生成 40 条副线计划，总计 120 条
+- 到达节奏分为 `continuous` / `batch`
+- 叙事条件分为 `coop_narrative` / `neutral_info`
+- 服务端认定 `releasedAt`
+- 前端首次见到 planId 时补发 `side_task_released`
+- 服务端幂等写入曝光日志
+
+---
+
+## 4. 当前后端真相源数据对象
+
+### 4.1 主流程相关
+
 - `Participant`
 - `Session`
 - `Pairing`
 - `ExperimentConfig`
-- `SessionSegmentState`
-- `TaskAssignment`
-- `TaskSnapshot`
 - `QuestionnaireTemplate`
 - `QuestionnaireResponse`
-- `AiMessageLog`
-- `SideTaskItem`
-- `SideTaskResponseLog`
-- `EventLog`
 
-## 5. 统一运行态接口
-建议新增统一运行态接口，例如：
+### 4.2 主任务草稿与恢复
+
+- `TaskAssignment`
+  - 保存 A/B 当前草稿、反馈草稿、当前任务状态
+- `TaskSnapshot`
+  - 保存工作段冻结快照与恢复来源
+
+### 4.3 AI 相关
+
+- `AiMessageLog`
+- `AiSettings`
+
+### 4.4 材料系统相关
+
+- `Company`
+- `CompanyMaterial`
+
+当前材料口径已支持：
+
+- `participant/shared`
+- `participant/diligence`
+- `participant/manager`
+- `research`
+
+数据库里对应 `participantRole=shared/A/B`，但参与者前台只显示“尽调员 / 投资经理”。
+
+### 4.5 随机化审计
+
+- `RandomizationAudit`
+
+当前已落地字段包括：
+
+- `roleAssignmentMethod`
+- `roleAssignmentSeed`
+- `roleAssignedAt`
+- `companySequenceMethod`
+- `companySequenceSeed`
+- `companySequenceGeneratedAt`
+- `companySequence`
+
+### 4.6 副线系统
+
+- `SideTaskItem`
+- `SideTaskPlan`
+- `SideTaskExposureLog`
+- `SideTaskSessionConfig`
+
+说明：
+
+- 旧的 `SideTaskResponseLog` 已不是当前正式写入口径
+- 现在以 `SideTaskExposureLog` 记录 released / answered 等关键事件
+
+---
+
+## 5. 当前统一 runtime 口径
+
+主入口：
+
 - `GET /experiment/session/:code/runtime`
 
-至少返回：
+当前 runtime 至少要承担：
+
 - 当前角色
 - 当前阶段
 - 当前工作段索引
-- 当前阶段剩余秒数
-- 当前公司与公司序号
-- A 单公司剩余秒数
-- A 信息是否解锁
-- B 是否已打开 A 信息区
-- B 是否允许提交
-- 当前是否空窗
-- 当前是否冻结
-- 副线是否可用
+- 当前阶段剩余时间
+- 当前公司与公司顺序位置
+- 尽调员单公司剩余时间
+- 尽调信息是否已解锁
+- 投资经理是否看过尽调员信息
+- 当前草稿读取入口所需信息
+- 当前副线队列
+- 当前副线配置
+- 当前 AI 档位
 
-## 6. 日志与恢复要求
-- A/B 工作台都要支持刷新后恢复
-- 测试轮与正式轮日志分开
-- 主线与副线 AI 日志分开，但都要保留完整元数据
-- B 的 `5` 分钟快照必须可回溯
-- 工作段切换、问卷进入/提交、主副线切换都必须可还原
+配套还有：
 
-## 7. 当前明确不做
-- 不恢复旧的独立 B 等待页逻辑
-- 不把截图按钮纳入本轮后端设计
-- 不在本轮搭建通用材料后台，只先支撑 `P01 + 两份正式表单`
+- `GET /experiment/session/:code/events`
+  - 用于 SSE 增量更新
+
+---
+
+## 6. 当前关键接口分组
+
+### 6.1 登录与进入
+
+- `POST /auth/login`
+
+### 6.2 运行时
+
+- `GET /experiment/session/:code/runtime`
+- `GET /experiment/session/:code/events`
+
+### 6.3 主任务
+
+- `GET /experiment/session/:code/tasks/:taskId/draft`
+- `POST /experiment/session/:code/tasks/:taskId/draft`
+- `POST /experiment/session/:code/tasks/:taskId/a-submit`
+- `POST /experiment/session/:code/tasks/:taskId/view-a-info`
+- `POST /experiment/session/:code/tasks/:taskId/b-complete`
+
+### 6.4 副线
+
+- `POST /experiment/session/:code/sidetask/:planId/exposure`
+- `POST /experiment/session/:code/sidetask/:planId/answer`
+
+### 6.5 AI
+
+- `POST /ai/chat`
+- `POST /ai/chat-stream`
+
+### 6.6 Admin
+
+- `GET /admin/sessions`
+- `GET /admin/export`
+- `GET /admin/experiment-config`
+- `POST /admin/experiment-config`
+- `GET /admin/ai-settings`
+- `POST /admin/ai-settings`
+- `POST /admin/sidetask/import`
+- `GET /admin/sidetask/items`
+- `GET /admin/sidetask/items/stats`
+- `PATCH /admin/sidetask/items/:id/toggle-active`
+
+---
+
+## 7. 当前统计与记录口径
+
+### 7.1 副线统计
+
+- `totalPlanned`：该段计划总数，当前固定 40
+- `totalReleased`：`releasedAt !== null`
+- `totalAnswered`：当前 participant 的 answered 题数
+- `totalArchived`：段末归档且未作答的题数
+- 前端可见队列：`scheduledAt <= now && !isArchivedAtSegmentEnd`
+
+### 7.2 关键行为记录
+
+当前已经明确需要保留的包括：
+
+- 指导语已读
+- 测试轮准备完成
+- 正式轮准备完成
+- 尽调员自动提交
+- 投资经理查看尽调员信息
+- 投资经理完成提交
+- 休息问卷提交
+- 副线 released / answered
+
+---
+
+## 8. 当前明确不再沿用的旧口径
+
+- 不再使用“先来者固定 A、后来者固定 B”
+- 不再把 B 独立等待页当成正式状态机节点
+- 不再把“查看过尽调员信息”当作 B 提交门槛
+- 不再把副线视为简单原型条
+- 不再把材料系统口径限制在 “P01 + 两份正式表单”
+
+---
+
+## 9. 联动文档
+
+- 总流程真相源：`02_specs/00_overview/APP_FLOW.md`
+- 副线正式规格：`02_specs/02_backend/SIDETASK_REBUILD_SPEC.md`
+- 变量保存层：`02_specs/02_backend/VARIABLE_PERSISTENCE_SPEC.md`
+- 材料导入口径：`02_specs/02_backend/admin材料库上传手册.md`
+- 上线前存储方案：`02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md`

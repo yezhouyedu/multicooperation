@@ -308,6 +308,7 @@ export default function WorkspaceBPage() {
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
+                      onScreenshot={() => materialPanelRef.current?.startCapture()}
                     />
                   </ScopedZoomSurface>
                 ) : (
