@@ -21,25 +21,37 @@ admin 页面现在只负责两件事：
 
 ## 1. 现在的推荐目录结构
 
-每个公司一个文件夹，例如 `P01/`、`P02/`。
+现在推荐先分成两层案例库：
+
+- `正式/`
+- `测试轮/`
+
+然后每个案例一个文件夹，例如 `P01/`、`P02/`。
 
 推荐结构：
 
 ```text
 00_start_materials/
   原始材料/
-    P01/
-      case.json
-      participant/
-        shared/
-          1.公司简介.txt
-          2.财务摘要.docx
-        diligence/
-          3.尽调员补充材料.docx
-        manager/
-          4.投资经理补充材料.docx
-      research/
-        0.信息点记录（研究者用）.txt
+    正式/
+      P01/
+        case.json
+        participant/
+          shared/
+            1.公司简介.txt
+            2.财务摘要.docx
+          diligence/
+            3.尽调员补充材料.docx
+          manager/
+            4.投资经理补充材料.docx
+        research/
+          0.信息点记录（研究者用）.txt
+    测试轮/
+      P01/
+        case.json
+        participant/
+          shared/
+        research/
 ```
 
 四层的意思：
@@ -71,10 +83,16 @@ admin 页面现在只负责两件事：
 
 当前扫描规则是：
 
-1. `原始材料/` 下每个子文件夹都当成一个公司案例
-2. 优先读取 `participant/` 和 `research/`
-3. 在 `participant/` 里继续找三类子目录
-4. 如果三类子目录不存在，就把 `participant/` 里的文件默认当成共享材料
+1. 优先扫描 `原始材料/正式/` 和 `原始材料/测试轮/`
+2. 两个分层下的每个子文件夹都当成一个公司案例
+3. 优先读取 `participant/` 和 `research/`
+4. 在 `participant/` 里继续找三类子目录
+5. 如果三类子目录不存在，就把 `participant/` 里的文件默认当成共享材料
+
+兼容规则：
+
+- 如果 `原始材料/正式/` 不存在，旧的根级案例目录仍按正式案例处理
+- 如果 `原始材料/测试轮/` 不存在，当前本地版本会临时回退使用 `P01` 作为测试轮案例
 
 也就是说：
 
@@ -109,6 +127,7 @@ participant/
   "sharedDir": "shared",
   "diligenceDir": "diligence",
   "managerDir": "manager",
+  "usage": "formal",
   "autoFillSource": "research/0.信息点记录（研究者用）.txt",
   "sortOrder": 1
 }
@@ -122,6 +141,7 @@ participant/
 - `diligenceDir`：尽调员材料目录，默认是 `diligence`
 - `managerDir`：投资经理材料目录，默认是 `manager`
 - `autoFillSource`：系统自动填充公司基础信息的来源文件，当前仍建议指向 `research/` 里的 txt
+- `usage`：案例用途，`formal` 表示正式案例，`practice` 表示测试轮案例
 
 ---
 

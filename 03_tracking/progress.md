@@ -723,3 +723,35 @@
 - `02_specs/01_frontend/FRONTEND_GUIDELINES.md` — 新增第 10 节"设计系统规范"，记录字体、阴影层级、交互过渡、面板头规范、颜色规范、加载动画标准
 
 **验证**：`corepack pnpm --filter web build` 通过（21 个页面全部生成）。
+
+### 2026-05-28 测试题 + 测试轮工作台 + 教学引导首轮接线
+
+- 已将主流程接成“指导语 -> 测试题 -> 测试轮同步准备 -> 测试轮工作台 -> 正式阶段同步准备”，新增 `/practice-quiz` 页面与对应后端接口。
+- 已把实验配置扩展为“测试轮时长 + 测试题模板 + 通过题数 + 休息问卷模板”，admin 现可编辑两套单选题模板。
+- 已把材料库扫描口径扩展为“正式案例 / 测试轮案例”双层目录，并保留旧根目录兼容；测试轮目录缺失时本地回退到 `P01`。
+- 已让测试轮复用现有工作台并接入第一版教学引导遮罩，按真实交互监听材料切换、缩放、全屏、拖拽、AI 发送、截图和副线操作。
+- 已完成 `corepack pnpm --filter server build` 与 `corepack pnpm --filter web build`，说明当前首轮接线已通过构建验证。
+
+### 2026-05-28 公司池动态分配策略
+
+**背景**：AB 共享同一套按 sortOrder 排序的公司序列导致 B 的公司顺序与 A 完全一致（只是滞后）。在 AI 升级实验中，这会导致 B 大部分时间处理未升级公司，无法产生 D11 样本。改为 B 从"锁定池"中随机推送公司。
+
+**改动范围**（5 个文件）：
+
+- `apps/server/prisma/schema.prisma` — TaskAssignment 新增 `bSequenceIndex Int?` 字段及索引；RandomizationAudit 新增 `bAssignmentMethod` / `bAssignmentLog` 审计字段
+- `apps/server/prisma/migrations/20260528035433_pool_based_b_assignment/migration.sql` — 数据库迁移
+- `apps/server/src/experiment/experiment.service.ts` — 核心改动：
+  - 新增 `assignNextTaskForB()` 方法：从锁定池随机选公司，池空 fallback 到 A 正在处理的公司（PreA），都没有则 idle
+  - `getRuntime()` B 分支改用 `bSequenceIndex` 查找当前公司
+  - `syncRuntime()` 加懒分配触发
+  - `bCompleteTask()` 完成后自动触发下一家分配
+  - `startFormalWorkSegmentTx()` 首次进入正式段时分配 B
+  - `advanceAfterWork()` 分别快照 A 和 B 在不同公司时的数据
+  - `advanceAfterBreak()` 分别恢复 A 和 B 各自公司的草稿
+  - 返回值新增 `isPreA` 标志
+- `apps/server/src/auth/auth.service.ts` — 审计 upsert 新增 `bAssignmentMethod: 'pool_based_random_v1'` 和 `bAssignmentLog: []`
+- `apps/web/src/lib/session-runtime.ts` — RuntimeState 新增 `isPreA: boolean`
+
+**核心逻辑**：B 完成当前公司 → 从锁定池（A 已提交 && B 未完成 && B 未分配）随机选一家 → 池空则 fallback 到 A 正在处理的公司（PreA 模式，B 只看自有材料）→ 都没有才空窗。
+
+**验证**：`corepack pnpm --filter web build` 通过（22 个页面全部生成）。
