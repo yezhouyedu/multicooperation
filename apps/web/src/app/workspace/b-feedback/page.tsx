@@ -14,17 +14,18 @@ export default function WorkspaceBFeedbackPage() {
   const currentTaskId = runtime?.currentTask?.id;
   const { draft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'feedback');
 
-  const redirectPath = !loading && !bootstrap
-    ? '/login'
-    : !loading && runtime?.assignedRole === 'A'
-      ? '/workspace/a'
-      : !loading && runtime?.phase === 'end'
-        ? '/workspace/end'
-        : !loading && runtime?.phase === 'formal_break'
-          ? '/break'
-          : !loading && (!runtime?.currentTask || !runtime.bCanSubmit)
-            ? '/workspace/b'
-            : null;
+  const redirectPath =
+    !loading && !bootstrap
+      ? '/login'
+      : !loading && runtime?.assignedRole === 'A'
+        ? '/workspace/a'
+        : !loading && runtime?.phase === 'end'
+          ? '/workspace/end'
+          : !loading && runtime?.phase === 'formal_break'
+            ? '/break'
+            : !loading && (!runtime?.currentTask || !runtime.bCanSubmit)
+              ? '/workspace/b'
+              : null;
 
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath);
@@ -41,12 +42,12 @@ export default function WorkspaceBFeedbackPage() {
   }
 
   return (
-    <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-[#1d2129] text-sm">
+    <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
       <div className="flex h-full flex-col">
         <SessionTopbar
           roleLabel="投资经理"
           currentLabel={runtime?.currentTask?.company?.name ?? '当前项目'}
-          stageLabel="当前阶段剩余时间"
+          stageLabel="当前阶段"
           countdownLabel="--:--"
         />
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">

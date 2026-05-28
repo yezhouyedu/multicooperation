@@ -4,6 +4,7 @@ import { AFeedbackNotification } from '@/components/a-feedback-notification';
 import { AiChatPanel } from '@/components/ai-chat-panel';
 import { ATaskEditor } from '@/components/a-task-editor';
 import { CompanyMaterialPanel, type CompanyMaterialPanelHandle } from '@/components/company-material-panel';
+import { PracticeTutorialOverlay } from '@/components/practice-tutorial-overlay';
 import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
@@ -25,12 +26,12 @@ export default function WorkspaceAPage() {
       ? '/login'
       : !loading && runtime?.assignedRole === 'B'
         ? '/workspace/b'
-        : !loading && runtime?.phase === 'practice_ready'
-          ? runtime.syncState?.selfReady
-            ? '/ready?target=practice'
-            : null
-          : !loading && runtime?.phase === 'practice'
-            ? '/practice'
+        : !loading && runtime?.phase === 'practice_quiz'
+          ? '/practice-quiz'
+          : !loading && runtime?.phase === 'practice_ready'
+            ? runtime.syncState?.selfReady
+              ? '/ready?target=practice'
+              : null
             : !loading && runtime?.phase === 'formal_ready'
               ? runtime.syncState?.selfReady
                 ? '/ready?target=formal'
@@ -83,7 +84,7 @@ export default function WorkspaceAPage() {
         <div className="min-h-0 flex-1 p-2">
           {!company || !runtime?.currentTask ? (
             <div className="flex h-full items-center justify-center rounded-xl border border-[#e5e6eb] bg-white text-sm text-[#86909c] shadow-sm">
-              当前工作段没有可处理的项目。
+              当前工作阶段没有可处理的项目。
             </div>
           ) : (
             <WorkbenchLayout
@@ -94,9 +95,9 @@ export default function WorkspaceAPage() {
               taskPane={
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between border-b border-[#e5e6eb] px-5 py-3 text-xs text-[#86909c]">
-                    <span>5分钟后系统自动提交，无需手动操作。</span>
+                    <span>单家公司 5 分钟到点后系统会自动提交，无需手动操作。</span>
                     <span className="rounded-full bg-[#e8f3ff] px-3 py-1 text-xs font-semibold text-[#1e80ff]">
-                      自动提交，无需手动操作
+                      自动提交
                     </span>
                   </div>
                   <ScopedZoomSurface className="min-h-0 flex-1 overflow-y-auto" contentClassName="min-h-full">
@@ -106,7 +107,7 @@ export default function WorkspaceAPage() {
                         taskId={runtime.currentTask.id}
                         initialData={taskDraft}
                         company={company}
-                        disabled={runtime.isFrozen}
+                        disabled={runtime.isFrozen || (runtime.phase === 'practice' && Boolean(runtime.currentTask.aSubmittedAt))}
                       />
                     ) : null}
                   </ScopedZoomSurface>
@@ -138,8 +139,15 @@ export default function WorkspaceAPage() {
           )}
         </div>
       </div>
-      {bootstrap ? (
-        <AFeedbackNotification sessionCode={bootstrap.sessionCode} participantId={bootstrap.participantId} />
+      {bootstrap ? <AFeedbackNotification sessionCode={bootstrap.sessionCode} participantId={bootstrap.participantId} /> : null}
+      {bootstrap && runtime?.phase === 'practice' && !runtime.practiceTutorialState?.completed ? (
+        <PracticeTutorialOverlay
+          sessionCode={bootstrap.sessionCode}
+          participantId={bootstrap.participantId}
+          role="A"
+          aiLevel={runtime.aiLevel}
+          completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
+        />
       ) : null}
     </main>
   );

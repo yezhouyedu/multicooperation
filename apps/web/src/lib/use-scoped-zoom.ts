@@ -26,10 +26,19 @@ export function useScopedZoom(options: Options = {}) {
   const [isActive, setIsActive] = useState(false);
   const pointerInsideRef = useRef(false);
   const activeRef = useRef(false);
+  const hasMountedZoomRef = useRef(false);
 
   useEffect(() => {
     activeRef.current = isActive;
   }, [isActive]);
+
+  useEffect(() => {
+    if (!hasMountedZoomRef.current) {
+      hasMountedZoomRef.current = true;
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'material_zoom', zoom } }));
+  }, [zoom]);
 
   useEffect(() => {
     const scope = scopeRef.current;

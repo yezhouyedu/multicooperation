@@ -21,6 +21,7 @@ enum SessionStatus {
 
 enum RuntimePhase {
   INSTRUCTION
+  PRACTICE_QUIZ
   PRACTICE_READY
   PRACTICE
   FORMAL_READY
@@ -121,6 +122,7 @@ model Company {
   name        String
   roundLabel  String
   sector      String
+  usage       String         @default("formal")
   tags        Json
   summary     String
   materials   Json
@@ -166,12 +168,15 @@ model TaskAssignment {
 
 model ExperimentConfig {
   id                           String                @id @default("default")
+  practiceDurationMinutes      Int                   @default(10)
   workDurationMinutes          Int                   @default(20)
   breakDurationMinutes         Int                   @default(5)
   segmentOneAiLevel            AiLevel               @default(BASIC)
   segmentTwoAiLevel            AiLevel               @default(BASIC)
   segmentThreeAiLevel          AiLevel               @default(ADVANCED)
   activeQuestionnaireTemplateId String?
+  practiceQuizTemplateId       String?
+  practiceQuizPassCount        Int                   @default(0)
   sideTaskContinuousIntervalSec Int                  @default(45)
   sideTaskContinuousJitterSec   Int                  @default(15)
   sideTaskScrollDurationSec     Int                  @default(12)
@@ -184,6 +189,7 @@ model ExperimentConfig {
   createdAt                    DateTime              @default(now())
   updatedAt                    DateTime              @updatedAt
   activeQuestionnaireTemplate  QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
+  practiceQuizTemplate         QuestionnaireTemplate? @relation("PracticeQuizTemplate", fields: [practiceQuizTemplateId], references: [id])
 }
 
 model SessionSegmentState {
@@ -234,6 +240,7 @@ model QuestionnaireTemplate {
   updatedAt   DateTime               @updatedAt
   responses   QuestionnaireResponse[]
   configs     ExperimentConfig[]
+  practiceConfigs ExperimentConfig[] @relation("PracticeQuizTemplate")
 }
 
 model QuestionnaireResponse {

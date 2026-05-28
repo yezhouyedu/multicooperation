@@ -113,6 +113,7 @@ export type RuntimeState = {
   questionnaireTemplate: QuestionnaireTemplate | null;
   practiceQuizTemplate: QuestionnaireTemplate | null;
   practiceQuizPassCount: number;
+  practiceQuizPassed: boolean;
   practiceTutorialState: {
     steps: string[];
     completedSteps: string[];

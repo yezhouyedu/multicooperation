@@ -59,10 +59,35 @@ type RuntimeSession = Session & {
     participantB: Participant | null;
   })[];
   tasks: TaskAssignment[];
-  questionnaireAnswers: { participantId: string; segmentIndex: number }[];
+  questionnaireAnswers: {
+    participantId: string;
+    segmentIndex: number;
+    phase: ExperimentPhase;
+    answers: Prisma.JsonValue;
+  }[];
+};
+
+type RuntimeConfig = ExperimentConfig & {
+  activeQuestionnaireTemplate: QuestionnaireTemplate | null;
+  practiceQuizTemplate: QuestionnaireTemplate | null;
 };
 
 type BarrierTarget = 'practice' | 'formal';
+
+const PRACTICE_TUTORIAL_STEPS = [
+  'material_tab',
+  'material_fullscreen',
+  'material_zoom',
+  'task_input',
+  'task_fullscreen',
+  'ai_message',
+  'ai_fullscreen',
+  'layout_resize',
+  'ai_screenshot',
+  'sidetask_open',
+  'sidetask_answer',
+  'sidetask_ai',
+] as const;
 
 @Injectable()
 export class ExperimentService {
@@ -145,6 +170,97 @@ export class ExperimentService {
     return { ok: true };
   }
 
+  async getPracticeQuiz(sessionCode: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const template = synced.config.practiceQuizTemplate ?? synced.config.activeQuestionnaireTemplate;
+    const items = this.normalizeQuestionnaireItems(template?.items);
+
+    if (
+      session.runtimePhase === RuntimePhase.INSTRUCTION &&
+      template
+    ) {
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { runtimePhase: RuntimePhase.PRACTICE_QUIZ },
+      });
+      this.emitRuntimeInvalidated(sessionCode);
+    }
+
+    return {
+      ok: true,
+      questionnaire: template
+        ? {
+            id: template.id,
+            title: template.title,
+            items,
+          }
+        : null,
+      passCount: this.resolvePracticeQuizPassCount(synced.config.practiceQuizPassCount, items.length),
+    };
+  }
+
+  async submitPracticeQuiz(sessionCode: string, participantId: string, answers: Prisma.InputJsonValue) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    const participant = await this.prisma.participant.findUnique({ where: { id: participantId } });
+    if (!participant) throw new NotFoundException('Participant not found');
+
+    const template = synced.config.practiceQuizTemplate ?? synced.config.activeQuestionnaireTemplate;
+    if (!template) {
+      throw new BadRequestException('Practice quiz template is not configured');
+    }
+
+    const items = this.normalizeQuestionnaireItems(template.items);
+    const rawAnswerMap = answers && typeof answers === 'object' ? (answers as Record<string, unknown>) : {};
+    const selectedAnswers = Object.fromEntries(
+      items.map((item) => [item.id, typeof rawAnswerMap[item.id] === 'string' ? String(rawAnswerMap[item.id]) : '']),
+    ) as Prisma.InputJsonObject;
+    const correctCount = items.reduce((count, item) => {
+      if (!item.correctOption) return count;
+      return selectedAnswers[item.id] === item.correctOption ? count + 1 : count;
+    }, 0);
+    const passCount = this.resolvePracticeQuizPassCount(synced.config.practiceQuizPassCount, items.length);
+    const passed = correctCount >= passCount;
+    const payload: Prisma.InputJsonObject = {
+      selectedAnswers,
+      correctCount,
+      passCount,
+      passed,
+    };
+
+    await this.prisma.questionnaireResponse.create({
+      data: {
+        sessionId: session.id,
+        participantId,
+        templateId: template.id,
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        answers: payload,
+      },
+    });
+
+    await this.prisma.taskProgress.createMany({
+      data: [
+        {
+          sessionId: session.id,
+          participantId,
+          stage: 'practice_quiz_submitted',
+          payload,
+        },
+        {
+          sessionId: session.id,
+          participantId,
+          stage: passed ? 'practice_quiz_passed' : 'practice_quiz_failed',
+          payload,
+        },
+      ],
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true, correctCount, passCount, passed };
+  }
+
   async readyPractice(sessionCode: string, participantId: string) {
     const result = await this.markBarrierReady(sessionCode, participantId, 'practice');
     this.emitRuntimeInvalidated(sessionCode);
@@ -215,8 +331,9 @@ export class ExperimentService {
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
 
     let roleTask: TaskAssignment | undefined;
-    if (assignedRole === ParticipantRole.B) {
-      // 池分配模式：B 的当前公司 = bSequenceIndex 最大且 bCompletedAt 为 null
+    if (session.runtimePhase === RuntimePhase.PRACTICE) {
+      roleTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
+    } else if (assignedRole === ParticipantRole.B) {
       roleTask = session.tasks
         .filter((t) => t.phase === ExperimentPhase.FORMAL && t.bSequenceIndex !== null && !t.bCompletedAt)
         .sort((a, b) => (b.bSequenceIndex ?? 0) - (a.bSequenceIndex ?? 0))[0];
@@ -232,6 +349,31 @@ export class ExperimentService {
         ? await this.prisma.company.findUnique({ where: { id: 'company-p01-baseline' } })
         : null;
     const syncState = await this.getSyncState(session, assignedRole);
+    const practiceQuizItems = this.normalizeQuestionnaireItems(
+      config.practiceQuizTemplate?.items ?? config.activeQuestionnaireTemplate?.items,
+    );
+    const practiceQuizPassed = participantId
+      ? session.questionnaireAnswers.some(
+          (answer) =>
+            answer.participantId === participantId &&
+            answer.phase === ExperimentPhase.PRACTICE &&
+            answer.segmentIndex === 0 &&
+            Boolean((answer.answers as Record<string, unknown> | null)?.passed),
+        )
+      : false;
+    const practiceTutorialState = participantId
+      ? await this.getPracticeTutorialState(session.id, participantId)
+      : null;
+    const isPracticePhase = session.runtimePhase === RuntimePhase.PRACTICE;
+    const currentTaskPhase = isPracticePhase ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
+    const questionnaireSubmitted = participantId
+      ? session.questionnaireAnswers.some(
+          (answer) =>
+            answer.participantId === participantId &&
+            answer.phase === ExperimentPhase.FORMAL &&
+            answer.segmentIndex === session.currentSegmentIndex,
+        )
+      : false;
 
     return {
       ok: true,
@@ -256,17 +398,11 @@ export class ExperimentService {
         assignedRole === ParticipantRole.A && roleTask ? this.getRemainingSeconds(roleTask.aDeadlineAt) : null,
       aInfoUnlocked: Boolean(roleTask?.aUnlockedForBAt),
       bHasViewedAInfo: Boolean(roleTask?.bViewedAInfoAt),
-      bCanSubmit: Boolean(roleTask?.aUnlockedForBAt),
+      bCanSubmit: Boolean(roleTask?.aUnlockedForBAt) && !roleTask?.bCompletedAt,
       isIdle: !roleTask,
       isFrozen: Boolean(roleTask?.frozenAt),
       isPreA: assignedRole === ParticipantRole.B && Boolean(roleTask && !roleTask.aSubmittedAt),
-      questionnaireSubmitted: participantId
-        ? session.questionnaireAnswers.some(
-            (answer) =>
-              answer.participantId === participantId &&
-              answer.segmentIndex === session.currentSegmentIndex,
-          )
-        : false,
+      questionnaireSubmitted,
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex),
       ...(await this.getSideTaskRuntime(session.id, session.currentSegmentIndex, config, participantId)),
       syncState,
@@ -278,6 +414,17 @@ export class ExperimentService {
               items: config.activeQuestionnaireTemplate.items,
             }
           : null,
+      practiceQuizTemplate:
+        (!practiceQuizPassed || this.mapRuntimePhase(session.runtimePhase) === 'practice_quiz') && config.practiceQuizTemplate
+          ? {
+              id: config.practiceQuizTemplate.id,
+              title: config.practiceQuizTemplate.title,
+              items: practiceQuizItems.map(({ id, prompt, options }) => ({ id, prompt, options })),
+            }
+          : null,
+      practiceQuizPassCount: this.resolvePracticeQuizPassCount(config.practiceQuizPassCount, practiceQuizItems.length),
+      practiceQuizPassed,
+      practiceTutorialState: isPracticePhase || session.runtimePhase === RuntimePhase.FORMAL_READY ? practiceTutorialState : null,
     };
   }
 
@@ -728,7 +875,7 @@ export class ExperimentService {
     await this.recordProgress({
       sessionCode,
       role: ParticipantRole.A,
-      stage: 'a_task_submitted',
+      stage: task.phase === ExperimentPhase.PRACTICE ? 'practice_a_task_submitted' : 'a_task_submitted',
       payload: { taskId, sortOrder: task.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -764,16 +911,18 @@ export class ExperimentService {
           data: {
             sessionId: session.id,
             participantId: participantB.id,
-            stage: 'b_task_completed',
+            stage: task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed',
             payload: { taskId, sortOrder: task.sortOrder },
           },
         });
       }
 
-      const remaining = await tx.taskAssignment.count({
-        where: { sessionId: session.id, phase: ExperimentPhase.FORMAL, bCompletedAt: null },
-      });
-      const allDone = remaining === 0;
+      const remaining = task.phase === ExperimentPhase.FORMAL
+        ? await tx.taskAssignment.count({
+            where: { sessionId: session.id, phase: ExperimentPhase.FORMAL, bCompletedAt: null },
+          })
+        : 1;
+      const allDone = task.phase === ExperimentPhase.FORMAL && remaining === 0;
 
       if (allDone) {
         await tx.session.update({
@@ -786,7 +935,7 @@ export class ExperimentService {
     });
 
     this.emitSessionEvent(sessionCode, {
-      type: 'b_task_completed',
+      type: task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed',
       data: { taskId, sortOrder: task.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -821,10 +970,54 @@ export class ExperimentService {
 
       const expectedPhase: RuntimePhase[] =
         target === 'practice'
-          ? [RuntimePhase.INSTRUCTION, RuntimePhase.PRACTICE_READY]
+          ? [RuntimePhase.PRACTICE_QUIZ, RuntimePhase.PRACTICE_READY]
           : [RuntimePhase.PRACTICE, RuntimePhase.FORMAL_READY];
       if (!expectedPhase.includes(session.runtimePhase)) {
         throw new BadRequestException('Current session phase does not support this readiness action');
+      }
+
+      if (target === 'formal') {
+        const passedQuiz = await tx.questionnaireResponse.findFirst({
+          where: {
+            sessionId: session.id,
+            participantId,
+            phase: ExperimentPhase.PRACTICE,
+            segmentIndex: 0,
+          },
+          orderBy: { submittedAt: 'desc' },
+        });
+        if (!passedQuiz || !Boolean((passedQuiz.answers as Record<string, unknown> | null)?.passed)) {
+          throw new BadRequestException('尚未通过测试题');
+        }
+
+        const tutorialCompleted = await tx.taskProgress.findFirst({
+          where: {
+            sessionId: session.id,
+            participantId,
+            stage: 'practice_tutorial_completed',
+          },
+        });
+        if (!tutorialCompleted) {
+          throw new BadRequestException('尚未完成测试轮教学引导');
+        }
+
+        const practiceTask = await tx.taskAssignment.findFirst({
+          where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE },
+        });
+        if (!practiceTask) {
+          throw new BadRequestException('测试轮任务不存在');
+        }
+
+        const now = new Date();
+        const segmentTimedOut = Boolean(session.currentSegmentEnds && session.currentSegmentEnds <= now);
+        const isParticipantA = participantId === pairing.participantAId;
+        if (isParticipantA) {
+          if (!practiceTask.aUnlockedForBAt && !segmentTimedOut) {
+            throw new BadRequestException('尽调员测试轮尚未结束');
+          }
+        } else if (!practiceTask.bCompletedAt && !segmentTimedOut) {
+          throw new BadRequestException('投资经理测试轮尚未结束');
+        }
       }
 
       const existing = await tx.taskProgress.findFirst({
@@ -886,7 +1079,7 @@ export class ExperimentService {
         where: { code: sessionCode },
         include: {
           pairings: { include: { participantA: true, participantB: true } },
-          tasks: { where: { phase: ExperimentPhase.FORMAL }, orderBy: { sortOrder: 'asc' } },
+          tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
           questionnaireAnswers: true,
         },
       });
@@ -913,6 +1106,13 @@ export class ExperimentService {
         }
         await this.advanceAfterWork(tx, session, config, now);
         return;
+      }
+
+      if (session.runtimePhase === RuntimePhase.PRACTICE) {
+        const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
+        if (practiceTask && (!practiceTask.aStartedAt || practiceTask.frozenAt)) {
+          await this.activateCurrentATask(tx, practiceTask, session.currentSegmentEnds, now);
+        }
       }
 
       if (session.runtimePhase === RuntimePhase.FORMAL_BREAK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
@@ -945,7 +1145,7 @@ export class ExperimentService {
       where: { code: sessionCode },
       include: {
         pairings: { include: { participantA: true, participantB: true } },
-        tasks: { orderBy: { sortOrder: 'asc' } },
+        tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
         questionnaireAnswers: true,
       },
     });
@@ -957,7 +1157,7 @@ export class ExperimentService {
       where: { code: sessionCode },
       include: {
         pairings: { include: { participantA: true, participantB: true } },
-        tasks: { orderBy: { sortOrder: 'asc' } },
+        tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
         questionnaireAnswers: true,
       },
     });
@@ -968,14 +1168,18 @@ export class ExperimentService {
       config,
     } as {
       session: RuntimeSession;
-      config: ExperimentConfig & { activeQuestionnaireTemplate: QuestionnaireTemplate | null };
+      config: RuntimeConfig;
     };
   }
 
   private async autoUnlockATask(sessionCode: string, session: RuntimeSession) {
-    if (session.runtimePhase !== RuntimePhase.FORMAL_WORK) return;
+    const isPractice = session.runtimePhase === RuntimePhase.PRACTICE;
+    const isFormal = session.runtimePhase === RuntimePhase.FORMAL_WORK;
+    if (!isPractice && !isFormal) return;
 
-    const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
+    const currentATask = isPractice
+      ? session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE)
+      : session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
     if (!currentATask?.aDeadlineAt || currentATask.aUnlockedForBAt) return;
     if (currentATask.aDeadlineAt > new Date()) return;
 
@@ -998,7 +1202,7 @@ export class ExperimentService {
           data: {
             sessionId: session.id,
             participantId: pairing.participantAId,
-            stage: 'a_task_auto_submitted',
+            stage: isPractice ? 'practice_a_task_auto_submitted' : 'a_task_auto_submitted',
             payload: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
           },
         });
@@ -1027,7 +1231,7 @@ export class ExperimentService {
     });
 
     this.emitSessionEvent(sessionCode, {
-      type: 'a_task_auto_submitted',
+      type: isPractice ? 'practice_a_task_auto_submitted' : 'a_task_auto_submitted',
       data: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -1218,6 +1422,8 @@ export class ExperimentService {
     switch (phase) {
       case RuntimePhase.INSTRUCTION:
         return 'instruction';
+      case RuntimePhase.PRACTICE_QUIZ:
+        return 'practice_quiz';
       case RuntimePhase.PRACTICE_READY:
         return 'practice_ready';
       case RuntimePhase.PRACTICE:
@@ -1272,7 +1478,7 @@ export class ExperimentService {
     config: ExperimentConfig,
     now: Date,
   ) {
-    const endsAt = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    const endsAt = new Date(now.getTime() + config.practiceDurationMinutes * 60 * 1000);
     await tx.session.update({
       where: { id: sessionId },
       data: {
@@ -1289,6 +1495,13 @@ export class ExperimentService {
       where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
       data: { startedAt: now, endsAt },
     });
+
+    const practiceTask = await tx.taskAssignment.findFirst({
+      where: { sessionId, phase: ExperimentPhase.PRACTICE },
+    });
+    if (practiceTask) {
+      await this.activateCurrentATask(tx, practiceTask, endsAt, now);
+    }
   }
 
   private async startFormalWorkSegmentTx(
@@ -1749,6 +1962,7 @@ export class ExperimentService {
       name: String(company.name ?? ''),
       roundLabel: String(company.roundLabel ?? ''),
       sector: String(company.sector ?? ''),
+      usage: String(company.usage ?? 'formal'),
       tags: Array.isArray(company.tags) ? company.tags : [],
       summary: String(company.summary ?? ''),
       materials,
@@ -1809,10 +2023,56 @@ export class ExperimentService {
     });
   }
 
-  private async ensureConfig() {
+  private normalizeQuestionnaireItems(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item, index) => {
+        const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+        const options = Array.isArray(row.options) ? row.options.map((option) => String(option)).filter(Boolean) : [];
+        return {
+          id: String(row.id ?? `q${index + 1}`),
+          prompt: String(row.prompt ?? ''),
+          options,
+          correctOption: row.correctOption ? String(row.correctOption) : '',
+        };
+      })
+      .filter((item) => item.prompt && item.options.length >= 2);
+  }
+
+  private resolvePracticeQuizPassCount(configuredPassCount: number, totalItems: number) {
+    if (totalItems <= 0) return 0;
+    if (!configuredPassCount || configuredPassCount < 1) return totalItems;
+    return Math.min(configuredPassCount, totalItems);
+  }
+
+  private async getPracticeTutorialState(sessionId: string, participantId: string) {
+    const progressRows = await this.prisma.taskProgress.findMany({
+      where: {
+        sessionId,
+        participantId,
+        stage: { in: ['practice_tutorial_step_completed', 'practice_tutorial_completed'] },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const completedSteps = progressRows
+      .filter((row) => row.stage === 'practice_tutorial_step_completed')
+      .map((row) => {
+        const payload = row.payload && typeof row.payload === 'object' ? (row.payload as Record<string, unknown>) : {};
+        return typeof payload.stepKey === 'string' ? payload.stepKey : null;
+      })
+      .filter((step): step is string => Boolean(step));
+
+    return {
+      steps: [...PRACTICE_TUTORIAL_STEPS],
+      completedSteps: Array.from(new Set(completedSteps)),
+      completed: progressRows.some((row) => row.stage === 'practice_tutorial_completed'),
+    };
+  }
+
+  private async ensureConfig(): Promise<RuntimeConfig> {
     let config = await this.prisma.experimentConfig.findUnique({
       where: { id: 'default' },
-      include: { activeQuestionnaireTemplate: true },
+      include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
     });
 
     if (!config) {
@@ -1832,18 +2092,67 @@ export class ExperimentService {
           isActive: true,
         },
       });
+      const practiceTemplate = await this.prisma.questionnaireTemplate.upsert({
+        where: { id: 'default-practice-quiz' },
+        update: { isActive: true },
+        create: {
+          id: 'default-practice-quiz',
+          title: '测试轮开始前测试题',
+          items: [
+            {
+              id: 'pq1',
+              prompt: '尽调员完成单家公司 5 分钟时，系统会如何处理？',
+              options: ['自动提交并解锁给投资经理', '继续无限作答直到手动提交'],
+              correctOption: '自动提交并解锁给投资经理',
+            },
+            {
+              id: 'pq2',
+              prompt: '投资经理在尽调员信息解锁前，是否可以先看自己的材料并写草稿？',
+              options: ['可以', '不可以'],
+              correctOption: '可以',
+            },
+          ] as Prisma.InputJsonValue,
+          isActive: true,
+        },
+      });
 
       config = await this.prisma.experimentConfig.create({
         data: {
           id: 'default',
+          practiceDurationMinutes: 10,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
           segmentOneAiLevel: AiLevel.BASIC,
           segmentTwoAiLevel: AiLevel.ADVANCED,
           segmentThreeAiLevel: AiLevel.ADVANCED,
           activeQuestionnaireTemplateId: template.id,
+          practiceQuizTemplateId: practiceTemplate.id,
+          practiceQuizPassCount: 0,
         },
-        include: { activeQuestionnaireTemplate: true },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
+      });
+    } else if (!config.practiceQuizTemplateId) {
+      const practiceTemplate = await this.prisma.questionnaireTemplate.upsert({
+        where: { id: 'default-practice-quiz' },
+        update: { isActive: true },
+        create: {
+          id: 'default-practice-quiz',
+          title: '测试轮开始前测试题',
+          items: [
+            {
+              id: 'pq1',
+              prompt: '尽调员完成单家公司 5 分钟时，系统会如何处理？',
+              options: ['自动提交并解锁给投资经理', '继续无限作答直到手动提交'],
+              correctOption: '自动提交并解锁给投资经理',
+            },
+          ] as Prisma.InputJsonValue,
+          isActive: true,
+        },
+      });
+      config = await this.prisma.experimentConfig.update({
+        where: { id: config.id },
+        data: { practiceQuizTemplateId: practiceTemplate.id },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
       });
     }
 

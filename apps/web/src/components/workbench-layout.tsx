@@ -63,6 +63,7 @@ export function WorkbenchLayout({
       document.removeEventListener('mouseup', onUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'layout_resize' } }));
     }
 
     document.body.style.cursor = 'col-resize';
@@ -91,6 +92,7 @@ export function WorkbenchLayout({
       document.removeEventListener('mouseup', onUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'layout_resize' } }));
     }
 
     document.body.style.cursor = 'row-resize';
@@ -100,7 +102,13 @@ export function WorkbenchLayout({
   }
 
   function toggle(target: LayoutMode) {
-    setMode((prev) => (prev === target ? 'split' : target));
+    setMode((prev) => {
+      const next = prev === target ? 'split' : target;
+      const eventType =
+        target === 'sidebar' ? 'material_fullscreen' : target === 'task' ? 'task_fullscreen' : 'ai_fullscreen';
+      window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: eventType, mode: next } }));
+      return next;
+    });
   }
 
   function fullscreenButton(target: LayoutMode, label = '全屏') {
@@ -134,6 +142,7 @@ export function WorkbenchLayout({
       <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-hidden">
         <section
           ref={leftPanelRef}
+          data-tutorial-anchor="material-panel"
           style={{
             width: mode === 'sidebar' ? '100%' : '42%',
             display: showSidebar ? undefined : 'none',
@@ -178,6 +187,7 @@ export function WorkbenchLayout({
         >
           <section
             ref={taskPanelRef}
+            data-tutorial-anchor="task-panel"
             style={{
               height: isSplit ? '50%' : undefined,
               display: showTask ? undefined : 'none',
@@ -214,6 +224,7 @@ export function WorkbenchLayout({
           ) : null}
 
           <section
+            data-tutorial-anchor="ai-panel"
             style={{
               display: showAi ? undefined : 'none',
               boxShadow: 'var(--shadow-card)',

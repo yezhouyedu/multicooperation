@@ -1,7 +1,6 @@
 # multi cooperation
 
-这是 `E:\Own_program\multi cooperation` 的主工作区。  
-它现在已经不只是“实验原型”，而是一个包含：
+这是 `E:\Own_program\multi cooperation` 的主工作区。它现在已经不只是“实验原型”，而是一个包含：
 
 - 实验规则与规格
 - 前后端代码
@@ -12,16 +11,18 @@
 
 的完整实验平台仓库。
 
+编者注：个人认为最重要的文件是"E:\Own_program\multi cooperation\02_specs\00_overview\APP_FLOW.md"与"E:\Own_program\multi cooperation\03_tracking\progress.md"
+
 ---
 
 ## 1. 先看哪里
 
 每次继续开发，建议先看：
 
-1. [01_rules/PROJECT_RULES.md](</E:/Own_program/multi cooperation/01_rules/PROJECT_RULES.md>)
-2. [01_rules/CLAUDE.md](</E:/Own_program/multi cooperation/01_rules/CLAUDE.md>)
-3. [03_tracking/progress.md](</E:/Own_program/multi cooperation/03_tracking/progress.md>)
-4. [02_specs/00_overview/APP_FLOW.md](</E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md>)
+1. [01_rules/PROJECT_RULES.md](/E:/Own_program/multi cooperation/01_rules/PROJECT_RULES.md)
+2. [01_rules/CLAUDE.md](/E:/Own_program/multi cooperation/01_rules/CLAUDE.md)
+3. [03_tracking/progress.md](/E:/Own_program/multi cooperation/03_tracking/progress.md)
+4. [02_specs/00_overview/APP_FLOW.md](/E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md)
 5. 当前模块对应的 `02_specs/*`
 
 一句话：
@@ -33,6 +34,7 @@
 ## 2. 根目录地图
 
 ### `00_start_materials/`
+
 原始输入材料区。
 
 这里有三类东西：
@@ -43,50 +45,59 @@
 
 当前最关键的是：
 
-- [原始材料/A端尽调表_参与者可见版v2.docx](</E:/Own_program/multi cooperation/00_start_materials/原始材料/A端尽调表_参与者可见版v2.docx>)
-- [原始材料/B端投资判断表_参与者可见版.docx](</E:/Own_program/multi cooperation/00_start_materials/原始材料/B端投资判断表_参与者可见版.docx>)
+- [原始材料/A端尽调表_参与者可见版v2.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/A端尽调表_参与者可见版v2.docx)
+- [原始材料/B端投资判断表_参与者可见版.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/B端投资判断表_参与者可见版.docx)
 - `原始材料/P01/*`
 
 ### `01_rules/`
+
 协作规则区。
 
 ### `02_specs/`
+
 规格区。
 
 推荐重点：
 
-- [00_overview/APP_FLOW.md](</E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md>)
-- [00_overview/PRD.md](</E:/Own_program/multi cooperation/02_specs/00_overview/PRD.md>)
-- [01_frontend/WORKBENCH_REFINEMENT_MASTER.md](</E:/Own_program/multi cooperation/02_specs/01_frontend/WORKBENCH_REFINEMENT_MASTER.md>)
-- [02_backend/admin材料库上传手册.md](</E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md>)
-- [02_backend/SIDETASK_REBUILD_SPEC.md](</E:/Own_program/multi cooperation/02_specs/02_backend/SIDETASK_REBUILD_SPEC.md>)
-- [02_backend/VARIABLE_PERSISTENCE_SPEC.md](</E:/Own_program/multi cooperation/02_specs/02_backend/VARIABLE_PERSISTENCE_SPEC.md>)
-- [04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](</E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md>)
+- [00_overview/APP_FLOW.md](/E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md)
+- [00_overview/PRD.md](/E:/Own_program/multi cooperation/02_specs/00_overview/PRD.md)
+- [01_frontend/WORKBENCH_REFINEMENT_MASTER.md](/E:/Own_program/multi cooperation/02_specs/01_frontend/WORKBENCH_REFINEMENT_MASTER.md)
+- [02_backend/admin材料库上传手册.md](/E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md)
+- [02_backend/SIDETASK_REBUILD_SPEC.md](/E:/Own_program/multi cooperation/02_specs/02_backend/SIDETASK_REBUILD_SPEC.md)
+- [02_backend/VARIABLE_PERSISTENCE_SPEC.md](/E:/Own_program/multi cooperation/02_specs/02_backend/VARIABLE_PERSISTENCE_SPEC.md)
+- [04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md)
 
 ### `03_tracking/`
+
 过程跟踪区。
 
 核心文件：
 
-- [progress.md](</E:/Own_program/multi cooperation/03_tracking/progress.md>)
-- [lessons.md](</E:/Own_program/multi cooperation/03_tracking/lessons.md>)
+- [progress.md](/E:/Own_program/multi cooperation/03_tracking/progress.md)
+- [lessons.md](/E:/Own_program/multi cooperation/03_tracking/lessons.md)
 
 ### `04_archive/`
+
 旧方案归档区。
 
 ### `apps/`
+
 真正运行中的前后端代码。
 
 ### `infra/`
+
 本地基础设施与数据库环境。
 
 ### `packages/`
+
 预留共享包区，目前基本未承载核心逻辑。
 
 ### `scripts/`
+
 项目脚本区。
 
 ### `storage/`
+
 运行态本地存储区。
 
 当前主要存：
@@ -116,19 +127,19 @@
 
 前端主要文件：
 
-- [apps/web/src/app/login/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/login/page.tsx>)
-- [apps/web/src/app/waiting-room/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/waiting-room/page.tsx>)
-- [apps/web/src/app/instruction/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/instruction/page.tsx>)
-- [apps/web/src/app/practice/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/practice/page.tsx>)
-- [apps/web/src/app/break/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/break/page.tsx>)
-- [apps/web/src/app/workspace/a/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/workspace/a/page.tsx>)
-- [apps/web/src/app/workspace/b/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/workspace/b/page.tsx>)
-- [apps/web/src/app/workspace/b-feedback/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-feedback/page.tsx>)
+- [apps/web/src/app/login/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/login/page.tsx)
+- [apps/web/src/app/waiting-room/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/waiting-room/page.tsx)
+- [apps/web/src/app/instruction/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/instruction/page.tsx)
+- [apps/web/src/app/practice/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/practice/page.tsx)
+- [apps/web/src/app/break/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/break/page.tsx)
+- [apps/web/src/app/workspace/a/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/a/page.tsx)
+- [apps/web/src/app/workspace/b/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b/page.tsx)
+- [apps/web/src/app/workspace/b-feedback/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-feedback/page.tsx)
 
 后端主要文件：
 
-- [apps/server/src/experiment/experiment.controller.ts](</E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.controller.ts>)
-- [apps/server/src/experiment/experiment.service.ts](</E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts>)
+- [apps/server/src/experiment/experiment.controller.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.controller.ts)
+- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
 
 ---
 
@@ -146,8 +157,8 @@
 
 核心文件：
 
-- [apps/web/src/lib/session-runtime.ts](</E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts>)
-- [apps/server/src/experiment/experiment.service.ts](</E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts>)
+- [apps/web/src/lib/session-runtime.ts](/E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts)
+- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
 
 这是整个系统的“主时钟”。
 
@@ -163,12 +174,12 @@
 
 关键文件：
 
-- [apps/web/src/components/company-material-panel.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx>)
-- [apps/web/src/components/a-task-editor.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/a-task-editor.tsx>)
-- [apps/web/src/components/b-task-editor.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/b-task-editor.tsx>)
-- [apps/web/src/components/b-feedback-form.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/b-feedback-form.tsx>)
-- [apps/web/src/components/ai-chat-panel.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/ai-chat-panel.tsx>)
-- [apps/web/src/components/session-topbar.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/session-topbar.tsx>)
+- [apps/web/src/components/company-material-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx)
+- [apps/web/src/components/a-task-editor.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/a-task-editor.tsx)
+- [apps/web/src/components/b-task-editor.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/b-task-editor.tsx)
+- [apps/web/src/components/b-feedback-form.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/b-feedback-form.tsx)
+- [apps/web/src/components/ai-chat-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/ai-chat-panel.tsx)
+- [apps/web/src/components/session-topbar.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/session-topbar.tsx)
 
 当前状态：
 
@@ -190,12 +201,12 @@
 
 后端核心：
 
-- [apps/server/prisma/schema.prisma](</E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma>)
-- [apps/server/src/experiment/experiment.service.ts](</E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts>)
+- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
+- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
 
 前端配合：
 
-- [apps/web/src/lib/session-runtime.ts](</E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts>)
+- [apps/web/src/lib/session-runtime.ts](/E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts)
 
 其中最关键的数据对象有：
 
@@ -220,12 +231,12 @@
 
 前端入口：
 
-- [apps/web/src/app/admin/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx>)
+- [apps/web/src/app/admin/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx)
 
 后端入口：
 
-- [apps/server/src/admin/admin.controller.ts](</E:/Own_program/multi cooperation/apps/server/src/admin/admin.controller.ts>)
-- [apps/server/src/admin/admin.service.ts](</E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts>)
+- [apps/server/src/admin/admin.controller.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.controller.ts)
+- [apps/server/src/admin/admin.service.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts)
 
 ---
 
@@ -243,10 +254,10 @@
 
 核心文件：
 
-- [apps/server/src/admin/materials.ts](</E:/Own_program/multi cooperation/apps/server/src/admin/materials.ts>)
-- [apps/server/src/admin/admin.service.ts](</E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts>)
-- [apps/web/src/app/admin/page.tsx](</E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx>)
-- [apps/web/src/components/company-material-panel.tsx](</E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx>)
+- [apps/server/src/admin/materials.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/materials.ts)
+- [apps/server/src/admin/admin.service.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts)
+- [apps/web/src/app/admin/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx)
+- [apps/web/src/components/company-material-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx)
 
 当前实现要点：
 
@@ -279,8 +290,8 @@
 
 核心文件：
 
-- [apps/server/src/ai/ai.service.ts](</E:/Own_program/multi cooperation/apps/server/src/ai/ai.service.ts>)
-- [apps/server/prisma/schema.prisma](</E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma>)
+- [apps/server/src/ai/ai.service.ts](/E:/Own_program/multi cooperation/apps/server/src/ai/ai.service.ts)
+- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
 
 当前隔离维度：
 
@@ -305,8 +316,8 @@
 
 如果你只是想快速导入案例材料，优先看：
 
-- [02_specs/02_backend/admin材料库上传手册.md](</E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md>)
-- [02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](</E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md>)
+- [02_specs/02_backend/admin材料库上传手册.md](/E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md)
+- [02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md)
 
 一句话版本：
 
@@ -320,7 +331,7 @@
 
 ## 5. 数据库里最关键的模型
 
-在 [apps/server/prisma/schema.prisma](</E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma>) 中，最重要的是：
+在 [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma) 中，最重要的是：
 
 - `Participant`
 - `Session`
@@ -380,9 +391,9 @@ corepack pnpm --filter server build
 
 也可以直接用：
 
-- [启动本地开发环境.bat](</E:/Own_program/multi cooperation/启动本地开发环境.bat>)
-- [停止本地开发环境.bat](</E:/Own_program/multi cooperation/停止本地开发环境.bat>)
-- [重启本地开发环境.bat](</E:/Own_program/multi cooperation/重启本地开发环境.bat>)
+- [启动本地开发环境.bat](/E:/Own_program/multi cooperation/启动本地开发环境.bat)
+- [停止本地开发环境.bat](/E:/Own_program/multi cooperation/停止本地开发环境.bat)
+- [重启本地开发环境.bat](/E:/Own_program/multi cooperation/重启本地开发环境.bat)
 
 ---
 

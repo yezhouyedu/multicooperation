@@ -1,9 +1,11 @@
-import { AiLevel, Prisma, QuestionnaireTemplate } from '@prisma/client';
+import { AiLevel, ExperimentPhase, Prisma, QuestionnaireTemplate } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { basename, join } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CASE_LIBRARY_ROOT,
+  FORMAL_CASE_LIBRARY_ROOT,
+  PRACTICE_CASE_LIBRARY_ROOT,
   StoredMaterialItem,
   buildMaterialPublicUrl,
   createStoredMaterialItem,
@@ -21,12 +23,20 @@ type CompanyWithMaterials = {
   name: string;
   roundLabel: string;
   sector: string;
+  usage?: string;
   tags: Prisma.JsonValue;
   summary: string;
   materials: Prisma.JsonValue;
   researchProfile: Prisma.JsonValue | null;
   autoFillSourceMaterialId: string | null;
   sortOrder: number;
+};
+
+type SingleChoiceQuestionInput = {
+  id?: string;
+  prompt: string;
+  options: string[];
+  correctOption?: string;
 };
 
 @Injectable()
@@ -69,6 +79,7 @@ export class AdminService {
       ok: true,
       config: {
         id: config.id,
+        practiceDurationMinutes: config.practiceDurationMinutes,
         workDurationMinutes: config.workDurationMinutes,
         breakDurationMinutes: config.breakDurationMinutes,
         segmentAiLevels: [
@@ -83,6 +94,14 @@ export class AdminService {
               items: config.activeQuestionnaireTemplate.items,
             }
           : null,
+        practiceQuizTemplate: config.practiceQuizTemplate
+          ? {
+              id: config.practiceQuizTemplate.id,
+              title: config.practiceQuizTemplate.title,
+              items: config.practiceQuizTemplate.items,
+            }
+          : null,
+        practiceQuizPassCount: config.practiceQuizPassCount,
         sideTask: {
           continuousIntervalSec: config.sideTaskContinuousIntervalSec,
           continuousJitterSec: config.sideTaskContinuousJitterSec,
@@ -99,11 +118,15 @@ export class AdminService {
   }
 
   async saveExperimentConfig(input: {
+    practiceDurationMinutes: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;
     segmentAiLevels: string[];
     questionnaireTitle?: string;
-    questionnaireItems: { id?: string; prompt: string; options: string[] }[];
+    questionnaireItems: SingleChoiceQuestionInput[];
+    practiceQuizTitle?: string;
+    practiceQuizItems: SingleChoiceQuestionInput[];
+    practiceQuizPassCount?: number;
     sideTask?: {
       continuousIntervalSec?: number;
       continuousJitterSec?: number;
@@ -139,6 +162,34 @@ export class AdminService {
       },
     });
 
+    const practiceQuizItems = (input.practiceQuizItems ?? [])
+      .map((item, index) => {
+        const options = (item.options ?? []).map((option) => option.trim()).filter(Boolean);
+        const correctOption = item.correctOption?.trim() ?? '';
+        return {
+          id: item.id?.trim() || `pq${index + 1}`,
+          prompt: item.prompt?.trim() || '',
+          options,
+          correctOption: options.includes(correctOption) ? correctOption : options[0] ?? '',
+        };
+      })
+      .filter((item) => item.prompt && item.options.length >= 2 && item.correctOption);
+
+    const practiceTemplate = await this.prisma.questionnaireTemplate.upsert({
+      where: { id: 'default-practice-quiz' },
+      update: {
+        title: input.practiceQuizTitle?.trim() || '\u6d4b\u8bd5\u8f6e\u5f00\u59cb\u524d\u6d4b\u8bd5\u9898',
+        items: practiceQuizItems as Prisma.InputJsonValue,
+        isActive: true,
+      },
+      create: {
+        id: 'default-practice-quiz',
+        title: input.practiceQuizTitle?.trim() || '\u6d4b\u8bd5\u8f6e\u5f00\u59cb\u524d\u6d4b\u8bd5\u9898',
+        items: practiceQuizItems as Prisma.InputJsonValue,
+        isActive: true,
+      },
+    });
+
     const [segmentOneAiLevel, segmentTwoAiLevel, segmentThreeAiLevel] =
       this.normalizeAiLevels(input.segmentAiLevels);
 
@@ -160,25 +211,31 @@ export class AdminService {
     const config = await this.prisma.experimentConfig.upsert({
       where: { id: 'default' },
       update: {
+        practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,
         segmentTwoAiLevel,
         segmentThreeAiLevel,
         activeQuestionnaireTemplateId: template.id,
+        practiceQuizTemplateId: practiceTemplate.id,
+        practiceQuizPassCount: Math.max(0, Number(input.practiceQuizPassCount) || 0),
         ...sideTaskData,
       },
       create: {
         id: 'default',
+        practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,
         segmentTwoAiLevel,
         segmentThreeAiLevel,
         activeQuestionnaireTemplateId: template.id,
+        practiceQuizTemplateId: practiceTemplate.id,
+        practiceQuizPassCount: Math.max(0, Number(input.practiceQuizPassCount) || 0),
         ...sideTaskData,
       },
-      include: { activeQuestionnaireTemplate: true },
+      include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
     });
 
     return { ok: true, config };
@@ -438,11 +495,14 @@ export class AdminService {
     return {
       ok: true,
       rootDir: CASE_LIBRARY_ROOT,
+      formalRootDir: FORMAL_CASE_LIBRARY_ROOT,
+      practiceRootDir: PRACTICE_CASE_LIBRARY_ROOT,
       cases: cases.map((item) => ({
         folderName: item.folderName,
         caseCode: item.caseCode,
         companyName: item.companyName,
         sector: item.sector,
+        usage: item.usage,
         participantMaterialCount: item.participantMaterials.length,
         diligenceMaterialCount: item.participantMaterials.filter((material) => material.participantRole === 'A').length,
         managerMaterialCount: item.participantMaterials.filter((material) => material.participantRole === 'B').length,
@@ -461,7 +521,7 @@ export class AdminService {
 
     const imported: string[] = [];
     for (const definition of cases) {
-      const companyId = this.buildLibraryCompanyId(definition.caseCode);
+      const companyId = this.buildLibraryCompanyId(definition.caseCode, definition.usage);
       const existing = (await this.prisma.company.findUnique({
         where: { id: companyId },
       })) as CompanyWithMaterials | null;
@@ -480,6 +540,7 @@ export class AdminService {
               roundLabel: definition.roundLabel,
               sector: definition.sector,
               summary: definition.summary,
+              usage: definition.usage,
               tags: definition.tags as never,
               materials: [] as never,
               sortOrder: definition.sortOrder,
@@ -492,6 +553,7 @@ export class AdminService {
               roundLabel: definition.roundLabel,
               sector: definition.sector,
               summary: definition.summary,
+              usage: definition.usage,
               tags: definition.tags as never,
               materials: [] as never,
               sortOrder: definition.sortOrder,
@@ -540,6 +602,8 @@ export class AdminService {
       importedCompanyIds: imported,
       totalImported: imported.length,
       rootDir: CASE_LIBRARY_ROOT,
+      formalRootDir: FORMAL_CASE_LIBRARY_ROOT,
+      practiceRootDir: PRACTICE_CASE_LIBRARY_ROOT,
     };
   }
 
@@ -549,24 +613,38 @@ export class AdminService {
     await this.prisma.taskAssignment.deleteMany({ where: { sessionId: session.id } });
 
     await this.ensureBaselineCompanyIfMissing();
-    const companies = (await this.prisma.company.findMany({ orderBy: { sortOrder: 'asc' } })).filter((company) =>
-      this.isUsableCompany(company),
-    );
-    if (companies.length === 0) {
+    const companies = (await this.prisma.company.findMany({ orderBy: { sortOrder: 'asc' } })).filter((company) => this.isUsableCompany(company));
+    const formalCompanies = companies.filter((company) => (company.usage ?? 'formal') !== 'practice');
+    const practiceCompanies = companies.filter((company) => (company.usage ?? 'formal') === 'practice');
+    if (formalCompanies.length === 0) {
       throw new BadRequestException('No usable companies with uploaded materials are available');
     }
-    const shuffled = [...companies].sort(() => Math.random() - 0.5);
+    const practiceCompany = practiceCompanies[0] ?? formalCompanies[0];
+    if (practiceCompany) {
+      await this.prisma.taskAssignment.create({
+        data: {
+          sessionId: session.id,
+          companyId: practiceCompany.id,
+          phase: ExperimentPhase.PRACTICE,
+          sortOrder: 0,
+          sequenceIndex: 0,
+        },
+      });
+    }
+
+    const shuffled = [...formalCompanies].sort(() => Math.random() - 0.5);
     for (let i = 0; i < shuffled.length; i++) {
       await this.prisma.taskAssignment.create({
         data: {
           sessionId: session.id,
           companyId: shuffled[i].id,
+          phase: ExperimentPhase.FORMAL,
           sortOrder: i + 1,
           sequenceIndex: i + 1,
         },
       });
     }
-    return { ok: true, tasksCreated: shuffled.length };
+    return { ok: true, tasksCreated: shuffled.length + (practiceCompany ? 1 : 0) };
   }
 
   async clearSessions() {
@@ -681,9 +759,10 @@ export class AdminService {
     return parseResearchProfileFromText(raw);
   }
 
-  private buildLibraryCompanyId(caseCode: string) {
+  private buildLibraryCompanyId(caseCode: string, usage: string = 'formal') {
     const normalized = caseCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    return `company-library-${normalized || 'case'}`;
+    const usageKey = usage === 'practice' ? 'practice' : 'formal';
+    return `company-library-${usageKey}-${normalized || 'case'}`;
   }
 
   private serializeCompany(company: {
@@ -691,6 +770,7 @@ export class AdminService {
     name: string;
     roundLabel: string;
     sector: string;
+    usage?: string;
     tags: unknown;
     summary: string;
     materials: unknown;
@@ -714,6 +794,7 @@ export class AdminService {
       name: company.name,
       roundLabel: company.roundLabel,
       sector: company.sector,
+      usage: company.usage ?? 'formal',
       tags: Array.isArray(company.tags) ? company.tags : [],
       summary: company.summary,
       materials,
@@ -751,22 +832,37 @@ export class AdminService {
   private async ensureExperimentConfig() {
     let config = await this.prisma.experimentConfig.findUnique({
       where: { id: 'default' },
-      include: { activeQuestionnaireTemplate: true },
+      include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
     });
 
     if (!config) {
       const template = await this.ensureDefaultTemplate();
+      const practiceTemplate = await this.ensureDefaultPracticeQuizTemplate();
       config = await this.prisma.experimentConfig.create({
         data: {
           id: 'default',
+          practiceDurationMinutes: 10,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
           segmentOneAiLevel: AiLevel.BASIC,
           segmentTwoAiLevel: AiLevel.ADVANCED,
           segmentThreeAiLevel: AiLevel.ADVANCED,
           activeQuestionnaireTemplateId: template.id,
+          practiceQuizTemplateId: practiceTemplate.id,
+          practiceQuizPassCount: 0,
         },
-        include: { activeQuestionnaireTemplate: true },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
+      });
+    } else if (!config.practiceQuizTemplateId) {
+      const practiceTemplate = await this.ensureDefaultPracticeQuizTemplate();
+      config = await this.prisma.experimentConfig.update({
+        where: { id: config.id },
+        data: {
+          practiceDurationMinutes: config.practiceDurationMinutes || 10,
+          practiceQuizTemplateId: practiceTemplate.id,
+          practiceQuizPassCount: config.practiceQuizPassCount || 0,
+        },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
       });
     }
 
@@ -861,6 +957,37 @@ export class AdminService {
             id: 'q1',
             prompt: '你当前的认知负荷感受如何？',
             options: ['很低', '较低', '中等', '较高', '很高'],
+          },
+        ] as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  private async ensureDefaultPracticeQuizTemplate(): Promise<QuestionnaireTemplate> {
+    return this.prisma.questionnaireTemplate.upsert({
+      where: { id: 'default-practice-quiz' },
+      update: {
+        isActive: true,
+      },
+      create: {
+        id: 'default-practice-quiz',
+        title: '\u6d4b\u8bd5\u8f6e\u5f00\u59cb\u524d\u6d4b\u8bd5\u9898',
+        isActive: true,
+        items: [
+          {
+            id: 'pq1',
+            prompt: '\u5c3d\u8c03\u5458\u5728\u5355\u5bb6\u516c\u53f8\u7684 5 \u5206\u949f\u65f6\u95f4\u5230\u540e\uff0c\u7cfb\u7edf\u4f1a\u5982\u4f55\u5904\u7406\uff1f',
+            options: [
+              '\u81ea\u52a8\u63d0\u4ea4\uff0c\u5e76\u5c06\u4fe1\u606f\u89e3\u9501\u7ed9\u6295\u8d44\u7ecf\u7406',
+              '\u7ee7\u7eed\u4f5c\u7b54\uff0c\u76f4\u5230\u624b\u52a8\u63d0\u4ea4',
+            ],
+            correctOption: '\u81ea\u52a8\u63d0\u4ea4\uff0c\u5e76\u5c06\u4fe1\u606f\u89e3\u9501\u7ed9\u6295\u8d44\u7ecf\u7406',
+          },
+          {
+            id: 'pq2',
+            prompt: '\u6295\u8d44\u7ecf\u7406\u5728\u5c3d\u8c03\u4fe1\u606f\u89e3\u9501\u4e4b\u524d\uff0c\u662f\u5426\u53ef\u4ee5\u5148\u67e5\u770b\u81ea\u5df1\u7684\u6750\u6599\u5e76\u5199\u8349\u7a3f\uff1f',
+            options: ['\u53ef\u4ee5', '\u4e0d\u53ef\u4ee5'],
+            correctOption: '\u53ef\u4ee5',
           },
         ] as Prisma.InputJsonValue,
       },

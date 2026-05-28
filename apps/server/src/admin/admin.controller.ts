@@ -37,11 +37,15 @@ export class AdminController {
 
   @Post('experiment-config')
   saveExperimentConfig(@Body() body: {
+    practiceDurationMinutes: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;
     segmentAiLevels: string[];
     questionnaireTitle?: string;
     questionnaireItems: { id?: string; prompt: string; options: string[] }[];
+    practiceQuizTitle?: string;
+    practiceQuizItems: { id?: string; prompt: string; options: string[]; correctOption?: string }[];
+    practiceQuizPassCount?: number;
     sideTask?: {
       continuousIntervalSec?: number;
       continuousJitterSec?: number;

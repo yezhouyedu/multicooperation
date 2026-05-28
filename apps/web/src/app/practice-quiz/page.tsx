@@ -9,7 +9,7 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 export default function PracticeQuizPage() {
   const router = useRouter();
-  const { bootstrap, runtime, loading, countdownLabel, refresh } = useSessionRuntime();
+  const { bootstrap, runtime, loading, refresh } = useSessionRuntime();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ correctCount: number; passed: boolean; passCount: number } | null>(null);
@@ -19,7 +19,15 @@ export default function PracticeQuizPage() {
       router.replace('/login');
       return;
     }
-    if (!runtime) return;
+    if (!runtime || !bootstrap) return;
+    if (runtime.phase === 'instruction') {
+      void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/practice-quiz`, {
+        cache: 'no-store',
+      }).then(() => refresh());
+    }
+    if (runtime.phase === 'practice_ready' && !runtime.practiceQuizPassed) {
+      return;
+    }
     if (runtime.phase === 'practice_ready' && runtime.syncState?.selfReady) {
       router.replace('/ready?target=practice');
       return;
@@ -34,9 +42,8 @@ export default function PracticeQuizPage() {
     }
     if (runtime.phase === 'formal_work') {
       router.replace(runtime.assignedRole === 'B' ? '/workspace/b' : '/workspace/a');
-      return;
     }
-  }, [bootstrap, loading, router, runtime]);
+  }, [bootstrap, loading, refresh, router, runtime]);
 
   const template = runtime?.practiceQuizTemplate;
   const canSubmit = useMemo(() => {
@@ -78,7 +85,7 @@ export default function PracticeQuizPage() {
         roleLabel={runtime?.assignedRole === 'A' ? '尽调员' : '投资经理'}
         currentLabel="测试题"
         stageLabel="当前阶段"
-        countdownLabel={countdownLabel}
+        countdownLabel="--:--"
       />
       <div className="no-scrollbar flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl rounded-2xl border border-[#eaecf0] bg-white p-8 shadow-sm">

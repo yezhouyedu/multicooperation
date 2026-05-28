@@ -32,9 +32,10 @@ type SessionSummary = {
 };
 
 type Participant = { id: string; phone: string | null; createdAt: string };
-type QuestionnaireItem = { id: string; prompt: string; options: string[] };
+type QuestionnaireItem = { id: string; prompt: string; options: string[]; correctOption?: string };
 
 type ExperimentConfig = {
+  practiceDurationMinutes: number;
   workDurationMinutes: number;
   breakDurationMinutes: number;
   segmentAiLevels: string[];
@@ -43,6 +44,12 @@ type ExperimentConfig = {
     title: string;
     items: QuestionnaireItem[];
   } | null;
+  practiceQuizTemplate: {
+    id: string;
+    title: string;
+    items: QuestionnaireItem[];
+  } | null;
+  practiceQuizPassCount: number;
 };
 
 type LibraryCaseOverview = {
@@ -50,6 +57,7 @@ type LibraryCaseOverview = {
   caseCode: string;
   companyName: string;
   sector: string;
+  usage: 'formal' | 'practice';
   participantMaterialCount: number;
   diligenceMaterialCount: number;
   managerMaterialCount: number;
@@ -321,6 +329,155 @@ function ParticipantsTab() {
   );
 }
 
+function SingleChoiceEditor({
+  title,
+  template,
+  onChange,
+  allowCorrectOption = false,
+}: {
+  title: string;
+  template: { id: string; title: string; items: QuestionnaireItem[] };
+  onChange: (next: { id: string; title: string; items: QuestionnaireItem[] }) => void;
+  allowCorrectOption?: boolean;
+}) {
+  function updateItem(index: number, updater: (item: QuestionnaireItem) => QuestionnaireItem) {
+    onChange({
+      ...template,
+      items: template.items.map((item, itemIndex) => (itemIndex === index ? updater(item) : item)),
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+      <div className="mb-4 font-bold text-[#1d2129]">{title}</div>
+      <label className="mb-4 block text-sm text-[#4e5969]">
+        标题
+        <input
+          value={template.title}
+          onChange={(event) => onChange({ ...template, title: event.target.value })}
+          className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+        />
+      </label>
+      <div className="space-y-4">
+        {template.items.map((item, index) => (
+          <div key={item.id} className="rounded-lg border border-[#e5e6eb] p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-semibold text-[#1d2129]">题目 {index + 1}</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (index === 0) return;
+                    const items = [...template.items];
+                    [items[index - 1], items[index]] = [items[index], items[index - 1]];
+                    onChange({ ...template, items });
+                  }}
+                  className="rounded border border-[#e5e6eb] px-2 py-1 text-xs"
+                >
+                  上移
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (index === template.items.length - 1) return;
+                    const items = [...template.items];
+                    [items[index + 1], items[index]] = [items[index], items[index + 1]];
+                    onChange({ ...template, items });
+                  }}
+                  className="rounded border border-[#e5e6eb] px-2 py-1 text-xs"
+                >
+                  下移
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...template, items: template.items.filter((entry) => entry.id !== item.id) })}
+                  className="rounded border border-[#fecaca] px-2 py-1 text-xs text-[#b91c1c]"
+                >
+                  删除
+                </button>
+              </div>
+            </div>
+            <label className="block text-sm text-[#4e5969]">
+              题干
+              <input
+                value={item.prompt}
+                onChange={(event) => updateItem(index, (entry) => ({ ...entry, prompt: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+              />
+            </label>
+            <div className="mt-3 space-y-2">
+              {item.options.map((option, optionIndex) => (
+                <div key={`${item.id}-${optionIndex}`} className="flex items-center gap-2">
+                  <input
+                    value={option}
+                    onChange={(event) =>
+                      updateItem(index, (entry) => ({
+                        ...entry,
+                        options: entry.options.map((current, currentIndex) => (currentIndex === optionIndex ? event.target.value : current)),
+                        correctOption:
+                          allowCorrectOption && entry.correctOption === option ? event.target.value : entry.correctOption,
+                      }))
+                    }
+                    className="flex-1 rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateItem(index, (entry) => {
+                        const nextOptions = entry.options.filter((_, currentIndex) => currentIndex !== optionIndex);
+                        const nextCorrect = entry.correctOption === option ? nextOptions[0] ?? '' : entry.correctOption;
+                        return { ...entry, options: nextOptions, correctOption: nextCorrect };
+                      })
+                    }
+                    className="rounded border border-[#fecaca] px-2 py-1 text-xs text-[#b91c1c]"
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => updateItem(index, (entry) => ({ ...entry, options: [...entry.options, '新选项'] }))}
+                className="rounded-lg border border-[#dbeafe] px-3 py-1.5 text-xs text-[#1e80ff]"
+              >
+                添加选项
+              </button>
+            </div>
+            {allowCorrectOption ? (
+              <label className="mt-3 block text-sm text-[#4e5969]">
+                正确答案
+                <select
+                  value={item.correctOption ?? item.options[0] ?? ''}
+                  onChange={(event) => updateItem(index, (entry) => ({ ...entry, correctOption: event.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+                >
+                  {item.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() =>
+          onChange({
+            ...template,
+            items: [...template.items, { id: `q${Date.now()}`, prompt: '', options: ['选项 1', '选项 2'], correctOption: allowCorrectOption ? '选项 1' : undefined }],
+          })
+        }
+        className="mt-4 rounded-lg border border-[#dbeafe] px-4 py-2 text-sm text-[#1e80ff]"
+      >
+        添加题目
+      </button>
+    </div>
+  );
+}
+
 function ConfigTab() {
   const [config, setConfig] = useState<ExperimentConfig | null>(null);
   const [status, setStatus] = useState('');
@@ -341,16 +498,21 @@ function ConfigTab() {
 
   async function save() {
     if (!config) return;
+    const currentConfig = config;
     setStatus('保存中...');
     await fetch(`${serverBaseUrl}/admin/experiment-config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        workDurationMinutes: config.workDurationMinutes,
-        breakDurationMinutes: config.breakDurationMinutes,
-        segmentAiLevels: config.segmentAiLevels,
-        questionnaireTitle: config.questionnaireTemplate?.title ?? '休息问卷',
-        questionnaireItems: config.questionnaireTemplate?.items ?? [],
+        practiceDurationMinutes: currentConfig.practiceDurationMinutes,
+        workDurationMinutes: currentConfig.workDurationMinutes,
+        breakDurationMinutes: currentConfig.breakDurationMinutes,
+        segmentAiLevels: currentConfig.segmentAiLevels,
+        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '休息问卷',
+        questionnaireItems: currentConfig.questionnaireTemplate?.items ?? [],
+        practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
+        practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
+        practiceQuizPassCount: currentConfig.practiceQuizPassCount,
       }),
     });
     setStatus('已保存');
@@ -360,49 +522,37 @@ function ConfigTab() {
   const questionnaire = config.questionnaireTemplate ?? {
     id: 'default',
     title: '休息问卷',
-    items: [{ id: 'q1', prompt: '', options: [''] }],
+    items: [{ id: 'q1', prompt: '', options: ['选项 1', '选项 2'] }],
+  };
+  const practiceQuiz = config.practiceQuizTemplate ?? {
+    id: 'default-practice-quiz',
+    title: '测试题',
+    items: [{ id: 'pq1', prompt: '', options: ['选项 1', '选项 2'], correctOption: '选项 1' }],
   };
 
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
-        <div className="mb-4 font-bold text-[#1d2129]">工作段与休息段配置</div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="mb-4 font-bold text-[#1d2129]">时间参数</div>
+        <div className="grid grid-cols-3 gap-4">
+          <label className="text-sm text-[#4e5969]">
+            测试轮时长（分钟）
+            <input type="number" min={1} value={config.practiceDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceDurationMinutes: Number(event.target.value) || 10 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
+          </label>
           <label className="text-sm text-[#4e5969]">
             工作段时长（分钟）
-            <input
-              type="number"
-              min={1}
-              value={config.workDurationMinutes}
-              onChange={(event) => setConfig((prev) => prev ? { ...prev, workDurationMinutes: Number(event.target.value) || 20 } : prev)}
-              className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-            />
+            <input type="number" min={1} value={config.workDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, workDurationMinutes: Number(event.target.value) || 20 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
           </label>
           <label className="text-sm text-[#4e5969]">
             休息段时长（分钟）
-            <input
-              type="number"
-              min={1}
-              value={config.breakDurationMinutes}
-              onChange={(event) => setConfig((prev) => prev ? { ...prev, breakDurationMinutes: Number(event.target.value) || 5 } : prev)}
-              className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-            />
+            <input type="number" min={1} value={config.breakDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, breakDurationMinutes: Number(event.target.value) || 5 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
           </label>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-4">
           {[0, 1, 2].map((index) => (
             <label key={index} className="text-sm text-[#4e5969]">
               工作段 {index + 1} AI
-              <select
-                value={config.segmentAiLevels[index] ?? 'BASIC'}
-                onChange={(event) => setConfig((prev) => {
-                  if (!prev) return prev;
-                  const next = [...prev.segmentAiLevels];
-                  next[index] = event.target.value;
-                  return { ...prev, segmentAiLevels: next };
-                })}
-                className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-              >
+              <select value={config.segmentAiLevels[index] ?? 'BASIC'} onChange={(event) => setConfig((prev) => { if (!prev) return prev; const next = [...prev.segmentAiLevels]; next[index] = event.target.value; return { ...prev, segmentAiLevels: next }; })} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]">
                 <option value="BASIC">BASIC</option>
                 <option value="ADVANCED">ADVANCED</option>
               </select>
@@ -411,40 +561,22 @@ function ConfigTab() {
         </div>
       </div>
 
+      <SingleChoiceEditor title="测试题模板" template={practiceQuiz} allowCorrectOption onChange={(next) => setConfig((prev) => (prev ? { ...prev, practiceQuizTemplate: next } : prev))} />
+
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
-        <div className="mb-4 font-bold text-[#1d2129]">休息问卷</div>
-        <label className="mb-4 block text-sm text-[#4e5969]">
-          问卷标题
-          <input
-            value={questionnaire.title}
-            onChange={(event) => setConfig((prev) => prev ? { ...prev, questionnaireTemplate: { ...questionnaire, title: event.target.value } } : prev)}
-            className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-          />
+        <div className="font-bold text-[#1d2129]">测试题通过标准</div>
+        <label className="mt-4 block text-sm text-[#4e5969]">
+          至少答对多少题
+          <input type="number" min={0} max={practiceQuiz.items.length || 1} value={config.practiceQuizPassCount} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceQuizPassCount: Number(event.target.value) || 0 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
         </label>
-        <div className="space-y-4">
-          {questionnaire.items.map((item, index) => (
-            <div key={item.id} className="rounded-lg border border-[#e5e6eb] p-4">
-              <label className="block text-sm text-[#4e5969]">
-                题目 {index + 1}
-                <input
-                  value={item.prompt}
-                  onChange={(event) => setConfig((prev) => {
-                    if (!prev) return prev;
-                    const items = questionnaire.items.map((entry, entryIndex) =>
-                      entryIndex === index ? { ...entry, prompt: event.target.value } : entry,
-                    );
-                    return { ...prev, questionnaireTemplate: { ...questionnaire, items } };
-                  })}
-                  className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-                />
-              </label>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">保存配置</button>
-          {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}
-        </div>
+        <div className="mt-2 text-xs text-[#86909c]">填 0 表示默认按“全对通过”。</div>
+      </div>
+
+      <SingleChoiceEditor title="休息问卷模板" template={questionnaire} onChange={(next) => setConfig((prev) => (prev ? { ...prev, questionnaireTemplate: next } : prev))} />
+
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">保存配置</button>
+        {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}
       </div>
     </div>
   );
@@ -684,7 +816,7 @@ function MaterialsTab() {
             <div className="mb-4 space-y-2 rounded-lg border border-[#e5e6eb] bg-[#fafbfc] p-3">
               <div className="text-xs font-semibold text-[#4e5969]">本地题库扫描结果</div>
               {libraryCases.map((item) => (
-                <div key={item.folderName} className="rounded-lg border border-[#eef0f3] bg-white px-3 py-2 text-xs text-[#4e5969]">
+                <div key={`${item.usage}-${item.folderName}-${item.caseCode}`} className="rounded-lg border border-[#eef0f3] bg-white px-3 py-2 text-xs text-[#4e5969]">
                   <div className="font-medium text-[#1d2129]">{item.companyName} <span className="text-[#86909c]">({item.caseCode})</span></div>
                   <div className="mt-1">{item.folderName} / 参与者材料 {item.participantMaterialCount} 份 / 研究者材料 {item.researchMaterialCount} 份</div>
                   <div className="mt-1 text-[#86909c]">自动填充源：{item.autoFillSourceRelativePath ?? '未识别'}</div>
@@ -702,7 +834,7 @@ function MaterialsTab() {
                   selectedCompany?.id === company.id ? 'border-[#1e80ff] bg-blue-50' : 'border-[#e5e6eb] hover:bg-gray-50'
                 }`}
               >
-                <div className="font-medium text-[#1d2129]">{company.name}</div>
+                <div className="font-medium text-[#1d2129]">{company.name} <span className="ml-2 rounded bg-[#eef6ff] px-2 py-0.5 text-[11px] font-normal text-[#1e80ff]">{company.usage === 'practice' ? '测试轮' : '正式轮'}</span></div>
                 <div className="mt-1 text-xs text-[#86909c]">
                   {company.roundLabel} / {company.sector} / {company.materials.length} 份材料
                 </div>
@@ -892,9 +1024,12 @@ function MaterialsLibraryTab() {
             <div className="mb-4 space-y-2 rounded-lg border border-[#e5e6eb] bg-[#fafbfc] p-3">
               <div className="text-xs font-semibold text-[#4e5969]">本地题库扫描结果</div>
               {libraryCases.map((item) => (
-                <div key={item.folderName} className="rounded-lg border border-[#eef0f3] bg-white px-3 py-2 text-xs text-[#4e5969]">
+                <div key={`${item.usage}-${item.folderName}-${item.caseCode}`} className="rounded-lg border border-[#eef0f3] bg-white px-3 py-2 text-xs text-[#4e5969]">
                   <div className="font-medium text-[#1d2129]">
                     {item.companyName} <span className="text-[#86909c]">({item.caseCode})</span>
+                    <span className="ml-2 rounded bg-[#eef6ff] px-2 py-0.5 text-[11px] font-normal text-[#1e80ff]">
+                      {item.usage === 'practice' ? '测试轮案例' : '正式案例'}
+                    </span>
                   </div>
                   <div className="mt-1">
                     {item.folderName} / 共享 {item.sharedMaterialCount} / 尽调员 {item.diligenceMaterialCount} / 投资经理 {item.managerMaterialCount} / 研究者 {item.researchMaterialCount}

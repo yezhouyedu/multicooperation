@@ -3,6 +3,7 @@
 import { AiChatPanel } from '@/components/ai-chat-panel';
 import { BTaskEditor } from '@/components/b-task-editor';
 import { CompanyMaterialPanel, type CompanyMaterialPanelHandle } from '@/components/company-material-panel';
+import { PracticeTutorialOverlay } from '@/components/practice-tutorial-overlay';
 import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
@@ -85,12 +86,12 @@ export default function WorkspaceBPage() {
       ? '/login'
       : !loading && runtime?.assignedRole === 'A'
         ? '/workspace/a'
-        : !loading && runtime?.phase === 'practice_ready'
-          ? runtime.syncState?.selfReady
-            ? '/ready?target=practice'
-            : null
-          : !loading && runtime?.phase === 'practice'
-            ? '/practice'
+        : !loading && runtime?.phase === 'practice_quiz'
+          ? '/practice-quiz'
+          : !loading && runtime?.phase === 'practice_ready'
+            ? runtime.syncState?.selfReady
+              ? '/ready?target=practice'
+              : null
             : !loading && runtime?.phase === 'formal_ready'
               ? runtime.syncState?.selfReady
                 ? '/ready?target=formal'
@@ -133,11 +134,8 @@ export default function WorkspaceBPage() {
 
   useEffect(() => {
     if (!runtime?.aInfoUnlocked || !currentTaskId) return;
-    if (lastEvent?.type !== 'a_task_auto_submitted' && lastEvent?.type !== 'a_task_submitted') return;
-    const payload =
-      lastEvent.data && typeof lastEvent.data === 'object'
-        ? (lastEvent.data as { taskId?: string })
-        : null;
+    if (lastEvent?.type !== 'a_task_auto_submitted' && lastEvent?.type !== 'a_task_submitted' && lastEvent?.type !== 'practice_a_task_auto_submitted') return;
+    const payload = lastEvent.data && typeof lastEvent.data === 'object' ? (lastEvent.data as { taskId?: string }) : null;
     if (payload?.taskId && payload.taskId !== currentTaskId) return;
     void refreshDiligenceDraft();
   }, [currentTaskId, lastEvent, refreshDiligenceDraft, runtime?.aInfoUnlocked]);
@@ -146,21 +144,19 @@ export default function WorkspaceBPage() {
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调员信息尚未解锁</div>
-      <div>你可以先阅读自有材料、填写投资判断并使用 AI。尽调员信息解锁后，这里会显示对应内容。</div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息尚未解锁</div>
+      <div>你可以先阅读自己的材料、填写投资判断并使用 AI。尽调信息解锁后，这里会显示对应内容。</div>
     </div>
   ) : !runtime.bHasViewedAInfo ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调员信息已送达</div>
-      <div className="mb-5 max-w-md leading-7">
-        你现在可以查看尽调员提交的交接信息。点击下方按钮后，系统会记录本次查看行为，并展示具体内容。
-      </div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息已送达</div>
+      <div className="mb-5 max-w-md leading-7">你现在可以查看尽调员提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
       <button
         type="button"
         onClick={() => void openDiligenceInfo()}
         className="rounded-lg bg-[#1e80ff] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-600"
       >
-        查看尽调员信息
+        查看尽调信息
       </button>
     </div>
   ) : (
@@ -251,7 +247,7 @@ export default function WorkspaceBPage() {
                   prependItems={[
                     {
                       key: 'diligence-info',
-                      label: '尽调员信息',
+                      label: '尽调信息',
                       content: diligenceTabContent,
                     },
                   ]}
@@ -263,20 +259,18 @@ export default function WorkspaceBPage() {
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#e5e6eb] px-5 py-3 text-xs text-[#86909c]">
                     <div className="flex flex-col gap-1">
-                      <span>尽调员信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
+                      <span>尽调信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
                       {runtime.aInfoUnlocked ? (
-                        <span>
-                          尽调员信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}
-                        </span>
+                        <span>尽调信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
                       ) : (
-                        <span>尽调员信息状态：等待解锁</span>
+                        <span>尽调信息状态：等待解锁</span>
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={() => router.push('/workspace/b-feedback')}
                       disabled={!runtime.bCanSubmit}
-                      title={!runtime.aInfoUnlocked ? '等待尽调员信息解锁后才能提交' : undefined}
+                      title={!runtime.aInfoUnlocked ? '等待尽调信息解锁后才能提交' : undefined}
                       className="shrink-0 rounded-md bg-[#28a745] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       提交并填写反馈
@@ -321,6 +315,15 @@ export default function WorkspaceBPage() {
           )}
         </div>
       </div>
+      {bootstrap && runtime?.phase === 'practice' && !runtime.practiceTutorialState?.completed ? (
+        <PracticeTutorialOverlay
+          sessionCode={bootstrap.sessionCode}
+          participantId={bootstrap.participantId}
+          role="B"
+          aiLevel={runtime.aiLevel}
+          completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
+        />
+      ) : null}
     </main>
   );
 }

@@ -31,6 +31,7 @@ export function MaterialTabs({
       setInternalActive(key);
     }
     onActiveChange?.(key);
+    window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'material_tab', key } }));
   }
 
   function syncScrollState() {

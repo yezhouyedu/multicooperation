@@ -33,6 +33,19 @@ export class ExperimentController {
     return this.experimentService.startPractice(code.toUpperCase());
   }
 
+  @Get('session/:code/practice-quiz')
+  getPracticeQuiz(@Param('code') code: string) {
+    return this.experimentService.getPracticeQuiz(code.toUpperCase());
+  }
+
+  @Post('session/:code/practice-quiz')
+  submitPracticeQuiz(
+    @Param('code') code: string,
+    @Body() body: { participantId: string; answers: Prisma.InputJsonValue },
+  ) {
+    return this.experimentService.submitPracticeQuiz(code.toUpperCase(), body.participantId, body.answers);
+  }
+
   @Post('session/:code/ready-practice')
   readyPractice(@Param('code') code: string, @Body() body: { participantId: string }) {
     return this.experimentService.readyPractice(code.toUpperCase(), body.participantId);

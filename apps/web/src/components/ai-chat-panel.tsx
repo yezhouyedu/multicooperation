@@ -389,6 +389,11 @@ export function AiChatPanel({
       });
 
       await readStreamChunks(response, assistantMessageId);
+      window.dispatchEvent(
+        new CustomEvent('practice-tutorial-event', {
+          detail: { type: contextType === 'side' ? 'sidetask_ai' : 'ai_message' },
+        }),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : 'AI 请求失败';
       setError(message);

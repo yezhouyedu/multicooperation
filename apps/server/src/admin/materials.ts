@@ -44,6 +44,7 @@ export type ResearchProfile = {
 export type LibraryCaseDefinition = {
   folderName: string;
   folderPath: string;
+  usage: 'formal' | 'practice';
   caseCode: string;
   companyName: string;
   roundLabel: string;
@@ -66,6 +67,7 @@ export type LibraryCaseDefinition = {
 };
 
 type CaseManifest = {
+  usage?: 'formal' | 'practice';
   caseCode?: string;
   companyName?: string;
   roundLabel?: string;
@@ -83,6 +85,8 @@ type CaseManifest = {
 
 export const MATERIALS_STORAGE_ROOT = resolve(process.cwd(), 'storage', 'materials');
 export const CASE_LIBRARY_ROOT = resolve(process.cwd(), '..', '..', '00_start_materials', '原始材料');
+export const FORMAL_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '正式');
+export const PRACTICE_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '测试轮');
 const BASELINE_P01_DIR = resolve(CASE_LIBRARY_ROOT, 'P01');
 
 export function ensureMaterialsStorageRoot() {
@@ -286,17 +290,49 @@ export function ensureBaselineP01Files() {
 export function scanCaseLibrary(rootDir = CASE_LIBRARY_ROOT): LibraryCaseDefinition[] {
   if (!existsSync(rootDir)) return [];
 
+  const formalCases = existsSync(FORMAL_CASE_LIBRARY_ROOT)
+    ? scanCaseRoot(FORMAL_CASE_LIBRARY_ROOT, 'formal')
+    : scanCaseRoot(rootDir, 'formal', new Set(['正式', '测试轮']));
+
+  const practiceCases = existsSync(PRACTICE_CASE_LIBRARY_ROOT)
+    ? scanCaseRoot(PRACTICE_CASE_LIBRARY_ROOT, 'practice')
+    : [];
+
+  if (practiceCases.length === 0) {
+    const fallbackPractice = parseCaseFolder(BASELINE_P01_DIR, 'P01', 0, 'practice');
+    if (fallbackPractice) {
+      practiceCases.push(fallbackPractice);
+    }
+  }
+
+  return [...formalCases, ...practiceCases];
+}
+
+function scanCaseRoot(
+  rootDir: string,
+  usage: 'formal' | 'practice',
+  excludeFolderNames: Set<string> = new Set(),
+) {
+  if (!existsSync(rootDir)) return [];
+
   const folderNames = readdirSorted(rootDir).filter((entry) => {
+    if (excludeFolderNames.has(entry)) return false;
     const entryPath = join(rootDir, entry);
     return statSync(entryPath).isDirectory();
   });
 
   return folderNames
-    .map((folderName, index) => parseCaseFolder(join(rootDir, folderName), folderName, index))
+    .map((folderName, index) => parseCaseFolder(join(rootDir, folderName), folderName, index, usage))
     .filter((item): item is LibraryCaseDefinition => Boolean(item));
 }
 
-function parseCaseFolder(folderPath: string, folderName: string, index: number): LibraryCaseDefinition | null {
+function parseCaseFolder(
+  folderPath: string,
+  folderName: string,
+  index: number,
+  usage: 'formal' | 'practice',
+): LibraryCaseDefinition | null {
+  if (!existsSync(folderPath) || !statSync(folderPath).isDirectory()) return null;
   const manifest = readCaseManifest(folderPath);
   const participantDir = resolveCaseSubdir(folderPath, manifest?.participantDir, 'participant');
   const researchDir = resolveCaseSubdir(folderPath, manifest?.researchDir, 'research');
@@ -320,6 +356,7 @@ function parseCaseFolder(folderPath: string, folderName: string, index: number):
   return {
     folderName,
     folderPath,
+    usage: manifest?.usage ?? usage,
     caseCode: manifest?.caseCode?.trim() || folderName,
     companyName: manifest?.companyName?.trim() || folderName,
     roundLabel: manifest?.roundLabel?.trim() || manifest?.caseCode?.trim() || folderName,

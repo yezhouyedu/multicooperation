@@ -42,6 +42,10 @@ export default function ReadyClientPage() {
     }
     if (target === 'practice' && runtime.phase === 'instruction') {
       router.replace('/instruction');
+      return;
+    }
+    if (target === 'practice' && runtime.phase === 'practice_quiz') {
+      router.replace('/practice-quiz');
     }
   }, [bootstrap, loading, router, runtime, target]);
 
@@ -63,8 +67,8 @@ export default function ReadyClientPage() {
   const title = target === 'practice' ? '已准备进入测试轮' : '已准备进入正式阶段';
   const desc =
     target === 'practice'
-      ? '双方都完成指导语阅读并点击准备后，系统会同时进入测试轮。'
-      : '双方都完成测试轮并点击准备后，系统会同时进入正式任务页。';
+      ? '双方都完成测试题并点击准备后，系统会同时进入测试轮。'
+      : '双方都完成测试轮并点击准备后，系统会同时进入正式任务。';
   const readyRoles = (runtime?.syncState?.readyRoles ?? []).map((role) => formatRoleLabel(role));
   const selfReady = runtime?.syncState?.selfReady ?? false;
 

@@ -257,14 +257,15 @@ function RhythmConfigSection() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-xl font-semibold">到达节奏参数</h2>
+      <h2 className="mb-4 text-xl font-semibold">提醒频率参数</h2>
+      <p className="mb-4 text-sm text-slate-500">后台题目到达速度相同（每 30s 一道），区别只在前端滚动提醒的频率。Continuous 每道都提醒，Batch 攒约 5 分钟提醒一次。</p>
 
       <div className="mb-4">
         <h3 className="mb-2 text-sm font-semibold text-slate-600">共享动画参数</h3>
         <div className="grid gap-3 md:grid-cols-3">
-          <ConfigNumber label="滚动时长 (秒)" value={config.sideTaskScrollDurationSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskScrollDurationSec: v } : c)} />
-          <ConfigNumber label="停留时长 (秒)" value={config.sideTaskHoldSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskHoldSec: v } : c)} />
-          <ConfigNumber label="淡出时长 (秒)" value={config.sideTaskFadeSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskFadeSec: v } : c)} />
+          <ConfigNumber label="滚动时长 (秒)" value={config.sideTaskScrollDurationSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskScrollDurationSec: v } : c)} defaultValue={12} />
+          <ConfigNumber label="停留时长 (秒)" value={config.sideTaskHoldSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskHoldSec: v } : c)} defaultValue={5} />
+          <ConfigNumber label="淡出时长 (秒)" value={config.sideTaskFadeSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskFadeSec: v } : c)} defaultValue={2} />
         </div>
       </div>
 
@@ -272,17 +273,16 @@ function RhythmConfigSection() {
         <div>
           <h3 className="mb-2 text-sm font-semibold text-blue-600">Continuous 模式</h3>
           <div className="space-y-2">
-            <ConfigNumber label="到达间隔 (秒)" value={config.sideTaskContinuousIntervalSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousIntervalSec: v } : c)} />
-            <ConfigNumber label="间隔抖动 (秒)" value={config.sideTaskContinuousJitterSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousJitterSec: v } : c)} />
-            <ConfigNumber label="暂停时长 (秒)" value={config.sideTaskContinuousPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousPauseSec: v } : c)} />
+            <ConfigNumber label="到达间隔 (秒)" value={config.sideTaskContinuousIntervalSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousIntervalSec: v } : c)} defaultValue={30} />
+            <ConfigNumber label="间隔抖动 (秒)" value={config.sideTaskContinuousJitterSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousJitterSec: v } : c)} defaultValue={0} />
+            <ConfigNumber label="暂停时长 (秒)" value={config.sideTaskContinuousPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousPauseSec: v } : c)} defaultValue={15} />
           </div>
         </div>
         <div>
           <h3 className="mb-2 text-sm font-semibold text-purple-600">Batch 模式</h3>
           <div className="space-y-2">
-            <ConfigString label="批次大小 (逗号分隔, 和=40)" value={config.sideTaskBatchSizes} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchSizes: v } : c)} />
-            <ConfigNumber label="批次触发间隔 (秒)" value={config.sideTaskBatchTriggerSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchTriggerSec: v } : c)} />
-            <ConfigNumber label="批次暂停 (秒)" value={config.sideTaskBatchPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchPauseSec: v } : c)} />
+            <ConfigNumber label="提醒间隔 (秒, 攒多久提醒一次)" value={config.sideTaskBatchTriggerSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchTriggerSec: v } : c)} defaultValue={300} />
+            <ConfigNumber label="暂停时长 (秒)" value={config.sideTaskBatchPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchPauseSec: v } : c)} defaultValue={60} />
           </div>
         </div>
       </div>
@@ -371,20 +371,22 @@ function StatCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function ConfigNumber({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function ConfigNumber({ label, value, onChange, defaultValue }: { label: string; value: number; onChange: (v: number) => void; defaultValue?: number }) {
   return (
     <label className="block text-xs">
       <span className="text-slate-500">{label}</span>
       <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value) || 0)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5" />
+      {defaultValue !== undefined && <span className="mt-0.5 block text-[11px] text-slate-400">默认: {defaultValue}</span>}
     </label>
   );
 }
 
-function ConfigString({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function ConfigString({ label, value, onChange, defaultValue }: { label: string; value: string; onChange: (v: string) => void; defaultValue?: string }) {
   return (
     <label className="block text-xs">
       <span className="text-slate-500">{label}</span>
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5" />
+      {defaultValue !== undefined && <span className="mt-0.5 block text-[11px] text-slate-400">默认: {defaultValue}</span>}
     </label>
   );
 }

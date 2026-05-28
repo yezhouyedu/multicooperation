@@ -755,3 +755,47 @@
 **核心逻辑**：B 完成当前公司 → 从锁定池（A 已提交 && B 未完成 && B 未分配）随机选一家 → 池空则 fallback 到 A 正在处理的公司（PreA 模式，B 只看自有材料）→ 都没有才空窗。
 
 **验证**：`corepack pnpm --filter web build` 通过（22 个页面全部生成）。
+
+### 2026-05-28 测试题 / 测试轮 / 教学引导重做落地 + 首轮 bug 修复
+
+**本轮落地范围**：
+
+- 已把主流程改为：`instruction -> practice-quiz -> practice_ready -> practice -> formal_ready -> formal`
+- 已新增测试题页与对应后端接口，测试题采用单选题模板，按“达到最低正确题数才可进入测试轮”判定；默认口径仍支持“通过阈值为全对”
+- 已把测试轮从“单页壳子”改为复用正式工作台，包含材料区、答题区、AI 区、倒计时、草稿保存、截图、缩放与拖拽
+- 已将教学引导直接挂进测试轮工作台，采用聚光灯遮罩 + 真实交互解锁的方式推进，覆盖材料切换、全屏、缩放、AI 发送、拖拽、副线入口与截图等步骤
+- 已把 admin 的实验配置扩展为三块：时间参数、测试题模板、休息问卷模板；两套模板现共用单选题编辑器
+- 已把材料库扫描扩展为“正式案例 / 测试轮案例”双层结构，支持：
+  - `00_start_materials/原始材料/正式/<案例目录>`
+  - `00_start_materials/原始材料/测试轮/<案例目录>`
+  - 旧根目录正式案例兼容
+  - 测试轮目录缺失时回退到旧 `P01`
+- 已在仓库内补出本地测试轮目录：`00_start_materials/原始材料/测试轮/P01`，当前先复用现有 `P01` 内容，便于 admin 直接扫描验证
+
+**本轮补修的两个实际问题**：
+
+- 已修复 admin 材料管理页因正式案例 `P01` 与测试轮案例 `P01` 同名导致的重复 key 报错；原因是页面里有两处本地扫描结果列表，其中一处仍使用 `key={item.folderName}`。现已统一改为带 `usage + folderName + caseCode` 的唯一 key，并补上“正式案例 / 测试轮案例”用途标签
+- 已修复测试题阶段“双人不同步”时的卡死问题；当一人先通过、session 进入 `practice_ready` 后，另一人若尚未通过测试题，runtime 仍需继续返回 `practiceQuizTemplate`。现已补上后端返回条件与前端守卫逻辑，未通过者会继续停留在测试题页完成作答，不会因共享 phase 前进而丢题目
+- 已补齐前端 `RuntimeState.practiceQuizPassed` 类型字段，避免 dev 可跑但 `web build` 在类型检查阶段失败
+
+**验证**：
+
+- `corepack pnpm --filter server build` 通过
+- `corepack pnpm --filter web build` 通过
+
+**当前口径提醒**：
+
+- 参与者可见文案继续统一使用“尽调员 / 投资经理”，不向前台暴露 `A/B`
+- 正式轮的 B 动态分配策略继续保持现有正确实现：优先锁定池随机分配，池空再 fallback 到 A 当前在做公司（PreA）
+
+### 2026-05-28 副线提醒频率澄清 + 文档同步 + admin 默认值
+
+**背景**：师兄确认 continuous/batch 的区别只在前端滚动提醒频率，后台题目到达速度相同（每 30s 一道）。
+
+**改动范围**：
+
+- `02_specs/02_backend/SIDETASK_REBUILD_SPEC.md` — 变量 A 从"到达节奏"改为"提醒频率"，更新所有 continuous/batch 相关描述、admin 参数表、UI 体现说明、对比图
+- `02_specs/00_overview/APP_FLOW.md` — 更新 8.1 实验设计概览、8.4 运行时调度（添加 continuous vs batch 提醒频率对比可视化）
+- `apps/web/src/components/admin-sidefeed-panel.tsx` — ConfigNumber/ConfigString 组件新增 defaultValue 提示；所有参数传入默认值（滚动12s/停留5s/淡出2s/continuous间隔30s/抖动0s/暂停15s/batch提醒间隔300s/暂停60s）；移除 batchSizes 字段（batch 模式不再分批到达）；添加说明文字
+
+**核心澄清**：后台都是每 30s 一道题进入队列，区别只是前端滚动提醒频率——continuous 每道都提醒，batch 攒约 5 分钟提醒一次。

@@ -709,6 +709,7 @@ export const CompanyMaterialPanel = forwardRef<
     function startCapture() {
       setCaptureMode(true);
       setCaptureRect(null);
+      window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'ai_screenshot' } }));
     }
 
     useImperativeHandle(ref, () => ({
