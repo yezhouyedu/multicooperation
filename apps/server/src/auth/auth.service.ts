@@ -185,6 +185,8 @@ export class AuthService {
         companySequenceSeed,
         companySequenceGeneratedAt: roleAudit.roleAssignedAt,
         companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
+        bAssignmentMethod: 'pool_based_random_v1',
+        bAssignmentLog: [],
       },
       create: {
         sessionId,
@@ -195,6 +197,8 @@ export class AuthService {
         companySequenceSeed,
         companySequenceGeneratedAt: roleAudit.roleAssignedAt,
         companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
+        bAssignmentMethod: 'pool_based_random_v1',
+        bAssignmentLog: [],
       },
     });
 

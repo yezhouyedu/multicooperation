@@ -147,6 +147,7 @@ model TaskAssignment {
   bViewedAInfoAt   DateTime?
   bCanSubmitAt     DateTime?
   bCompletedAt     DateTime?
+  bSequenceIndex   Int?
   frozenAt         DateTime?
   resumedAt        DateTime?
   aDraft           Json?
@@ -160,6 +161,7 @@ model TaskAssignment {
 
   @@index([sessionId])
   @@index([sessionId, phase, sortOrder])
+  @@index([sessionId, bSequenceIndex])
 }
 
 model ExperimentConfig {
@@ -402,6 +404,8 @@ model RandomizationAudit {
   companySequenceSeed       String
   companySequenceGeneratedAt DateTime
   companySequence           Json
+  bAssignmentMethod         String?
+  bAssignmentLog            Json?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   session                   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)

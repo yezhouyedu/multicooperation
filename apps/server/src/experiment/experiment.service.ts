@@ -213,10 +213,16 @@ export class ExperimentService {
     if (!pairing) throw new BadRequestException('Session pairing record is missing');
 
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
-    const roleTask =
-      assignedRole === ParticipantRole.B
-        ? session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.bCompletedAt)
-        : session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
+
+    let roleTask: TaskAssignment | undefined;
+    if (assignedRole === ParticipantRole.B) {
+      // 池分配模式：B 的当前公司 = bSequenceIndex 最大且 bCompletedAt 为 null
+      roleTask = session.tasks
+        .filter((t) => t.phase === ExperimentPhase.FORMAL && t.bSequenceIndex !== null && !t.bCompletedAt)
+        .sort((a, b) => (b.bSequenceIndex ?? 0) - (a.bSequenceIndex ?? 0))[0];
+    } else {
+      roleTask = session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
+    }
 
     const currentCompany = roleTask
       ? await this.prisma.company.findUnique({ where: { id: roleTask.companyId } })
@@ -253,6 +259,7 @@ export class ExperimentService {
       bCanSubmit: Boolean(roleTask?.aUnlockedForBAt),
       isIdle: !roleTask,
       isFrozen: Boolean(roleTask?.frozenAt),
+      isPreA: assignedRole === ParticipantRole.B && Boolean(roleTask && !roleTask.aSubmittedAt),
       questionnaireSubmitted: participantId
         ? session.questionnaireAnswers.some(
             (answer) =>
@@ -742,6 +749,15 @@ export class ExperimentService {
         data: { bCompletedAt: new Date() },
       });
 
+      // FORMAL 阶段：B 完成后从池中分配下一个公司
+      if (task.phase === ExperimentPhase.FORMAL) {
+        const allTasks = await tx.taskAssignment.findMany({
+          where: { sessionId: session.id, phase: ExperimentPhase.FORMAL },
+          orderBy: { sortOrder: 'asc' },
+        });
+        await this.assignNextTaskForB(tx, session.id, allTasks);
+      }
+
       const participantB = session.pairings[0]?.participantB;
       if (participantB) {
         await tx.taskProgress.create({
@@ -912,6 +928,17 @@ export class ExperimentService {
           }
         }
       }
+
+      // 池分配：确保 B 在 FORMAL_WORK 阶段有分配的公司
+      if (session.runtimePhase === RuntimePhase.FORMAL_WORK) {
+        const bHasCurrent = session.tasks.some(
+          (t) => t.bSequenceIndex !== null && !t.bCompletedAt,
+        );
+        if (!bHasCurrent) {
+          const formalTasks = session.tasks.filter((t) => t.phase === ExperimentPhase.FORMAL);
+          await this.assignNextTaskForB(tx, session.id, formalTasks);
+        }
+      }
     });
 
     const session = await this.prisma.session.findUnique({
@@ -1012,9 +1039,17 @@ export class ExperimentService {
     config: ExperimentConfig,
     now: Date,
   ) {
-    const currentTask = session.tasks.find((task) => !task.bCompletedAt || !task.aSubmittedAt);
-    if (currentTask) {
-      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
+    // A 和 B 可能在不同公司，分别找各自的当前公司
+    const aCurrentTask = session.tasks.find(
+      (t) => t.phase === ExperimentPhase.FORMAL && !t.aSubmittedAt,
+    );
+    const bCurrentTask = session.tasks
+      .filter((t) => t.phase === ExperimentPhase.FORMAL && t.bSequenceIndex !== null && !t.bCompletedAt)
+      .sort((a, b) => (b.bSequenceIndex ?? 0) - (a.bSequenceIndex ?? 0))[0];
+
+    // 快照 A 的公司（A 的 sections）
+    if (aCurrentTask) {
+      await this.snapshotTaskSection(tx, session.id, aCurrentTask.id, {
         snapshotType: 'work_segment_freeze',
         scope: 'mainline',
         role: 'A',
@@ -1022,28 +1057,57 @@ export class ExperimentService {
         segmentIndex: session.currentSegmentIndex,
         takenReason: 'segment_transition_to_break',
         label: `工作段冻结快照 A 主表 ${now.toISOString()}`,
-        payload: currentTask.aDraft,
+        payload: aCurrentTask.aDraft,
       });
-      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
-        snapshotType: 'work_segment_freeze',
-        scope: 'mainline',
-        role: 'B',
-        section: 'main',
-        segmentIndex: session.currentSegmentIndex,
-        takenReason: 'segment_transition_to_break',
-        label: `工作段冻结快照 投资判断 ${now.toISOString()}`,
-        payload: currentTask.bDraft,
-      });
-      await this.snapshotTaskSection(tx, session.id, currentTask.id, {
-        snapshotType: 'work_segment_freeze',
-        scope: 'mainline',
-        role: 'B',
-        section: 'feedback',
-        segmentIndex: session.currentSegmentIndex,
-        takenReason: 'segment_transition_to_break',
-        label: `工作段冻结快照 反馈表 ${now.toISOString()}`,
-        payload: currentTask.bFeedbackDraft,
-      });
+    }
+
+    // 快照 B 的公司（B 的 sections）
+    if (bCurrentTask) {
+      if (bCurrentTask.id !== aCurrentTask?.id) {
+        // B 在不同公司，单独快照 B 的 sections
+        await this.snapshotTaskSection(tx, session.id, bCurrentTask.id, {
+          snapshotType: 'work_segment_freeze',
+          scope: 'mainline',
+          role: 'B',
+          section: 'main',
+          segmentIndex: session.currentSegmentIndex,
+          takenReason: 'segment_transition_to_break',
+          label: `工作段冻结快照 投资判断 ${now.toISOString()}`,
+          payload: bCurrentTask.bDraft,
+        });
+        await this.snapshotTaskSection(tx, session.id, bCurrentTask.id, {
+          snapshotType: 'work_segment_freeze',
+          scope: 'mainline',
+          role: 'B',
+          section: 'feedback',
+          segmentIndex: session.currentSegmentIndex,
+          takenReason: 'segment_transition_to_break',
+          label: `工作段冻结快照 反馈表 ${now.toISOString()}`,
+          payload: bCurrentTask.bFeedbackDraft,
+        });
+      } else {
+        // A 和 B 在同一家公司（PreA 模式）
+        await this.snapshotTaskSection(tx, session.id, bCurrentTask.id, {
+          snapshotType: 'work_segment_freeze',
+          scope: 'mainline',
+          role: 'B',
+          section: 'main',
+          segmentIndex: session.currentSegmentIndex,
+          takenReason: 'segment_transition_to_break',
+          label: `工作段冻结快照 投资判断 ${now.toISOString()}`,
+          payload: bCurrentTask.bDraft,
+        });
+        await this.snapshotTaskSection(tx, session.id, bCurrentTask.id, {
+          snapshotType: 'work_segment_freeze',
+          scope: 'mainline',
+          role: 'B',
+          section: 'feedback',
+          segmentIndex: session.currentSegmentIndex,
+          takenReason: 'segment_transition_to_break',
+          label: `工作段冻结快照 反馈表 ${now.toISOString()}`,
+          payload: bCurrentTask.bFeedbackDraft,
+        });
+      }
     }
 
     await tx.sessionSegmentState.updateMany({
@@ -1120,9 +1184,19 @@ export class ExperimentService {
 
     await this.startFormalWorkSegmentTx(tx, session.id, nextWorkIndex, config, now, false);
 
-    const nextTask = session.tasks.find((task) => !task.bCompletedAt || !task.aSubmittedAt);
-    if (nextTask) {
-      await this.restoreTaskDraftsFromLatestFreeze(tx, session.id, nextTask.id, nextWorkIndex);
+    // A 和 B 可能在不同公司，分别恢复各自的草稿
+    const aNextTask = session.tasks.find(
+      (t) => t.phase === ExperimentPhase.FORMAL && !t.aSubmittedAt,
+    );
+    if (aNextTask) {
+      await this.restoreTaskDraftsFromLatestFreeze(tx, session.id, aNextTask.id, nextWorkIndex);
+    }
+
+    const bNextTask = session.tasks
+      .filter((t) => t.phase === ExperimentPhase.FORMAL && t.bSequenceIndex !== null && !t.bCompletedAt)
+      .sort((a, b) => (b.bSequenceIndex ?? 0) - (a.bSequenceIndex ?? 0))[0];
+    if (bNextTask && bNextTask.id !== aNextTask?.id) {
+      await this.restoreTaskDraftsFromLatestFreeze(tx, session.id, bNextTask.id, nextWorkIndex);
     }
   }
 
@@ -1260,6 +1334,16 @@ export class ExperimentService {
     });
     if (currentATask) {
       await this.activateCurrentATask(tx, currentATask, workEnds, now);
+    }
+
+    // 池分配：首次进入正式段时，确保 B 有初始分配
+    const formalTasks = await tx.taskAssignment.findMany({
+      where: { sessionId, phase: ExperimentPhase.FORMAL },
+      orderBy: { sortOrder: 'asc' },
+    });
+    const bHasAny = formalTasks.some((t) => t.bSequenceIndex !== null);
+    if (!bHasAny) {
+      await this.assignNextTaskForB(tx, sessionId, formalTasks);
     }
 
     // Schedule side task plans for this segment
@@ -1484,6 +1568,54 @@ export class ExperimentService {
             aDeadlineAt: deadline,
           },
     });
+  }
+
+  /**
+   * 从锁定池中随机分配下一个公司给 B。
+   * 池 = A 已提交 && B 未完成 && B 未分配的 FORMAL 公司。
+   * 池空时 fallback 到 A 正在处理的公司（PreA 模式）。
+   */
+  private async assignNextTaskForB(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    tasks: TaskAssignment[],
+  ): Promise<{ assigned: TaskAssignment | null; method: string }> {
+    const maxBSeq = tasks.reduce((max, t) => Math.max(max, t.bSequenceIndex ?? 0), 0);
+    const nextSeq = maxBSeq + 1;
+
+    const formalTasks = tasks.filter((t) => t.phase === ExperimentPhase.FORMAL);
+
+    // 1. 构建锁定池：A 已提交 && B 未完成 && B 未分配
+    const pool = formalTasks.filter(
+      (t) => t.aSubmittedAt !== null && t.bCompletedAt === null && t.bSequenceIndex === null,
+    );
+
+    if (pool.length > 0) {
+      const seed = `${sessionId}:b_assign:${nextSeq}`;
+      const pick = Math.floor(this.seededRandom(seed) * pool.length);
+      const picked = pool[pick];
+      await tx.taskAssignment.update({
+        where: { id: picked.id },
+        data: { bSequenceIndex: nextSeq },
+      });
+      return { assigned: picked, method: 'pool_random' };
+    }
+
+    // 2. 池空 → PreA fallback：A 正在处理 && B 未分配
+    const preaCandidate = formalTasks.find(
+      (t) => t.aSubmittedAt === null && t.aStartedAt !== null && t.bCompletedAt === null && t.bSequenceIndex === null,
+    );
+
+    if (preaCandidate) {
+      await tx.taskAssignment.update({
+        where: { id: preaCandidate.id },
+        data: { bSequenceIndex: nextSeq },
+      });
+      return { assigned: preaCandidate, method: 'prea_fallback' };
+    }
+
+    // 3. 都没有 → 空窗
+    return { assigned: null, method: 'idle' };
   }
 
   private getCurrentAiLevel(

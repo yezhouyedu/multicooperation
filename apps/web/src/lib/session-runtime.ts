@@ -34,6 +34,7 @@ export type CompanyData = {
   name: string;
   roundLabel: string;
   sector: string;
+  usage?: 'formal' | 'practice';
   tags: string[];
   summary: string;
   materials: MaterialItem[];
@@ -61,7 +62,7 @@ export type QuestionnaireTemplate = {
 
 export type RuntimeState = {
   assignedRole: 'A' | 'B';
-  phase: 'instruction' | 'practice_ready' | 'practice' | 'formal_ready' | 'formal_work' | 'formal_break' | 'end';
+  phase: 'instruction' | 'practice_quiz' | 'practice_ready' | 'practice' | 'formal_ready' | 'formal_work' | 'formal_break' | 'end';
   segmentIndex: number;
   segmentType: 'PRACTICE' | 'WORK' | 'BREAK' | null;
   segmentRemainingSeconds: number | null;
@@ -72,6 +73,7 @@ export type RuntimeState = {
   bCanSubmit: boolean;
   isIdle: boolean;
   isFrozen: boolean;
+  isPreA: boolean;
   questionnaireSubmitted: boolean;
   aiLevel: 'BASIC' | 'ADVANCED';
   sideTaskQueue: Array<{
@@ -109,6 +111,13 @@ export type RuntimeState = {
     waitingForPeer: boolean;
   } | null;
   questionnaireTemplate: QuestionnaireTemplate | null;
+  practiceQuizTemplate: QuestionnaireTemplate | null;
+  practiceQuizPassCount: number;
+  practiceTutorialState: {
+    steps: string[];
+    completedSteps: string[];
+    completed: boolean;
+  } | null;
 };
 
 export type SessionBootstrap = {
@@ -204,7 +213,9 @@ export function useSessionRuntime() {
     source.addEventListener('b_feedback_to_a', forwardEvent('b_feedback_to_a'));
     source.addEventListener('a_task_submitted', forwardEvent('a_task_submitted'));
     source.addEventListener('a_task_auto_submitted', forwardEvent('a_task_auto_submitted'));
+    source.addEventListener('practice_a_task_auto_submitted', forwardEvent('practice_a_task_auto_submitted'));
     source.addEventListener('b_task_completed', forwardEvent('b_task_completed'));
+    source.addEventListener('practice_b_task_completed', forwardEvent('practice_b_task_completed'));
     source.addEventListener('break_questionnaire_submitted', forwardEvent('break_questionnaire_submitted'));
 
     source.onerror = () => {
