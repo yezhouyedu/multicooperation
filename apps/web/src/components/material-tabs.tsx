@@ -68,7 +68,7 @@ export function MaterialTabs({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e6eb] bg-gray-50 px-2 py-2">
+      <div data-tutorial-anchor="material-tabs" className="flex shrink-0 items-center gap-2 border-b border-[#e5e6eb] bg-gray-50 px-2 py-2">
         <button
           type="button"
           onClick={() => scrollTabs('left')}

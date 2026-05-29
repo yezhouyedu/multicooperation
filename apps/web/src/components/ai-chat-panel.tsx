@@ -637,6 +637,7 @@ export function AiChatPanel({
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
+              data-tutorial-anchor="ai-input"
               placeholder={
                 followUpTarget
                   ? '继续写你的追问，发送时不会复制整段原回答...'

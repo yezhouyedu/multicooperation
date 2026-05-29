@@ -799,3 +799,155 @@
 - `apps/web/src/components/admin-sidefeed-panel.tsx` — ConfigNumber/ConfigString 组件新增 defaultValue 提示；所有参数传入默认值（滚动12s/停留5s/淡出2s/continuous间隔30s/抖动0s/暂停15s/batch提醒间隔300s/暂停60s）；移除 batchSizes 字段（batch 模式不再分批到达）；添加说明文字
 
 **核心澄清**：后台都是每 30s 一道题进入队列，区别只是前端滚动提醒频率——continuous 每道都提醒，batch 攒约 5 分钟提醒一次。
+
+### 2026-05-29 教学引导重构 + 三轮调整
+
+**背景**：当前教学引导存在步骤太多（10-11 步）、遮罩位置不精确、解锁条件太死、不分角色等问题，需要重构为更精简、更友好的教学体验。
+
+**本轮完成内容**：
+
+#### 第一轮：教学引导重构
+
+1. **设计方案记录**：新建 `02_specs/01_frontend/TUTORIAL_SPEC.md`，定义教学引导的设计目标、整体结构、分角色设计、详细步骤、与现有实现的差异
+2. **添加新锚点**（3 个文件）：
+   - `material-tabs.tsx`：添加 `data-tutorial-anchor="material-tabs"` 到 tab 栏
+   - `ai-chat-panel.tsx`：添加 `data-tutorial-anchor="ai-input"` 到 textarea
+   - `sidetask-strip.tsx`：添加 `data-tutorial-anchor="sidetask-options"` 到选项区
+3. **重写核心组件** `practice-tutorial-overlay.tsx`：
+   - 新增第 1 层概览卡片（分角色显示不同内容）
+   - 精简为 5 步核心操作（查看材料、填写表单、使用 AI、处理副线、副线作答）
+   - 步骤 2 改为"点击按钮"解锁
+   - 角色专属说明文案（A：尽调员 5 分钟限制 + 反馈弹窗；B：查看尽调信息）
+4. **更新后端常量**：`experiment.service.ts` 的 `PRACTICE_TUTORIAL_STEPS` 更新为 5 个新步骤 key
+5. **构建验证**：`server build` 和 `web build` 均通过
+
+#### 第二轮：三轮调整
+
+1. **步骤三 AI 区调整**：
+   - 解锁条件改为"点击按钮"（`requireAction: false`）
+   - 文案改为"这里您可以借助 AI 的辅助完成任务"
+   - 按钮点击事件改为根据当前步骤的 `eventType` 动态派发
+
+2. **遮罩高亮效果**：
+   - 边框颜色从 `#60a5fa` 改为 `#3b82f6`（更亮的蓝色）
+   - 背景色从 `bg-white/10` 改为 `bg-blue-500/10`（轻微的蓝色背景）
+   - 添加发光效果：`shadow-[0_0_0_9999px_rgba(2,6,23,0.55),0_0_40px_rgba(59,130,246,0.4)]`
+
+3. **测试轮副线任务样例**：
+   - 生成 5 个测试轮副线任务样例 Excel
+   - 文件路径：`00_start_materials/原始材料/测试轮/副线任务样例.xlsx`
+   - 包含 5 道题目，涵盖团队协作、信息处理、决策判断、沟通协作、时间管理等场景
+   - 与正式实验 Excel 结构一致，使用相同字段
+
+**验证**：`corepack pnpm --filter web build` 通过（22 个页面全部生成）。
+
+**文件变更清单**：
+- `apps/web/src/components/practice-tutorial-overlay.tsx` — 核心重写
+- `apps/web/src/components/material-tabs.tsx` — 添加锚点
+- `apps/web/src/components/ai-chat-panel.tsx` — 添加锚点
+- `apps/web/src/components/sidetask-strip.tsx` — 添加锚点
+- `apps/server/src/experiment/experiment.service.ts` — 更新步骤常量
+- `02_specs/01_frontend/TUTORIAL_SPEC.md` — 新增设计规格
+- `00_start_materials/原始材料/测试轮/副线任务样例.xlsx` — 新增测试轮样例
+
+### 2026-05-29 教学引导三轮修复
+
+**背景**：用户验收后反馈三个问题：高亮效果不可见、测试轮 Excel 导入识别不到、指导语一人点击两人都开始。
+
+**修复内容**：
+
+#### 问题 1：高亮透明色
+
+**现象**：目标区域高亮不可见，用户希望目标区域有明显的透明色背景。
+
+**修复**：
+- `practice-tutorial-overlay.tsx`：高亮框背景色从 `bg-transparent` 改为 `bg-blue-100/30`（浅蓝色透明背景）
+- 现在目标区域会有明显的浅蓝色背景，与遮罩的深色形成对比
+
+#### 问题 2：测试轮 Excel 导入显示
+
+**现象**：上传 Excel 后显示"导入完成: 0 条"，实际导入成功但前端显示错误。
+
+**修复**：
+- `admin-sidefeed-panel.tsx`：导入结果从 `data.imported` 改为 `data.total`、`data.created`、`data.updated`
+- 现在上传后会显示正确的导入结果："导入完成: X 条，新增 Y，更新 Z"
+
+#### 问题 3：指导语同步 bug
+
+**现象**：一个人点击"开始"后，两人都直接进入测试题阶段，没有各自的准备环节。
+
+**根因**：指导语页面的 `handleStart` 函数直接调用 `GET /practice-quiz`，让 session 进入 `practice_quiz` 阶段，两人都会自动跳转。
+
+**修复**：
+- `instruction/page.tsx`：`handleStart` 函数从 `GET /practice-quiz` 改为 `POST /ready-practice`
+- 现在每个人点击"开始"后会标记自己已准备，跳转到 `/ready?target=practice`
+- 两人都准备后才进入测试题阶段
+
+**验证**：`corepack pnpm --filter web build` 通过（22 个页面全部生成）。
+
+**文件变更清单**：
+- `apps/web/src/components/practice-tutorial-overlay.tsx` — 高亮框样式
+- `apps/web/src/components/admin-sidefeed-panel.tsx` — 导入显示逻辑
+- `apps/web/src/app/instruction/page.tsx` — 指导语同步逻辑
+
+**当前流程**：
+```
+登录 → 等待室 → 配对
+    ↓
+指导语（每人独立阅读）
+    ↓ 点击"开始"
+准备页（等待另一方）
+    ↓ 两人都准备
+测试题
+    ↓ 通过
+测试轮（教学引导）
+    ↓ 完成
+正式阶段
+```
+
+### 2026-05-29 指导语链路回正 + 教学高亮口径修正 + 测试轮副线接通
+
+**背景**：在 5.29 的多轮调整后，出现了三个实际回归：
+- 指导语页有人点击后会把整个 session 直接推进到测试题，未保留“各自 ready 等待对方”的口径
+- 教学引导视觉仍偏向“整屏暗遮罩开洞”，与当前想要的“目标区域本体高亮、不压黑全页”的目标不一致
+- 测试轮阶段虽然 admin 已能扫描副线 Excel，但测试轮前台仍看不到副线任务
+
+**本轮修复**：
+
+1. **指导语同步链路回正**
+   - `instruction/page.tsx` 改回点击后先 `POST /ready-practice`，再进入 `/ready?target=practice`
+   - `experiment.service.ts` 中 practice barrier 的允许阶段改回 `INSTRUCTION / PRACTICE_READY`
+   - 两人都 ready 后，不是直接开测轮，而是统一进入 `practice_quiz`
+   - `practice-quiz/page.tsx` 不再在通过后再次调用 `ready-practice`
+   - `submitPracticeQuiz()` 改为：双方都通过测试题后，后端自动启动测试轮
+   - 同时移除 `GET /practice-quiz` 对 session 的隐式推进，避免有人直接请求接口把全局 phase 从指导语强推到测试题
+
+2. **教学高亮口径修正**
+   - `practice-tutorial-overlay.tsx` 的步骤层从“整屏深色遮罩 + 开洞”调整为“默认不加整屏暗罩，只高亮当前目标区域”
+   - 当前高亮样式改为：浅色高亮底、明显描边、白色内圈与蓝色外发光，优先保证目标区域本体醒目
+   - `02_specs/01_frontend/TUTORIAL_SPEC.md` 已同步更新为最新口径：默认不使用整屏暗色遮罩，只高亮目标区域
+
+3. **测试轮副线任务接通**
+   - `auth.service.ts` 在 session 初始化时新增测试轮 `segmentIndex=0` 的副线计划创建
+   - 题目优先取 `workSegment=0`，若当前库里暂无专门测试轮题，则回退取 `workSegment=1`
+   - `experiment.service.ts` 让测试轮 `segmentIndex=0` 也进入副线 runtime，不再被当成“非 work segment”直接返回空队列
+   - 对旧 session 增加兼容：若已进入测试轮但尚无 `segmentIndex=0` 副线计划，会在 runtime 读取时即时补建并立即可见
+
+**当前确认后的流程**：
+```
+登录 → 等待室 → 配对
+    ↓
+指导语（每人独立阅读）
+    ↓ 点击“开始”
+准备页（等待另一方）
+    ↓ 两人都准备
+测试题
+    ↓ 两人都通过
+测试轮（含教学引导 + 测试轮副线）
+    ↓ 完成
+正式阶段
+```
+
+**验证**：
+- `corepack pnpm --filter server build` 通过
+- `corepack pnpm --filter web build` 通过

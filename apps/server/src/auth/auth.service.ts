@@ -265,6 +265,47 @@ export class AuthService {
     });
 
     // 3. For each formal work segment (workSegment 1/2/3 → segmentIndex 1/3/5)
+    const practiceCandidatesRaw = await sidetaskTx.sideTaskItem.findMany({
+      where: {
+        isActive: true,
+        workSegment: { in: [0, 1] },
+      },
+      select: { id: true, itemCode: true, workSegment: true },
+      orderBy: [{ workSegment: 'asc' }, { createdAt: 'asc' }],
+    });
+    const practiceCandidates = Array.from(
+      new Map<string, { id: string; itemCode: string; workSegment: number }>(
+        practiceCandidatesRaw.map((item: { id: string; itemCode: string; workSegment: number }) => [
+          item.itemCode,
+          item,
+        ]),
+      ).values(),
+    );
+    const practiceCount = Math.min(5, practiceCandidates.length);
+
+    if (practiceCount > 0) {
+      const sampledPractice = this.sampleWithSeed(
+        practiceCandidates,
+        practiceCount,
+        `${sessionId}:practice:segment:0`,
+      );
+
+      for (let queueOrder = 0; queueOrder < sampledPractice.length; queueOrder++) {
+        const item = sampledPractice[queueOrder];
+        await sidetaskTx.sideTaskPlan.create({
+          data: {
+            sessionId,
+            segmentIndex: 0,
+            itemId: item.id,
+            dispatchMode,
+            narrativeGroup,
+            themeLabel: 'practice',
+            queueOrder: queueOrder + 1,
+          },
+        });
+      }
+    }
+
     const usedItemCodes = new Set<string>();
 
     for (let workSegment = 1; workSegment <= 3; workSegment++) {

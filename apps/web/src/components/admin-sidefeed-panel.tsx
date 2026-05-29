@@ -67,6 +67,7 @@ export function AdminSidefeedPanel() {
       <ItemStatsSection />
       <RhythmConfigSection />
       <SessionSideTaskSection />
+      <PracticeMaterialSection />
     </div>
   );
 }
@@ -388,5 +389,45 @@ function ConfigString({ label, value, onChange, defaultValue }: { label: string;
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full rounded border border-slate-200 px-2 py-1.5" />
       {defaultValue !== undefined && <span className="mt-0.5 block text-[11px] text-slate-400">默认: {defaultValue}</span>}
     </label>
+  );
+}
+
+function PracticeMaterialSection() {
+  const [importing, setImporting] = useState(false);
+  const [status, setStatus] = useState('');
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setStatus('导入中...');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${serverBaseUrl}/admin/sidetask/import`, { method: 'POST', body: form });
+      const data = await res.json();
+      setStatus(`导入完成: ${data.total ?? 0} 条，新增 ${data.created ?? 0}，更新 ${data.updated ?? 0}`);
+    } catch {
+      setStatus('导入失败');
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="mb-4 text-xl font-semibold">测试轮材料</h2>
+      <p className="mb-4 text-sm text-slate-600">
+        上传测试轮副线任务样例 Excel，用于测试轮阶段的副线任务展示。
+      </p>
+      <div className="flex items-center gap-3">
+        <label className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 cursor-pointer">
+          {importing ? '导入中...' : '上传测试轮 Excel'}
+          <input type="file" accept=".xlsx,.xls" onChange={handleImport} className="hidden" disabled={importing} />
+        </label>
+        {status && <span className="text-sm text-slate-600">{status}</span>}
+      </div>
+    </section>
   );
 }

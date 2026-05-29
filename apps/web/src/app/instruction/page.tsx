@@ -69,11 +69,15 @@ export default function InstructionPage() {
     if (!participantId || !sessionCode) return;
     setStarting(true);
     try {
-      await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/practice-quiz`, {
-        method: 'GET',
-        cache: 'no-store',
+      const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/ready-practice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId }),
       });
-      router.push('/practice-quiz');
+      if (!response.ok) {
+        throw new Error('failed to mark practice readiness');
+      }
+      router.push('/ready?target=practice');
     } finally {
       setStarting(false);
     }

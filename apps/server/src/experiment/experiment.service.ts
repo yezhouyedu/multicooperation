@@ -76,17 +76,10 @@ type BarrierTarget = 'practice' | 'formal';
 
 const PRACTICE_TUTORIAL_STEPS = [
   'material_tab',
-  'material_fullscreen',
-  'material_zoom',
-  'task_input',
-  'task_fullscreen',
+  'task_acknowledge',
   'ai_message',
-  'ai_fullscreen',
-  'layout_resize',
-  'ai_screenshot',
   'sidetask_open',
   'sidetask_answer',
-  'sidetask_ai',
 ] as const;
 
 @Injectable()
@@ -176,17 +169,6 @@ export class ExperimentService {
     const template = synced.config.practiceQuizTemplate ?? synced.config.activeQuestionnaireTemplate;
     const items = this.normalizeQuestionnaireItems(template?.items);
 
-    if (
-      session.runtimePhase === RuntimePhase.INSTRUCTION &&
-      template
-    ) {
-      await this.prisma.session.update({
-        where: { id: session.id },
-        data: { runtimePhase: RuntimePhase.PRACTICE_QUIZ },
-      });
-      this.emitRuntimeInvalidated(sessionCode);
-    }
-
     return {
       ok: true,
       questionnaire: template
@@ -229,32 +211,75 @@ export class ExperimentService {
       passed,
     };
 
-    await this.prisma.questionnaireResponse.create({
-      data: {
-        sessionId: session.id,
-        participantId,
-        templateId: template.id,
-        phase: ExperimentPhase.PRACTICE,
-        segmentIndex: 0,
-        answers: payload,
-      },
-    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.questionnaireResponse.create({
+        data: {
+          sessionId: session.id,
+          participantId,
+          templateId: template.id,
+          phase: ExperimentPhase.PRACTICE,
+          segmentIndex: 0,
+          answers: payload,
+        },
+      });
 
-    await this.prisma.taskProgress.createMany({
-      data: [
-        {
+      await tx.taskProgress.createMany({
+        data: [
+          {
+            sessionId: session.id,
+            participantId,
+            stage: 'practice_quiz_submitted',
+            payload,
+          },
+          {
+            sessionId: session.id,
+            participantId,
+            stage: passed ? 'practice_quiz_passed' : 'practice_quiz_failed',
+            payload,
+          },
+        ],
+      });
+
+      if (!passed) return;
+
+      const pairing = await tx.pairing.findFirst({
+        where: { sessionId: session.id },
+        select: { participantAId: true, participantBId: true },
+      });
+      if (!pairing?.participantAId || !pairing.participantBId) return;
+
+      const passedRows = await tx.questionnaireResponse.findMany({
+        where: {
           sessionId: session.id,
-          participantId,
-          stage: 'practice_quiz_submitted',
-          payload,
+          phase: ExperimentPhase.PRACTICE,
+          segmentIndex: 0,
         },
-        {
-          sessionId: session.id,
-          participantId,
-          stage: passed ? 'practice_quiz_passed' : 'practice_quiz_failed',
-          payload,
-        },
-      ],
+        select: { participantId: true, answers: true },
+        orderBy: { submittedAt: 'desc' },
+      });
+
+      const latestPassedByParticipant = new Map<string, boolean>();
+      for (const row of passedRows) {
+        if (latestPassedByParticipant.has(row.participantId)) continue;
+        latestPassedByParticipant.set(
+          row.participantId,
+          Boolean((row.answers as Record<string, unknown> | null)?.passed),
+        );
+      }
+
+      const bothPassed =
+        latestPassedByParticipant.get(pairing.participantAId) === true &&
+        latestPassedByParticipant.get(pairing.participantBId) === true;
+
+      if (!bothPassed) return;
+
+      const currentSession = await tx.session.findUnique({
+        where: { id: session.id },
+        select: { runtimePhase: true },
+      });
+      if (currentSession?.runtimePhase !== RuntimePhase.PRACTICE_QUIZ) return;
+
+      await this.startPracticePhase(tx, session.id, synced.config, new Date());
     });
 
     this.emitRuntimeInvalidated(sessionCode);
@@ -970,7 +995,7 @@ export class ExperimentService {
 
       const expectedPhase: RuntimePhase[] =
         target === 'practice'
-          ? [RuntimePhase.PRACTICE_QUIZ, RuntimePhase.PRACTICE_READY]
+          ? [RuntimePhase.INSTRUCTION, RuntimePhase.PRACTICE_READY]
           : [RuntimePhase.PRACTICE, RuntimePhase.FORMAL_READY];
       if (!expectedPhase.includes(session.runtimePhase)) {
         throw new BadRequestException('Current session phase does not support this readiness action');
@@ -1060,7 +1085,14 @@ export class ExperimentService {
       }
 
       if (target === 'practice') {
-        await this.startPracticePhase(tx, session.id, config, now);
+        await tx.session.update({
+          where: { id: session.id },
+          data: {
+            runtimePhase: RuntimePhase.PRACTICE_QUIZ,
+            currentSegmentStarts: null,
+            currentSegmentEnds: null,
+          },
+        });
       } else {
         await this.startFormalWorkSegmentTx(tx, session.id, 1, config, now);
       }
@@ -1502,6 +1534,9 @@ export class ExperimentService {
     if (practiceTask) {
       await this.activateCurrentATask(tx, practiceTask, endsAt, now);
     }
+
+    await this.ensurePracticeSideTaskPlans(tx, sessionId);
+    await this.scheduleSideTaskPlans(tx, sessionId, 0, config, now);
   }
 
   private async startFormalWorkSegmentTx(
@@ -1628,10 +1663,93 @@ export class ExperimentService {
     }
   }
 
+  private async ensurePracticeSideTaskPlans(tx: Prisma.TransactionClient, sessionId: string) {
+    const sidetaskTx = tx as Prisma.TransactionClient & {
+      sideTaskItem: typeof this.prisma.sideTaskItem;
+      sideTaskPlan: typeof this.prisma.sideTaskPlan;
+      sideTaskSessionConfig: typeof this.prisma.sideTaskSessionConfig;
+    };
+
+    const existingCount = await sidetaskTx.sideTaskPlan.count({
+      where: { sessionId, segmentIndex: 0 },
+    });
+    if (existingCount > 0) return;
+
+    const sessionConfig = await sidetaskTx.sideTaskSessionConfig.findUnique({
+      where: { sessionId },
+      select: { dispatchMode: true, narrativeGroup: true },
+    });
+    if (!sessionConfig) return;
+
+    const practiceCandidatesRaw = await sidetaskTx.sideTaskItem.findMany({
+      where: {
+        isActive: true,
+        workSegment: { in: [0, 1] },
+      },
+      select: { id: true, itemCode: true, workSegment: true },
+      orderBy: [{ workSegment: 'asc' }, { createdAt: 'asc' }],
+    });
+    const practiceCandidates = Array.from(
+      new Map<string, { id: string; itemCode: string; workSegment: number }>(
+        practiceCandidatesRaw.map((item: { id: string; itemCode: string; workSegment: number }) => [
+          item.itemCode,
+          item,
+        ]),
+      ).values(),
+    );
+    const practiceCount = Math.min(5, practiceCandidates.length);
+    if (practiceCount === 0) return;
+
+    const sampledPractice = this.sampleWithSeed(
+      practiceCandidates,
+      practiceCount,
+      `${sessionId}:practice:segment:0`,
+    );
+
+    for (let queueOrder = 0; queueOrder < sampledPractice.length; queueOrder++) {
+      const item = sampledPractice[queueOrder];
+      await sidetaskTx.sideTaskPlan.create({
+        data: {
+          sessionId,
+          segmentIndex: 0,
+          itemId: item.id,
+          dispatchMode: sessionConfig.dispatchMode,
+          narrativeGroup: sessionConfig.narrativeGroup,
+          themeLabel: 'practice',
+          queueOrder: queueOrder + 1,
+        },
+      });
+    }
+  }
+
   private seededRandom(seed: string): number {
     const crypto = require('crypto');
     const hash = crypto.createHash('sha256').update(seed).digest();
     return hash.readUInt32BE(0) / 0x100000000;
+  }
+
+  private sampleWithSeed<T>(items: T[], count: number, seed: string): T[] {
+    return this.shuffleWithSeed(items, seed).slice(0, count);
+  }
+
+  private shuffleWithSeed<T>(items: T[], seed: string) {
+    const random = this.createSeededRandom(seed);
+    const copy = [...items];
+    for (let index = copy.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1));
+      [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+    }
+    return copy;
+  }
+
+  private createSeededRandom(seed: string) {
+    let counter = 0;
+    return () => {
+      const crypto = require('crypto');
+      const hash = crypto.createHash('sha256').update(`${seed}:${counter}`).digest();
+      counter += 1;
+      return hash.readUInt32BE(0) / 0x100000000;
+    };
   }
 
   private async getSideTaskRuntime(
@@ -1665,9 +1783,11 @@ export class ExperimentService {
     }
 
     const now = new Date();
-    const isWorkSegment = currentSegmentIndex % 2 === 1 && currentSegmentIndex >= 1 && currentSegmentIndex <= 5;
+    const isSideTaskSegment =
+      currentSegmentIndex === 0 ||
+      (currentSegmentIndex % 2 === 1 && currentSegmentIndex >= 1 && currentSegmentIndex <= 5);
 
-    if (!isWorkSegment) {
+    if (!isSideTaskSegment) {
       return {
         sideTaskQueue: [],
         sideTaskConfig: {
@@ -1687,6 +1807,56 @@ export class ExperimentService {
           tickerMessage: '您有新事项入库，请尽快处理',
         },
       };
+    }
+
+    if (currentSegmentIndex === 0) {
+      const existingPracticePlans = await this.prisma.sideTaskPlan.count({
+        where: { sessionId, segmentIndex: 0 },
+      });
+
+      if (existingPracticePlans === 0) {
+        const practiceCandidatesRaw = await this.prisma.sideTaskItem.findMany({
+          where: {
+            isActive: true,
+            workSegment: { in: [0, 1] },
+          },
+          select: { id: true, itemCode: true, workSegment: true },
+          orderBy: [{ workSegment: 'asc' }, { createdAt: 'asc' }],
+        });
+        const practiceCandidates = Array.from(
+          new Map<string, { id: string; itemCode: string; workSegment: number }>(
+            practiceCandidatesRaw.map((item: { id: string; itemCode: string; workSegment: number }) => [
+              item.itemCode,
+              item,
+            ]),
+          ).values(),
+        );
+        const practiceCount = Math.min(5, practiceCandidates.length);
+
+        if (practiceCount > 0) {
+          const sampledPractice = this.sampleWithSeed(
+            practiceCandidates,
+            practiceCount,
+            `${sessionId}:practice:segment:0`,
+          );
+
+          for (let queueOrder = 0; queueOrder < sampledPractice.length; queueOrder++) {
+            const item = sampledPractice[queueOrder];
+            await this.prisma.sideTaskPlan.create({
+              data: {
+                sessionId,
+                segmentIndex: 0,
+                itemId: item.id,
+                dispatchMode: sessionConfig.dispatchMode,
+                narrativeGroup: sessionConfig.narrativeGroup,
+                themeLabel: 'practice',
+                queueOrder: queueOrder + 1,
+                scheduledAt: now,
+              },
+            });
+          }
+        }
+      }
     }
 
     // participantId filter for per-participant answered tracking

@@ -267,7 +267,7 @@ export function SideTaskStrip({
         </div>
         <div className="mb-4 leading-7">{selectedItem.text}</div>
         <div className="mb-5 text-base font-bold text-[#1d2129]">{selectedItem.question}</div>
-        <div className="space-y-3">
+        <div data-tutorial-anchor="sidetask-options" className="space-y-3">
           {[selectedItem.optionA, selectedItem.optionB].map((option) => {
             const selected = selectedItem.answer === option;
             return (

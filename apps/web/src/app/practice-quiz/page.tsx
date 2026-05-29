@@ -21,14 +21,10 @@ export default function PracticeQuizPage() {
     }
     if (!runtime || !bootstrap) return;
     if (runtime.phase === 'instruction') {
-      void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/practice-quiz`, {
-        cache: 'no-store',
-      }).then(() => refresh());
-    }
-    if (runtime.phase === 'practice_ready' && !runtime.practiceQuizPassed) {
+      router.replace('/instruction');
       return;
     }
-    if (runtime.phase === 'practice_ready' && runtime.syncState?.selfReady) {
+    if (runtime.phase === 'practice_ready') {
       router.replace('/ready?target=practice');
       return;
     }
@@ -64,14 +60,6 @@ export default function PracticeQuizPage() {
       const data = (await response.json()) as { correctCount: number; passed: boolean; passCount: number };
       setResult(data);
       await refresh();
-      if (data.passed) {
-        await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/ready-practice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ participantId: bootstrap.participantId }),
-        });
-        router.push('/ready?target=practice');
-      }
     } finally {
       setSubmitting(false);
     }
