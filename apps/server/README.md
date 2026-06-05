@@ -11,7 +11,7 @@
 ## 2. 主要职责
 
 - 手机号准入校验
-- 自动分配 A / B 并完成配对
+- 先按进入顺序完成配对，再在组内随机分配 A / B
 - 维护 session、阶段切换、工作段 / 休息段推进
 - 维护 A 的 5 分钟窗口、A 信息解锁、B 查看门槛
 - 草稿保存、冻结快照、恢复链路
@@ -72,14 +72,26 @@ corepack pnpm --filter server build
 ## 6. 常用接口
 
 - `POST /auth/login`
+- `GET /experiment/session/:code`
 - `GET /experiment/session/:code/runtime`
 - `GET /experiment/session/:code/events`
+- `GET /experiment/session/:code/practice-quiz`
+- `POST /experiment/session/:code/practice-quiz`
+- `POST /experiment/session/:code/ready-practice`
+- `POST /experiment/session/:code/ready-formal`
+- `POST /experiment/session/:code/complete-practice`
+- `POST /experiment/session/:code/progress`
+- `GET /experiment/session/:code/tasks`
 - `POST /experiment/session/:code/tasks/:taskId/draft`
+- `GET /experiment/session/:code/tasks/:taskId/snapshots`
+- `POST /experiment/session/:code/tasks/:taskId/restore-latest`
 - `POST /experiment/session/:code/tasks/:taskId/a-submit`
 - `POST /experiment/session/:code/tasks/:taskId/view-a-info`
 - `POST /experiment/session/:code/tasks/:taskId/b-complete`
 - `GET /admin/sessions`
 - `GET /admin/export`
+- `GET /admin/experiment-config`
+- `POST /admin/experiment-config`
 - `GET/POST /admin/ai-settings`
 
 ## 7. 环境变量

@@ -20,7 +20,7 @@
 - `practiceOrFormal`
 
 ### 2.2 阶段与时间
-- `phase`：`instruction | practice | formal_work | formal_break | end`
+- `phase`：`instruction | practice_ready | practice_quiz | practice | formal_ready | formal_work | formal_break | end`
 - `segmentIndex`
 - `segmentType`
 - `segmentStartedAt`
@@ -68,10 +68,14 @@
 - 进入登录页
 - 登录成功/失败
 - 进入等候室
-- 自动分配角色
+- 进入同步准备页 1 / 2
+- 组内随机分配角色
 - 配对成功
 - 进入指导语
+- 进入测试题
+- 测试题提交 / 通过 / 未通过
 - 进入测试轮
+- 教学引导开始 / 步骤完成 / 教学完成
 - 进入正式实验
 
 ### 3.2 主线行为
@@ -129,7 +133,7 @@
 - `basic` 与 `advanced` AI 条件下的行为差异
 
 ## 6. 当前明确约束
-- 角色来源是进入顺序，不是 admin 上传字段
+- 角色来源不是 admin 上传字段，也不是“先来固定 A、后来固定 B”；而是先按进入顺序成组，再在组内随机分配
 - 公司顺序按 session 固定随机、无放回
 - B 是否“看过 A 信息”仅作为行为记录口径，不再作为提交门槛
 - 副线已完成累计只在当前工作段内有效

@@ -74,6 +74,17 @@ export function SideTaskStrip({
     }
   }, [sideTaskQueue, reportReleased]);
 
+  useEffect(() => {
+    function handleReturnMain() {
+      setExpanded(false);
+    }
+
+    window.addEventListener('practice-tutorial-return-main', handleReturnMain);
+    return () => {
+      window.removeEventListener('practice-tutorial-return-main', handleReturnMain);
+    };
+  }, []);
+
   // Ticker animation using sideTaskConfig parameters
   useEffect(() => {
     if (expanded) return; // Don't run ticker when expanded

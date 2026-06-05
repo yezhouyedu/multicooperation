@@ -1622,42 +1622,39 @@ export class ExperimentService {
     if (plans.length === 0) return;
 
     const dispatchMode = sessionConfig.dispatchMode;
+    const interval = config.sideTaskContinuousIntervalSec;
+    const jitter = config.sideTaskContinuousJitterSec;
 
-    if (dispatchMode === 'continuous') {
-      const interval = config.sideTaskContinuousIntervalSec;
-      const jitter = config.sideTaskContinuousJitterSec;
-      let offset = 0;
-      for (const plan of plans) {
-        const jitterOffset = jitter > 0
-          ? Math.floor(this.seededRandom(`${sessionId}:${plan.id}:jitter`) * (jitter * 2 + 1)) - jitter
-          : 0;
-        const scheduledAt = new Date(now.getTime() + (offset + jitterOffset) * 1000);
-        await sidetaskTx.sideTaskPlan.update({
-          where: { id: plan.id },
-          data: { scheduledAt },
-        });
-        offset += interval;
-      }
-    } else {
-      // batch mode
+    // Variable A now manipulates reminder frequency only.
+    // Actual item arrival stays continuous in both modes.
+    let offset = 0;
+    for (const plan of plans) {
+      const jitterOffset = jitter > 0
+        ? Math.floor(this.seededRandom(`${sessionId}:${plan.id}:jitter`) * (jitter * 2 + 1)) - jitter
+        : 0;
+      const scheduledAt = new Date(now.getTime() + (offset + jitterOffset) * 1000);
+      await sidetaskTx.sideTaskPlan.update({
+        where: { id: plan.id },
+        data: { scheduledAt },
+      });
+      offset += interval;
+    }
+
+    if (dispatchMode === 'batch') {
       const batchSizesRaw = config.sideTaskBatchSizes;
       const batchSizes = batchSizesRaw.split(',').map((s) => Number(s.trim()));
-      const trigger = config.sideTaskBatchTriggerSec;
 
-      let offset = 0;
       let batchNo = 1;
       let idx = 0;
 
       for (const size of batchSizes) {
         for (let j = 0; j < size && idx < plans.length; j++) {
-          const scheduledAt = new Date(now.getTime() + offset * 1000);
           await sidetaskTx.sideTaskPlan.update({
             where: { id: plans[idx].id },
-            data: { scheduledAt, batchNo },
+            data: { batchNo },
           });
           idx++;
         }
-        offset += trigger;
         batchNo++;
       }
     }

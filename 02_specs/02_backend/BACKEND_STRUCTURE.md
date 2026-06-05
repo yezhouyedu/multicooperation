@@ -11,7 +11,7 @@
 - 两人配对、角色随机化、公司顺序随机化
 - 实验主状态机与统一 runtime
 - 主线草稿、快照、恢复、问卷、行为记录
-- 副线题库、计划生成、到达节奏、曝光与作答记录
+- 副线题库、计划生成、提醒频率条件、曝光与作答记录
 - AI 接口、admin 配置、材料系统、数据导出
 
 ---
@@ -100,7 +100,8 @@
 
 ### 3.3 正式段状态机
 
-- 指导语后先过一次同步准备页
+- 指导语后先过一次同步准备页，再进入测试题
+- 只有双方都通过测试题，系统才自动启动测试轮
 - 测试轮后再过一次同步准备页
 - 两人同时进入正式工作段 1
 - 正式流程固定为 3 个工作段 + 2 个休息问卷段
@@ -118,9 +119,11 @@
 
 ### 3.5 副线规则
 
-- 测试轮没有副线计划
+- 测试轮会生成少量 practice 副线计划，用于教学引导和测试轮展示
 - 正式 3 个工作段各生成 40 条副线计划，总计 120 条
-- 到达节奏分为 `continuous` / `batch`
+- 提醒频率条件分为 `continuous` / `batch`
+- 两种条件下题目实际到达节奏相同，默认都是每 30 秒一条
+- `continuous / batch` 的差异体现在前端提醒频率，不体现在题目实际释放速率
 - 叙事条件分为 `coop_narrative` / `neutral_info`
 - 服务端认定 `releasedAt`
 - 前端首次见到 planId 时补发 `side_task_released`
@@ -231,11 +234,21 @@
 
 - `GET /experiment/session/:code/runtime`
 - `GET /experiment/session/:code/events`
+- `GET /experiment/session/:code/practice-quiz`
+- `POST /experiment/session/:code/practice-quiz`
+- `POST /experiment/session/:code/ready-practice`
+- `POST /experiment/session/:code/ready-formal`
+- `POST /experiment/session/:code/complete-practice`
+- `POST /experiment/session/:code/progress`
 
 ### 6.3 主任务
 
+- `GET /experiment/session/:code`
+- `GET /experiment/session/:code/tasks`
 - `GET /experiment/session/:code/tasks/:taskId/draft`
 - `POST /experiment/session/:code/tasks/:taskId/draft`
+- `GET /experiment/session/:code/tasks/:taskId/snapshots`
+- `POST /experiment/session/:code/tasks/:taskId/restore-latest`
 - `POST /experiment/session/:code/tasks/:taskId/a-submit`
 - `POST /experiment/session/:code/tasks/:taskId/view-a-info`
 - `POST /experiment/session/:code/tasks/:taskId/b-complete`

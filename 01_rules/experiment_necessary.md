@@ -30,8 +30,9 @@
 
 ### 1.4 时间同步
 
-- 指导语后要经过一次同步准备页才能进入测试轮
-- 测试轮后要经过一次同步准备页才能进入正式任务页
+- 指导语后要先经过一次同步准备页，双方都 ready 后才进入测试题
+- 测试题通过后，系统才启动测试轮；测试轮起点对两人一致
+- 测试轮后要再经过一次同步准备页才能进入正式任务页
 - 这样正式任务第一页的起点对两人一致
 
 ### 1.5 尽调员提交规则
@@ -71,6 +72,12 @@
 
 - `instruction_viewed`
 - `practice_ready`
+- `practice_quiz_submitted`
+- `practice_quiz_passed`
+- `practice_quiz_failed`
+- `practice_tutorial_started`
+- `practice_tutorial_step_completed`
+- `practice_tutorial_completed`
 - `formal_ready`
 - `a_task_auto_submitted`
 - `b_viewed_a_info`

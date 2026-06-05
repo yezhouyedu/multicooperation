@@ -259,7 +259,7 @@ function RhythmConfigSection() {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="mb-4 text-xl font-semibold">提醒频率参数</h2>
-      <p className="mb-4 text-sm text-slate-500">后台题目到达速度相同（每 30s 一道），区别只在前端滚动提醒的频率。Continuous 每道都提醒，Batch 攒约 5 分钟提醒一次。</p>
+      <p className="mb-4 text-sm text-slate-500">变量 A 操纵的是前端提醒频率，不是题目实际到达速度。后台题目两种模式都按同一个到达节奏（默认每 30 秒一道）进入队列；continuous 每道都提醒，batch 攒一段时间再提醒一次。</p>
 
       <div className="mb-4">
         <h3 className="mb-2 text-sm font-semibold text-slate-600">共享动画参数</h3>
@@ -272,18 +272,18 @@ function RhythmConfigSection() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-blue-600">Continuous 模式</h3>
+          <h3 className="mb-2 text-sm font-semibold text-blue-600">共享后台到达参数（两种模式共用）</h3>
           <div className="space-y-2">
-            <ConfigNumber label="到达间隔 (秒)" value={config.sideTaskContinuousIntervalSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousIntervalSec: v } : c)} defaultValue={30} />
-            <ConfigNumber label="间隔抖动 (秒)" value={config.sideTaskContinuousJitterSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousJitterSec: v } : c)} defaultValue={0} />
-            <ConfigNumber label="暂停时长 (秒)" value={config.sideTaskContinuousPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousPauseSec: v } : c)} defaultValue={15} />
+            <ConfigNumber label="题目到达间隔 (秒)" value={config.sideTaskContinuousIntervalSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousIntervalSec: v } : c)} defaultValue={30} />
+            <ConfigNumber label="到达间隔抖动 (秒)" value={config.sideTaskContinuousJitterSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousJitterSec: v } : c)} defaultValue={0} />
+            <ConfigNumber label="Continuous 提醒暂停 (秒)" value={config.sideTaskContinuousPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskContinuousPauseSec: v } : c)} defaultValue={15} />
           </div>
         </div>
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-purple-600">Batch 模式</h3>
+          <h3 className="mb-2 text-sm font-semibold text-purple-600">Batch 提醒参数</h3>
           <div className="space-y-2">
             <ConfigNumber label="提醒间隔 (秒, 攒多久提醒一次)" value={config.sideTaskBatchTriggerSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchTriggerSec: v } : c)} defaultValue={300} />
-            <ConfigNumber label="暂停时长 (秒)" value={config.sideTaskBatchPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchPauseSec: v } : c)} defaultValue={60} />
+            <ConfigNumber label="Batch 提醒暂停 (秒)" value={config.sideTaskBatchPauseSec} onChange={(v) => setConfig((c) => c ? { ...c, sideTaskBatchPauseSec: v } : c)} defaultValue={60} />
           </div>
         </div>
       </div>

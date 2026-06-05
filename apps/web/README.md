@@ -1,6 +1,6 @@
 # apps/web
 
-这是 `multi cooperation` 项目的前端应用，负责参与者实验主流程、A/B 工作台、休息问卷页和 admin 后台界面。
+这是 `multi cooperation` 项目的前端应用，负责参与者实验主流程、测试题与同步准备页、A/B 工作台、休息问卷页和 admin 后台界面。
 
 ## 1. 技术基线
 
@@ -30,10 +30,13 @@
 - `/login`
 - `/waiting-room`
 - `/instruction`
+- `/ready`
+- `/practice-quiz`
 - `/practice`
 - `/break`
 - `/workspace/a`
 - `/workspace/b`
+- `/workspace/b-waiting`
 - `/workspace/b-feedback`
 - `/workspace/end`
 - `/admin`

@@ -47,7 +47,8 @@
 
 - [原始材料/A端尽调表_参与者可见版v2.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/A端尽调表_参与者可见版v2.docx)
 - [原始材料/B端投资判断表_参与者可见版.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/B端投资判断表_参与者可见版.docx)
-- `原始材料/P01/*`
+- `原始材料/正式/*`
+- `原始材料/测试轮/P01/*`
 
 ### `01_rules/`
 
@@ -118,10 +119,13 @@
 - `/login`
 - `/waiting-room`
 - `/instruction`
+- `/ready`
+- `/practice-quiz`
 - `/practice`
 - `/break`
 - `/workspace/a`
 - `/workspace/b`
+- `/workspace/b-waiting`
 - `/workspace/b-feedback`
 - `/workspace/end`
 
@@ -130,10 +134,13 @@
 - [apps/web/src/app/login/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/login/page.tsx)
 - [apps/web/src/app/waiting-room/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/waiting-room/page.tsx)
 - [apps/web/src/app/instruction/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/instruction/page.tsx)
+- [apps/web/src/app/ready/ready-client-page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/ready/ready-client-page.tsx)
+- [apps/web/src/app/practice-quiz/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/practice-quiz/page.tsx)
 - [apps/web/src/app/practice/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/practice/page.tsx)
 - [apps/web/src/app/break/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/break/page.tsx)
 - [apps/web/src/app/workspace/a/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/a/page.tsx)
 - [apps/web/src/app/workspace/b/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b/page.tsx)
+- [apps/web/src/app/workspace/b-waiting/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-waiting/page.tsx)
 - [apps/web/src/app/workspace/b-feedback/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-feedback/page.tsx)
 
 后端主要文件：
