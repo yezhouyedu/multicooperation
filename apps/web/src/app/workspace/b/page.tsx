@@ -140,7 +140,35 @@ export default function WorkspaceBPage() {
     void refreshDiligenceDraft();
   }, [currentTaskId, lastEvent, refreshDiligenceDraft, runtime?.aInfoUnlocked]);
 
+  useEffect(() => {
+    if (!bootstrap || !runtime?.aiUpgradeNotice || runtime.aiUpgradeNotice.type !== 'workspace') return;
+    const key = `ai_upgrade_notice_seen:${bootstrap.sessionCode}:${runtime.segmentIndex}:${runtime.assignedRole}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+    void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: runtime.assignedRole,
+        stage: 'ai_upgrade_notice_seen',
+        payload: { segmentIndex: runtime.segmentIndex, message: runtime.aiUpgradeNotice.message },
+      }),
+    }).catch(() => {});
+  }, [bootstrap, runtime]);
+
   if (redirectPath) return null;
+
+  const aiBadge = runtime ? (
+    <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+      {runtime.aiLevel === 'ADVANCED' ? '升级版' : '基础版'}
+    </span>
+  ) : null;
+  const aAiLevelLabel =
+    runtime?.currentTask?.aAiLevelAtWindow === 'ADVANCED'
+      ? '升级版'
+      : runtime?.currentTask?.aAiLevelAtWindow === 'BASIC'
+        ? '基础版'
+        : '未记录';
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
@@ -151,6 +179,9 @@ export default function WorkspaceBPage() {
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
       <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息已送达</div>
       <div className="mb-5 max-w-md leading-7">你现在可以查看尽调员提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
+      <div className="mb-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-[#1e80ff]">
+        尽调员处理这家公司时使用的 AI：{aAiLevelLabel}
+      </div>
       <button
         type="button"
         onClick={() => void openDiligenceInfo()}
@@ -161,6 +192,9 @@ export default function WorkspaceBPage() {
     </div>
   ) : (
     <div className="space-y-4 text-xs leading-6 text-[#4e5969]">
+      <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 font-medium text-[#1e80ff]">
+        尽调员处理这家公司时使用的 AI：{aAiLevelLabel}
+      </div>
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
         <div className="mb-2 font-medium text-[#1d2129]">基础数值摘录</div>
         <div className="grid gap-x-4 gap-y-1 md:grid-cols-2">
@@ -259,6 +293,11 @@ export default function WorkspaceBPage() {
                 <div className="flex h-full min-h-0 flex-col">
                   <div className="flex shrink-0 items-center justify-between gap-4 border-b border-[#e5e6eb] px-5 py-3 text-xs text-[#86909c]">
                     <div className="flex flex-col gap-1">
+                      {runtime.aiUpgradeNotice?.type === 'workspace' ? (
+                        <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 font-semibold text-[#1e80ff]">
+                          {runtime.aiUpgradeNotice.message}
+                        </span>
+                      ) : null}
                       <span>尽调信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
                       {runtime.aInfoUnlocked ? (
                         <span>尽调信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
@@ -311,6 +350,7 @@ export default function WorkspaceBPage() {
               }
               taskTitle="投资判断表"
               aiTitle="主线 AI"
+              aiBadge={aiBadge}
             />
           )}
         </div>

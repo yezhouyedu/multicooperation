@@ -52,6 +52,10 @@ export type RuntimeTask = {
   aUnlockedForBAt: string | null;
   bViewedAInfoAt: string | null;
   bCompletedAt: string | null;
+  aAiLevelAtWindow: 'BASIC' | 'ADVANCED' | null;
+  bPreAAiLevel: 'BASIC' | 'ADVANCED' | null;
+  bPostAAiLevel: 'BASIC' | 'ADVANCED' | null;
+  crossUpgradeBoundaryFlag: boolean;
 };
 
 export type QuestionnaireTemplate = {
@@ -75,7 +79,23 @@ export type RuntimeState = {
   isFrozen: boolean;
   isPreA: boolean;
   questionnaireSubmitted: boolean;
+  experimentMode: 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+  experimentSnapshot: Record<string, unknown> | null;
+  instructionBlocks: {
+    commonTitle: string;
+    commonBody: string;
+    roleA: string;
+    roleB: string;
+    manual: string;
+    ai_upgrade: string;
+    side_reminder: string;
+    coop_narrative: string;
+    aiUpgradeBreakNotice: string;
+    aiUpgradeWorkspaceNotice: string;
+    activeModeText: string;
+  };
   aiLevel: 'BASIC' | 'ADVANCED';
+  aiUpgradeNotice: { type: 'break' | 'workspace'; message: string } | null;
   sideTaskQueue: Array<{
     planId: string;
     text: string;

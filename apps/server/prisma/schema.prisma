@@ -66,6 +66,9 @@ model Session {
   code                 String                @unique
   status               SessionStatus         @default(WAITING)
   runtimePhase         RuntimePhase          @default(INSTRUCTION)
+  experimentMode       String                @default("manual")
+  upgradeCohort        String?
+  experimentSnapshot   Json?
   currentSegmentIndex  Int                   @default(0)
   currentSegmentType   SegmentType?
   currentPhase         ExperimentPhase?
@@ -150,6 +153,10 @@ model TaskAssignment {
   bCanSubmitAt     DateTime?
   bCompletedAt     DateTime?
   bSequenceIndex   Int?
+  aAiLevelAtWindow AiLevel?
+  bPreAAiLevel     AiLevel?
+  bPostAAiLevel    AiLevel?
+  crossUpgradeBoundaryFlag Boolean @default(false)
   frozenAt         DateTime?
   resumedAt        DateTime?
   aDraft           Json?
@@ -168,6 +175,9 @@ model TaskAssignment {
 
 model ExperimentConfig {
   id                           String                @id @default("default")
+  activeExperimentMode         String                @default("manual")
+  experimentModeSettings       Json?
+  instructionBlocks            Json?
   practiceDurationMinutes      Int                   @default(10)
   workDurationMinutes          Int                   @default(20)
   breakDurationMinutes         Int                   @default(5)
@@ -282,6 +292,8 @@ model AiMessageLog {
   phase         ExperimentPhase?
   segmentIndex  Int?
   aiLevel       AiLevel
+  modelVersion  String?
+  imageUploadEnabled Boolean @default(false)
   messageRole   String
   requestId     String
   content       String
@@ -413,6 +425,8 @@ model RandomizationAudit {
   companySequence           Json
   bAssignmentMethod         String?
   bAssignmentLog            Json?
+  experimentMode            String?
+  experimentRandomization   Json?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
   session                   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)

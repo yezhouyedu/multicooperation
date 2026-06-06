@@ -33,8 +33,29 @@ type SessionSummary = {
 
 type Participant = { id: string; phone: string | null; createdAt: string };
 type QuestionnaireItem = { id: string; prompt: string; options: string[]; correctOption?: string };
+type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+type ExperimentModeSettings = {
+  ai_upgrade: { fixedSideDispatchMode: 'continuous' | 'batch'; fixedNarrativeGroup: 'neutral_info' | 'coop_narrative' };
+  side_reminder: { fixedAiLevel: 'BASIC' | 'ADVANCED'; fixedNarrativeGroup: 'neutral_info' | 'coop_narrative' };
+  coop_narrative: { fixedAiLevel: 'BASIC' | 'ADVANCED'; fixedSideDispatchMode: 'continuous' | 'batch' };
+};
+type InstructionBlocks = {
+  commonTitle: string;
+  commonBody: string;
+  roleA: string;
+  roleB: string;
+  manual: string;
+  ai_upgrade: string;
+  side_reminder: string;
+  coop_narrative: string;
+  aiUpgradeBreakNotice: string;
+  aiUpgradeWorkspaceNotice: string;
+};
 
 type ExperimentConfig = {
+  activeExperimentMode: ExperimentMode;
+  experimentModeSettings: ExperimentModeSettings;
+  instructionBlocks: InstructionBlocks;
   practiceDurationMinutes: number;
   workDurationMinutes: number;
   breakDurationMinutes: number;
@@ -50,6 +71,29 @@ type ExperimentConfig = {
     items: QuestionnaireItem[];
   } | null;
   practiceQuizPassCount: number;
+};
+
+const MODE_META: Record<ExperimentMode, { title: string; random: string; fixed: string }> = {
+  manual: {
+    title: '手动 / 通用',
+    random: '不启用实验 1/2/3 的预设随机化',
+    fixed: '使用下方手动段 AI 与现有副线/叙事配置',
+  },
+  ai_upgrade: {
+    title: '实验 1：AI 能力升级',
+    random: '随机 early_upgrade / late_upgrade',
+    fixed: '固定副线提醒与叙事信息',
+  },
+  side_reminder: {
+    title: '实验 2：副线提醒频率',
+    random: '随机 continuous / batch',
+    fixed: '固定 AI 能力与叙事信息',
+  },
+  coop_narrative: {
+    title: '实验 3：合作叙事',
+    random: '随机 coop_narrative / neutral_info；合作组随机主题顺序',
+    fixed: '固定 AI 能力与副线提醒',
+  },
 };
 
 type LibraryCaseOverview = {
@@ -501,10 +545,13 @@ function ConfigTab() {
     const currentConfig = config;
     setStatus('保存中...');
     await fetch(`${serverBaseUrl}/admin/experiment-config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        practiceDurationMinutes: currentConfig.practiceDurationMinutes,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          activeExperimentMode: currentConfig.activeExperimentMode,
+          experimentModeSettings: currentConfig.experimentModeSettings,
+          instructionBlocks: currentConfig.instructionBlocks,
+          practiceDurationMinutes: currentConfig.practiceDurationMinutes,
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
@@ -533,6 +580,98 @@ function ConfigTab() {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <div className="font-bold text-[#1d2129]">实验模式</div>
+            <div className="mt-1 text-xs text-[#86909c]">只影响新 Session；旧 Session 使用创建时保存的快照。</div>
+          </div>
+          <select
+            value={config.activeExperimentMode}
+            onChange={(event) => setConfig((prev) => prev ? { ...prev, activeExperimentMode: event.target.value as ExperimentMode } : prev)}
+            className="rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff]"
+          >
+            {(Object.keys(MODE_META) as ExperimentMode[]).map((mode) => (
+              <option key={mode} value={mode}>{MODE_META[mode].title}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-4">
+          {(Object.keys(MODE_META) as ExperimentMode[]).map((mode) => {
+            const active = config.activeExperimentMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setConfig((prev) => prev ? { ...prev, activeExperimentMode: mode } : prev)}
+                className={`rounded-xl border p-4 text-left transition-colors ${active ? 'border-[#1e80ff] bg-blue-50/70' : 'border-[#e5e6eb] bg-[#fafafa] hover:border-blue-200'}`}
+              >
+                <div className="text-sm font-bold text-[#1d2129]">{MODE_META[mode].title}</div>
+                <div className="mt-2 text-xs leading-relaxed text-[#4e5969]">随机：{MODE_META[mode].random}</div>
+                <div className="mt-1 text-xs leading-relaxed text-[#4e5969]">固定：{MODE_META[mode].fixed}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="mb-3 text-sm font-semibold text-[#1d2129]">实验 1 固定变量</div>
+            <label className="block text-xs text-[#4e5969]">
+              副线提醒
+              <select value={config.experimentModeSettings.ai_upgrade.fixedSideDispatchMode} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, ai_upgrade: { ...prev.experimentModeSettings.ai_upgrade, fixedSideDispatchMode: event.target.value as 'continuous' | 'batch' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="continuous">continuous 高频提醒</option>
+                <option value="batch">batch 批量提醒</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-xs text-[#4e5969]">
+              叙事信息
+              <select value={config.experimentModeSettings.ai_upgrade.fixedNarrativeGroup} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, ai_upgrade: { ...prev.experimentModeSettings.ai_upgrade, fixedNarrativeGroup: event.target.value as 'neutral_info' | 'coop_narrative' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="neutral_info">neutral_info 中性信息</option>
+                <option value="coop_narrative">coop_narrative 合作叙事</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="mb-3 text-sm font-semibold text-[#1d2129]">实验 2 固定变量</div>
+            <label className="block text-xs text-[#4e5969]">
+              AI 能力
+              <select value={config.experimentModeSettings.side_reminder.fixedAiLevel} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, side_reminder: { ...prev.experimentModeSettings.side_reminder, fixedAiLevel: event.target.value as 'BASIC' | 'ADVANCED' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="BASIC">BASIC 基础版</option>
+                <option value="ADVANCED">ADVANCED 升级版</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-xs text-[#4e5969]">
+              叙事信息
+              <select value={config.experimentModeSettings.side_reminder.fixedNarrativeGroup} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, side_reminder: { ...prev.experimentModeSettings.side_reminder, fixedNarrativeGroup: event.target.value as 'neutral_info' | 'coop_narrative' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="neutral_info">neutral_info 中性信息</option>
+                <option value="coop_narrative">coop_narrative 合作叙事</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="mb-3 text-sm font-semibold text-[#1d2129]">实验 3 固定变量</div>
+            <label className="block text-xs text-[#4e5969]">
+              AI 能力
+              <select value={config.experimentModeSettings.coop_narrative.fixedAiLevel} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, coop_narrative: { ...prev.experimentModeSettings.coop_narrative, fixedAiLevel: event.target.value as 'BASIC' | 'ADVANCED' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="BASIC">BASIC 基础版</option>
+                <option value="ADVANCED">ADVANCED 升级版</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-xs text-[#4e5969]">
+              副线提醒
+              <select value={config.experimentModeSettings.coop_narrative.fixedSideDispatchMode} onChange={(event) => setConfig((prev) => prev ? { ...prev, experimentModeSettings: { ...prev.experimentModeSettings, coop_narrative: { ...prev.experimentModeSettings.coop_narrative, fixedSideDispatchMode: event.target.value as 'continuous' | 'batch' } } } : prev)} className="mt-1 w-full rounded border border-[#e5e6eb] bg-white px-2 py-1.5">
+                <option value="continuous">continuous 高频提醒</option>
+                <option value="batch">batch 批量提醒</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-4 font-bold text-[#1d2129]">时间参数</div>
         <div className="grid grid-cols-3 gap-4">
           <label className="text-sm text-[#4e5969]">
@@ -549,6 +688,11 @@ function ConfigTab() {
           </label>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-4">
+          {config.activeExperimentMode !== 'manual' ? (
+            <div className="col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              当前选择了实验模式，下面的工作段 AI 手动配置只在“手动 / 通用”模式下用于新 Session。
+            </div>
+          ) : null}
           {[0, 1, 2].map((index) => (
             <label key={index} className="text-sm text-[#4e5969]">
               工作段 {index + 1} AI
@@ -573,6 +717,34 @@ function ConfigTab() {
       </div>
 
       <SingleChoiceEditor title="休息问卷模板" template={questionnaire} onChange={(next) => setConfig((prev) => (prev ? { ...prev, questionnaireTemplate: next } : prev))} />
+
+      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+        <div className="mb-4 font-bold text-[#1d2129]">指导语积木</div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {([
+            ['commonTitle', '通用标题'],
+            ['commonBody', '通用说明'],
+            ['roleA', '尽调员角色说明'],
+            ['roleB', '投资经理角色说明'],
+            ['manual', '手动/通用条件块'],
+            ['ai_upgrade', '实验 1 条件块'],
+            ['side_reminder', '实验 2 条件块'],
+            ['coop_narrative', '实验 3 条件块'],
+            ['aiUpgradeBreakNotice', 'AI 升级休息页提示'],
+            ['aiUpgradeWorkspaceNotice', 'AI 升级工作台提示'],
+          ] as Array<[keyof InstructionBlocks, string]>).map(([key, label]) => (
+            <label key={key} className="text-sm text-[#4e5969]">
+              {label}
+              <textarea
+                value={config.instructionBlocks[key] ?? ''}
+                onChange={(event) => setConfig((prev) => prev ? { ...prev, instructionBlocks: { ...prev.instructionBlocks, [key]: event.target.value } } : prev)}
+                rows={key === 'commonBody' ? 4 : 3}
+                className="mt-1 w-full resize-y rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
 
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">保存配置</button>

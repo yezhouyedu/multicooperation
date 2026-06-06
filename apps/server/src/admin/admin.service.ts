@@ -39,6 +39,38 @@ type SingleChoiceQuestionInput = {
   correctOption?: string;
 };
 
+type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+
+const EXPERIMENT_MODES = new Set<ExperimentMode>(['manual', 'ai_upgrade', 'side_reminder', 'coop_narrative']);
+
+const DEFAULT_EXPERIMENT_MODE_SETTINGS = {
+  ai_upgrade: {
+    fixedSideDispatchMode: 'continuous',
+    fixedNarrativeGroup: 'neutral_info',
+  },
+  side_reminder: {
+    fixedAiLevel: 'BASIC',
+    fixedNarrativeGroup: 'neutral_info',
+  },
+  coop_narrative: {
+    fixedAiLevel: 'BASIC',
+    fixedSideDispatchMode: 'continuous',
+  },
+};
+
+const DEFAULT_INSTRUCTION_BLOCKS = {
+  commonTitle: '开始前，请先阅读以下提示',
+  commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
+  roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
+  roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+  manual: '',
+  ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
+  side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
+  coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+  aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+  aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+};
+
 @Injectable()
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
@@ -79,6 +111,9 @@ export class AdminService {
       ok: true,
       config: {
         id: config.id,
+        activeExperimentMode: config.activeExperimentMode,
+        experimentModeSettings: this.normalizeExperimentModeSettings(config.experimentModeSettings),
+        instructionBlocks: this.normalizeInstructionBlocks(config.instructionBlocks),
         practiceDurationMinutes: config.practiceDurationMinutes,
         workDurationMinutes: config.workDurationMinutes,
         breakDurationMinutes: config.breakDurationMinutes,
@@ -118,6 +153,9 @@ export class AdminService {
   }
 
   async saveExperimentConfig(input: {
+    activeExperimentMode?: string;
+    experimentModeSettings?: unknown;
+    instructionBlocks?: unknown;
     practiceDurationMinutes: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;
@@ -192,6 +230,9 @@ export class AdminService {
 
     const [segmentOneAiLevel, segmentTwoAiLevel, segmentThreeAiLevel] =
       this.normalizeAiLevels(input.segmentAiLevels);
+    const activeExperimentMode = this.normalizeExperimentMode(input.activeExperimentMode);
+    const experimentModeSettings = this.normalizeExperimentModeSettings(input.experimentModeSettings);
+    const instructionBlocks = this.normalizeInstructionBlocks(input.instructionBlocks);
 
     const st = input.sideTask;
     const sideTaskData = st
@@ -211,6 +252,9 @@ export class AdminService {
     const config = await this.prisma.experimentConfig.upsert({
       where: { id: 'default' },
       update: {
+        activeExperimentMode,
+        experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
+        instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
         practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
@@ -224,6 +268,9 @@ export class AdminService {
       },
       create: {
         id: 'default',
+        activeExperimentMode,
+        experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
+        instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
         practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
@@ -742,6 +789,11 @@ export class AdminService {
         snapshots: {
           orderBy: { createdAt: 'asc' },
         },
+        sideTaskConfig: true,
+        randomizationAudit: true,
+        aiMessages: {
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     const companies = await this.prisma.company.findMany({ orderBy: { sortOrder: 'asc' } });
@@ -841,6 +893,9 @@ export class AdminService {
       config = await this.prisma.experimentConfig.create({
         data: {
           id: 'default',
+          activeExperimentMode: 'manual',
+          experimentModeSettings: DEFAULT_EXPERIMENT_MODE_SETTINGS as Prisma.InputJsonValue,
+          instructionBlocks: DEFAULT_INSTRUCTION_BLOCKS as Prisma.InputJsonValue,
           practiceDurationMinutes: 10,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
@@ -867,6 +922,73 @@ export class AdminService {
     }
 
     return config;
+  }
+
+  private normalizeExperimentMode(value?: string): ExperimentMode {
+    const next = String(value ?? 'manual') as ExperimentMode;
+    return EXPERIMENT_MODES.has(next) ? next : 'manual';
+  }
+
+  private normalizeAiLevel(value?: unknown) {
+    return String(value ?? 'BASIC').toUpperCase() === 'ADVANCED' ? 'ADVANCED' : 'BASIC';
+  }
+
+  private normalizeDispatchMode(value?: unknown) {
+    return String(value ?? 'continuous') === 'batch' ? 'batch' : 'continuous';
+  }
+
+  private normalizeNarrativeGroup(value?: unknown) {
+    return String(value ?? 'neutral_info') === 'coop_narrative' ? 'coop_narrative' : 'neutral_info';
+  }
+
+  private normalizeExperimentModeSettings(value: unknown) {
+    const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const aiUpgrade = raw.ai_upgrade && typeof raw.ai_upgrade === 'object'
+      ? raw.ai_upgrade as Record<string, unknown>
+      : {};
+    const sideReminder = raw.side_reminder && typeof raw.side_reminder === 'object'
+      ? raw.side_reminder as Record<string, unknown>
+      : {};
+    const coopNarrative = raw.coop_narrative && typeof raw.coop_narrative === 'object'
+      ? raw.coop_narrative as Record<string, unknown>
+      : {};
+
+    return {
+      ai_upgrade: {
+        fixedSideDispatchMode: this.normalizeDispatchMode(
+          aiUpgrade.fixedSideDispatchMode ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.ai_upgrade.fixedSideDispatchMode,
+        ),
+        fixedNarrativeGroup: this.normalizeNarrativeGroup(
+          aiUpgrade.fixedNarrativeGroup ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.ai_upgrade.fixedNarrativeGroup,
+        ),
+      },
+      side_reminder: {
+        fixedAiLevel: this.normalizeAiLevel(
+          sideReminder.fixedAiLevel ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.side_reminder.fixedAiLevel,
+        ),
+        fixedNarrativeGroup: this.normalizeNarrativeGroup(
+          sideReminder.fixedNarrativeGroup ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.side_reminder.fixedNarrativeGroup,
+        ),
+      },
+      coop_narrative: {
+        fixedAiLevel: this.normalizeAiLevel(
+          coopNarrative.fixedAiLevel ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.coop_narrative.fixedAiLevel,
+        ),
+        fixedSideDispatchMode: this.normalizeDispatchMode(
+          coopNarrative.fixedSideDispatchMode ?? DEFAULT_EXPERIMENT_MODE_SETTINGS.coop_narrative.fixedSideDispatchMode,
+        ),
+      },
+    };
+  }
+
+  private normalizeInstructionBlocks(value: unknown) {
+    const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    return Object.fromEntries(
+      Object.entries(DEFAULT_INSTRUCTION_BLOCKS).map(([key, fallback]) => [
+        key,
+        typeof raw[key] === 'string' ? String(raw[key]) : fallback,
+      ]),
+    );
   }
 
   private async ensureBaselineCompanyIfMissing() {

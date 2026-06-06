@@ -13,6 +13,8 @@ import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
+const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
+
 export default function WorkspaceAPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
@@ -57,9 +59,30 @@ export default function WorkspaceAPage() {
     window.dispatchEvent(new CustomEvent('workbench-save-draft'));
   }, [currentTaskId, taskCountdown]);
 
+  useEffect(() => {
+    if (!bootstrap || !runtime?.aiUpgradeNotice || runtime.aiUpgradeNotice.type !== 'workspace') return;
+    const key = `ai_upgrade_notice_seen:${bootstrap.sessionCode}:${runtime.segmentIndex}:${runtime.assignedRole}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, '1');
+    void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/progress`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: runtime.assignedRole,
+        stage: 'ai_upgrade_notice_seen',
+        payload: { segmentIndex: runtime.segmentIndex, message: runtime.aiUpgradeNotice.message },
+      }),
+    }).catch(() => {});
+  }, [bootstrap, runtime]);
+
   if (redirectPath) return null;
 
   const company = runtime?.currentTask?.company;
+  const aiBadge = runtime ? (
+    <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
+      {runtime.aiLevel === 'ADVANCED' ? '升级版' : '基础版'}
+    </span>
+  ) : null;
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
@@ -95,7 +118,14 @@ export default function WorkspaceAPage() {
               taskPane={
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between border-b border-[#e5e6eb] px-5 py-3 text-xs text-[#86909c]">
-                    <span>单家公司 5 分钟到点后系统会自动提交，无需手动操作。</span>
+                    <div className="flex flex-col gap-1">
+                      {runtime.aiUpgradeNotice?.type === 'workspace' ? (
+                        <span className="rounded-md border border-blue-100 bg-blue-50 px-2 py-1 font-semibold text-[#1e80ff]">
+                          {runtime.aiUpgradeNotice.message}
+                        </span>
+                      ) : null}
+                      <span>单家公司 5 分钟到点后系统会自动提交，无需手动操作。</span>
+                    </div>
                     <span className="rounded-full bg-[#e8f3ff] px-3 py-1 text-xs font-semibold text-[#1e80ff]">
                       自动提交
                     </span>
@@ -135,6 +165,7 @@ export default function WorkspaceAPage() {
               }
               taskTitle="尽调表"
               aiTitle="主线 AI"
+              aiBadge={aiBadge}
             />
           )}
         </div>

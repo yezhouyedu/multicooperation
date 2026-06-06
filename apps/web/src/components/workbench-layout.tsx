@@ -12,6 +12,7 @@ type Props = {
   aiPane: ReactNode;
   taskTitle: string;
   aiTitle: string;
+  aiBadge?: ReactNode;
 };
 
 export function WorkbenchLayout({
@@ -22,6 +23,7 @@ export function WorkbenchLayout({
   aiPane,
   taskTitle,
   aiTitle,
+  aiBadge,
 }: Props) {
   const [mode, setMode] = useState<LayoutMode>('split');
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saved' | 'dirty'>('idle');
@@ -236,7 +238,10 @@ export function WorkbenchLayout({
                 <div className="h-3.5 w-0.5 rounded-full bg-violet-400/60" />
                 <span className="text-sm font-semibold text-[#1d2129]">{aiTitle}</span>
               </div>
-              {fullscreenButton('ai')}
+              <div className="flex items-center gap-1">
+                {aiBadge}
+                {fullscreenButton('ai')}
+              </div>
             </header>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{aiPane}</div>
           </section>

@@ -67,6 +67,16 @@ type RuntimeSession = Session & {
   }[];
 };
 
+type RuntimeExperimentSnapshot = {
+  experimentMode?: string;
+  upgradeCohort?: string | null;
+  segmentAiStates?: Record<string, AiLevel | string>;
+  sideDispatchMode?: string;
+  narrativeGroup?: string;
+  themeOrder?: string[];
+  fixedVariables?: Record<string, string>;
+};
+
 type RuntimeConfig = ExperimentConfig & {
   activeQuestionnaireTemplate: QuestionnaireTemplate | null;
   practiceQuizTemplate: QuestionnaireTemplate | null;
@@ -417,6 +427,10 @@ export class ExperimentService {
             aUnlockedForBAt: roleTask.aUnlockedForBAt,
             bViewedAInfoAt: roleTask.bViewedAInfoAt,
             bCompletedAt: roleTask.bCompletedAt,
+            aAiLevelAtWindow: roleTask.aAiLevelAtWindow,
+            bPreAAiLevel: roleTask.bPreAAiLevel,
+            bPostAAiLevel: roleTask.bPostAAiLevel,
+            crossUpgradeBoundaryFlag: roleTask.crossUpgradeBoundaryFlag,
           }
         : null,
       taskRemainingSeconds:
@@ -428,7 +442,11 @@ export class ExperimentService {
       isFrozen: Boolean(roleTask?.frozenAt),
       isPreA: assignedRole === ParticipantRole.B && Boolean(roleTask && !roleTask.aSubmittedAt),
       questionnaireSubmitted,
-      aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex),
+      experimentMode: session.experimentMode,
+      experimentSnapshot: session.experimentSnapshot,
+      instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
+      aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+      aiUpgradeNotice: this.buildAiUpgradeNotice(config, session),
       ...(await this.getSideTaskRuntime(session.id, session.currentSegmentIndex, config, participantId)),
       syncState,
       questionnaireTemplate:
@@ -893,6 +911,11 @@ export class ExperimentService {
       data: {
         aSubmittedAt: task.aSubmittedAt ?? now,
         aUnlockedForBAt: task.aUnlockedForBAt ?? now,
+        bPostAAiLevel: task.bPostAAiLevel ?? this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+        crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({
+          ...task,
+          bPostAAiLevel: task.bPostAAiLevel ?? this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+        }),
         aRemainingSeconds: this.computeRemainingSeconds(task.aDeadlineAt),
       },
     });
@@ -927,7 +950,12 @@ export class ExperimentService {
           where: { sessionId: session.id, phase: ExperimentPhase.FORMAL },
           orderBy: { sortOrder: 'asc' },
         });
-        await this.assignNextTaskForB(tx, session.id, allTasks);
+        await this.assignNextTaskForB(
+          tx,
+          session.id,
+          allTasks,
+          this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+        );
       }
 
       const participantB = session.pairings[0]?.participantB;
@@ -1143,7 +1171,13 @@ export class ExperimentService {
       if (session.runtimePhase === RuntimePhase.PRACTICE) {
         const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
         if (practiceTask && (!practiceTask.aStartedAt || practiceTask.frozenAt)) {
-          await this.activateCurrentATask(tx, practiceTask, session.currentSegmentEnds, now);
+          await this.activateCurrentATask(
+            tx,
+            practiceTask,
+            session.currentSegmentEnds,
+            now,
+            this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+          );
         }
       }
 
@@ -1156,7 +1190,13 @@ export class ExperimentService {
         const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
         if (currentATask) {
           if (!currentATask.aStartedAt || currentATask.frozenAt) {
-            await this.activateCurrentATask(tx, currentATask, session.currentSegmentEnds, now);
+            await this.activateCurrentATask(
+              tx,
+              currentATask,
+              session.currentSegmentEnds,
+              now,
+              this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+            );
           }
         }
       }
@@ -1168,7 +1208,12 @@ export class ExperimentService {
         );
         if (!bHasCurrent) {
           const formalTasks = session.tasks.filter((t) => t.phase === ExperimentPhase.FORMAL);
-          await this.assignNextTaskForB(tx, session.id, formalTasks);
+          await this.assignNextTaskForB(
+            tx,
+            session.id,
+            formalTasks,
+            this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+          );
         }
       }
     });
@@ -1183,7 +1228,7 @@ export class ExperimentService {
     });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
 
-    await this.autoUnlockATask(sessionCode, session);
+    await this.autoUnlockATask(sessionCode, session, config);
 
     const refetched = await this.prisma.session.findUnique({
       where: { code: sessionCode },
@@ -1204,7 +1249,7 @@ export class ExperimentService {
     };
   }
 
-  private async autoUnlockATask(sessionCode: string, session: RuntimeSession) {
+  private async autoUnlockATask(sessionCode: string, session: RuntimeSession, config: ExperimentConfig) {
     const isPractice = session.runtimePhase === RuntimePhase.PRACTICE;
     const isFormal = session.runtimePhase === RuntimePhase.FORMAL_WORK;
     if (!isPractice && !isFormal) return;
@@ -1225,6 +1270,8 @@ export class ExperimentService {
           aSubmittedAt: snapshotAt,
           aUnlockedForBAt: snapshotAt,
           bCanSubmitAt: snapshotAt,
+          bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+          crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
           aRemainingSeconds: 0,
         },
       });
@@ -1532,7 +1579,13 @@ export class ExperimentService {
       where: { sessionId, phase: ExperimentPhase.PRACTICE },
     });
     if (practiceTask) {
-      await this.activateCurrentATask(tx, practiceTask, endsAt, now);
+      await this.activateCurrentATask(
+        tx,
+        practiceTask,
+        endsAt,
+        now,
+        this.getCurrentAiLevel(config, 0),
+      );
     }
 
     await this.ensurePracticeSideTaskPlans(tx, sessionId);
@@ -1581,7 +1634,14 @@ export class ExperimentService {
       orderBy: { sortOrder: 'asc' },
     });
     if (currentATask) {
-      await this.activateCurrentATask(tx, currentATask, workEnds, now);
+      const sessionForAi = await tx.session.findUnique({ where: { id: sessionId } });
+      await this.activateCurrentATask(
+        tx,
+        currentATask,
+        workEnds,
+        now,
+        this.getCurrentAiLevel(config, segmentIndex, sessionForAi ?? undefined),
+      );
     }
 
     // 池分配：首次进入正式段时，确保 B 有初始分配
@@ -1591,7 +1651,13 @@ export class ExperimentService {
     });
     const bHasAny = formalTasks.some((t) => t.bSequenceIndex !== null);
     if (!bHasAny) {
-      await this.assignNextTaskForB(tx, sessionId, formalTasks);
+      const sessionForAi = await tx.session.findUnique({ where: { id: sessionId } });
+      await this.assignNextTaskForB(
+        tx,
+        sessionId,
+        formalTasks,
+        this.getCurrentAiLevel(config, segmentIndex, sessionForAi ?? undefined),
+      );
     }
 
     // Schedule side task plans for this segment
@@ -1927,6 +1993,7 @@ export class ExperimentService {
     task: TaskAssignment,
     segmentEndsAt: Date | null | undefined,
     now: Date,
+    aiLevel: AiLevel,
   ) {
     const remaining = task.aRemainingSeconds || 300;
     const deadline = new Date(
@@ -1935,9 +2002,10 @@ export class ExperimentService {
 
     await tx.taskAssignment.update({
       where: { id: task.id },
-      data: !task.aStartedAt
+          data: !task.aStartedAt
         ? {
             aStartedAt: now,
+            aAiLevelAtWindow: task.aAiLevelAtWindow ?? aiLevel,
             resumedAt: task.resumedAt ?? now,
             frozenAt: null,
             aDeadlineAt: deadline,
@@ -1959,6 +2027,7 @@ export class ExperimentService {
     tx: Prisma.TransactionClient,
     sessionId: string,
     tasks: TaskAssignment[],
+    aiLevel: AiLevel,
   ): Promise<{ assigned: TaskAssignment | null; method: string }> {
     const maxBSeq = tasks.reduce((max, t) => Math.max(max, t.bSequenceIndex ?? 0), 0);
     const nextSeq = maxBSeq + 1;
@@ -1976,7 +2045,11 @@ export class ExperimentService {
       const picked = pool[pick];
       await tx.taskAssignment.update({
         where: { id: picked.id },
-        data: { bSequenceIndex: nextSeq },
+        data: {
+          bSequenceIndex: nextSeq,
+          bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel,
+          crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...picked, bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel }),
+        },
       });
       return { assigned: picked, method: 'pool_random' };
     }
@@ -1989,7 +2062,11 @@ export class ExperimentService {
     if (preaCandidate) {
       await tx.taskAssignment.update({
         where: { id: preaCandidate.id },
-        data: { bSequenceIndex: nextSeq },
+        data: {
+          bSequenceIndex: nextSeq,
+          bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel,
+          crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...preaCandidate, bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel }),
+        },
       });
       return { assigned: preaCandidate, method: 'prea_fallback' };
     }
@@ -2001,10 +2078,75 @@ export class ExperimentService {
   private getCurrentAiLevel(
     config: ExperimentConfig,
     segmentIndex: number,
+    session?: Pick<Session, 'experimentSnapshot'> | null,
   ) {
+    const snapshot = this.parseExperimentSnapshot(session?.experimentSnapshot);
+    const aiStates = snapshot?.segmentAiStates;
+    const segmentNumber = segmentIndex <= 1 ? 1 : segmentIndex <= 3 ? 2 : 3;
+    const snapshotLevel = aiStates?.[String(segmentNumber)];
+    if (snapshotLevel === AiLevel.ADVANCED || snapshotLevel === 'ADVANCED') return AiLevel.ADVANCED;
+    if (snapshotLevel === AiLevel.BASIC || snapshotLevel === 'BASIC') return AiLevel.BASIC;
     if (segmentIndex <= 1) return config.segmentOneAiLevel;
     if (segmentIndex <= 3) return config.segmentTwoAiLevel;
     return config.segmentThreeAiLevel;
+  }
+
+  private parseExperimentSnapshot(value: unknown): RuntimeExperimentSnapshot | null {
+    return value && typeof value === 'object' ? value as RuntimeExperimentSnapshot : null;
+  }
+
+  private hasCrossUpgradeBoundary(task: Pick<TaskAssignment, 'aAiLevelAtWindow' | 'bPreAAiLevel' | 'bPostAAiLevel'>) {
+    const levels = [task.aAiLevelAtWindow, task.bPreAAiLevel, task.bPostAAiLevel].filter(Boolean);
+    return levels.includes(AiLevel.BASIC) && levels.includes(AiLevel.ADVANCED);
+  }
+
+  private buildAiUpgradeNotice(config: ExperimentConfig, session: RuntimeSession) {
+    if (session.experimentMode !== 'ai_upgrade') return null;
+    const blocks = this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode);
+    if (session.runtimePhase === RuntimePhase.FORMAL_BREAK) {
+      const nextWorkSegment = session.currentSegmentIndex + 1;
+      const previousAiLevel = this.getCurrentAiLevel(config, Math.max(1, session.currentSegmentIndex - 1), session);
+      const nextAiLevel = this.getCurrentAiLevel(config, nextWorkSegment, session);
+      if (previousAiLevel === AiLevel.BASIC && nextAiLevel === AiLevel.ADVANCED) {
+        return { type: 'break', message: blocks.aiUpgradeBreakNotice };
+      }
+    }
+    if (session.runtimePhase === RuntimePhase.FORMAL_WORK) {
+      const currentAiLevel = this.getCurrentAiLevel(config, session.currentSegmentIndex, session);
+      const previousWorkSegment = session.currentSegmentIndex - 2;
+      const previousAiLevel =
+        previousWorkSegment >= 1 ? this.getCurrentAiLevel(config, previousWorkSegment, session) : currentAiLevel;
+      if (previousAiLevel === AiLevel.BASIC && currentAiLevel === AiLevel.ADVANCED) {
+        return { type: 'workspace', message: blocks.aiUpgradeWorkspaceNotice };
+      }
+    }
+    return null;
+  }
+
+  private buildInstructionBlocks(value: unknown, experimentMode: string) {
+    const defaults = {
+      commonTitle: '开始前，请先阅读以下提示',
+      commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
+      roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
+      roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+      manual: '',
+      ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
+      side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
+      coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+      aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+      aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+    };
+    const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const blocks = Object.fromEntries(
+      Object.entries(defaults).map(([key, fallback]) => [
+        key,
+        typeof raw[key] === 'string' ? String(raw[key]) : fallback,
+      ]),
+    ) as typeof defaults;
+    return {
+      ...blocks,
+      activeModeText: blocks[experimentMode as keyof typeof blocks] ?? '',
+    };
   }
 
   private getRemainingSeconds(endsAt?: Date | null) {
@@ -2286,6 +2428,24 @@ export class ExperimentService {
       config = await this.prisma.experimentConfig.create({
         data: {
           id: 'default',
+          activeExperimentMode: 'manual',
+          experimentModeSettings: {
+            ai_upgrade: { fixedSideDispatchMode: 'continuous', fixedNarrativeGroup: 'neutral_info' },
+            side_reminder: { fixedAiLevel: 'BASIC', fixedNarrativeGroup: 'neutral_info' },
+            coop_narrative: { fixedAiLevel: 'BASIC', fixedSideDispatchMode: 'continuous' },
+          } as Prisma.InputJsonValue,
+          instructionBlocks: {
+            commonTitle: '开始前，请先阅读以下提示',
+            commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
+            roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
+            roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+            manual: '',
+            ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
+            side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
+            coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+            aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+            aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+          } as Prisma.InputJsonValue,
           practiceDurationMinutes: 10,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,

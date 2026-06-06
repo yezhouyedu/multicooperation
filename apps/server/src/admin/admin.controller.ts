@@ -37,6 +37,9 @@ export class AdminController {
 
   @Post('experiment-config')
   saveExperimentConfig(@Body() body: {
+    activeExperimentMode?: string;
+    experimentModeSettings?: unknown;
+    instructionBlocks?: unknown;
     practiceDurationMinutes: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;

@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from 'crypto';
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import {
+  AiLevel,
+  ExperimentConfig,
   ExperimentPhase,
   ParticipantRole,
   Prisma,
@@ -9,6 +11,29 @@ import {
   SessionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+type DispatchMode = 'continuous' | 'batch';
+type NarrativeGroup = 'neutral_info' | 'coop_narrative';
+
+type ExperimentSnapshot = {
+  experimentMode: ExperimentMode;
+  upgradeCohort: 'early_upgrade' | 'late_upgrade' | null;
+  segmentAiStates: { 1: AiLevel; 2: AiLevel; 3: AiLevel };
+  sideDispatchMode: DispatchMode;
+  narrativeGroup: NarrativeGroup;
+  themeOrder: string[];
+  fixedVariables: Record<string, string>;
+  seeds: {
+    upgradeCohortSeed?: string;
+    sideDispatchSeed?: string;
+    narrativeSeed?: string;
+    themeOrderSeed?: string;
+    newsOrderSeed: string;
+  };
+};
+
+const THEME_LABELS = ['互补分工', '验证留痕', '共同责任'];
 
 @Injectable()
 export class AuthService {
@@ -136,6 +161,8 @@ export class AuthService {
       roleAssignedAt: Date;
     },
   ) {
+    const config = await tx.experimentConfig.findUnique({ where: { id: 'default' } });
+    const experimentSnapshot = this.buildExperimentSnapshot(config);
     const companies = await tx.company.findMany({ orderBy: { sortOrder: 'asc' } });
     const practiceCompanies = companies.filter((company) => company.usage === 'practice');
     const formalCompanies = companies.filter((company) => company.usage !== 'practice');
@@ -190,6 +217,15 @@ export class AuthService {
       randomizationAudit: typeof this.prisma.randomizationAudit;
     };
 
+    await tx.session.update({
+      where: { id: sessionId },
+      data: {
+        experimentMode: experimentSnapshot.experimentMode,
+        upgradeCohort: experimentSnapshot.upgradeCohort,
+        experimentSnapshot: experimentSnapshot as Prisma.InputJsonValue,
+      },
+    });
+
     await auditClient.randomizationAudit.upsert({
       where: { sessionId },
       update: {
@@ -202,6 +238,8 @@ export class AuthService {
         companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
         bAssignmentMethod: 'pool_based_random_v1',
         bAssignmentLog: [],
+        experimentMode: experimentSnapshot.experimentMode,
+        experimentRandomization: experimentSnapshot as Prisma.InputJsonValue,
       },
       create: {
         sessionId,
@@ -214,15 +252,18 @@ export class AuthService {
         companySequence: companySequenceSnapshot as Prisma.InputJsonValue,
         bAssignmentMethod: 'pool_based_random_v1',
         bAssignmentLog: [],
+        experimentMode: experimentSnapshot.experimentMode,
+        experimentRandomization: experimentSnapshot as Prisma.InputJsonValue,
       },
     });
 
-    await this.generateSideTaskPlans(tx, sessionId);
+    await this.generateSideTaskPlans(tx, sessionId, experimentSnapshot);
   }
 
   private async generateSideTaskPlans(
     tx: Prisma.TransactionClient,
     sessionId: string,
+    experimentSnapshot: ExperimentSnapshot,
   ) {
     const sidetaskTx = tx as Prisma.TransactionClient & {
       sideTaskItem: typeof this.prisma.sideTaskItem;
@@ -230,21 +271,11 @@ export class AuthService {
       sideTaskSessionConfig: typeof this.prisma.sideTaskSessionConfig;
     };
 
-    // 1. Generate experiment variables
-    const dispatchSeed = this.generateSeed();
-    const dispatchMode = this.seedToBoolean(dispatchSeed) ? 'continuous' : 'batch';
-    const narrativeSeed = this.generateSeed();
-    const narrativeGroup = this.seedToBoolean(narrativeSeed) ? 'coop_narrative' : 'neutral_info';
-
-    const allThemes = ['互补分工', '验证留痕', '共同责任'];
-    let themeOrder: string[] = [];
-    let segmentThemes: (string | null)[] = [null, null, null];
-
-    if (narrativeGroup === 'coop_narrative') {
-      const themeSeed = this.generateSeed();
-      themeOrder = this.shuffleWithSeed(allThemes, themeSeed);
-      segmentThemes = themeOrder;
-    }
+    const dispatchMode = experimentSnapshot.sideDispatchMode;
+    const narrativeGroup = experimentSnapshot.narrativeGroup;
+    const themeOrder = experimentSnapshot.themeOrder ?? [];
+    const segmentThemes: (string | null)[] =
+      narrativeGroup === 'coop_narrative' ? [themeOrder[0] ?? null, themeOrder[1] ?? null, themeOrder[2] ?? null] : [null, null, null];
 
     // 2. Create SideTaskSessionConfig
     await sidetaskTx.sideTaskSessionConfig.create({
@@ -259,7 +290,7 @@ export class AuthService {
         segment1PlannedCount: 40,
         segment2PlannedCount: 40,
         segment3PlannedCount: 40,
-        newsSequenceSeed: this.generateSeed(),
+        newsSequenceSeed: experimentSnapshot.seeds.newsOrderSeed,
         distributionVersion: 'v1',
       },
     });
@@ -389,6 +420,117 @@ export class AuthService {
   private sampleWithSeed<T>(items: T[], count: number, seed: string): T[] {
     const shuffled = this.shuffleWithSeed(items, seed);
     return shuffled.slice(0, count);
+  }
+
+  private buildExperimentSnapshot(config: ExperimentConfig | null): ExperimentSnapshot {
+    const mode = this.normalizeExperimentMode(config?.activeExperimentMode);
+    const settings = this.normalizeExperimentModeSettings(config?.experimentModeSettings);
+    const manualAiStates = {
+      1: config?.segmentOneAiLevel ?? AiLevel.BASIC,
+      2: config?.segmentTwoAiLevel ?? AiLevel.ADVANCED,
+      3: config?.segmentThreeAiLevel ?? AiLevel.ADVANCED,
+    } as { 1: AiLevel; 2: AiLevel; 3: AiLevel };
+    const seeds: ExperimentSnapshot['seeds'] = { newsOrderSeed: this.generateSeed() };
+
+    let upgradeCohort: ExperimentSnapshot['upgradeCohort'] = null;
+    let segmentAiStates = manualAiStates;
+    let sideDispatchMode: DispatchMode = 'continuous';
+    let narrativeGroup: NarrativeGroup = 'neutral_info';
+    let themeOrder: string[] = [];
+    const fixedVariables: Record<string, string> = {};
+
+    if (mode === 'manual') {
+      seeds.sideDispatchSeed = this.generateSeed();
+      seeds.narrativeSeed = this.generateSeed();
+      sideDispatchMode = this.seedToBoolean(seeds.sideDispatchSeed) ? 'continuous' : 'batch';
+      narrativeGroup = this.seedToBoolean(seeds.narrativeSeed) ? 'coop_narrative' : 'neutral_info';
+    }
+
+    if (mode === 'ai_upgrade') {
+      seeds.upgradeCohortSeed = this.generateSeed();
+      upgradeCohort = this.seedToBoolean(seeds.upgradeCohortSeed) ? 'early_upgrade' : 'late_upgrade';
+      segmentAiStates = upgradeCohort === 'early_upgrade'
+        ? { 1: AiLevel.BASIC, 2: AiLevel.ADVANCED, 3: AiLevel.ADVANCED }
+        : { 1: AiLevel.BASIC, 2: AiLevel.BASIC, 3: AiLevel.ADVANCED };
+      sideDispatchMode = settings.ai_upgrade.fixedSideDispatchMode;
+      narrativeGroup = settings.ai_upgrade.fixedNarrativeGroup;
+      fixedVariables.sideDispatchMode = sideDispatchMode;
+      fixedVariables.narrativeGroup = narrativeGroup;
+    }
+
+    if (mode === 'side_reminder') {
+      seeds.sideDispatchSeed = this.generateSeed();
+      sideDispatchMode = this.seedToBoolean(seeds.sideDispatchSeed) ? 'continuous' : 'batch';
+      const fixedAiLevel = settings.side_reminder.fixedAiLevel;
+      segmentAiStates = { 1: fixedAiLevel, 2: fixedAiLevel, 3: fixedAiLevel };
+      narrativeGroup = settings.side_reminder.fixedNarrativeGroup;
+      fixedVariables.aiLevel = fixedAiLevel;
+      fixedVariables.narrativeGroup = narrativeGroup;
+    }
+
+    if (mode === 'coop_narrative') {
+      seeds.narrativeSeed = this.generateSeed();
+      narrativeGroup = this.seedToBoolean(seeds.narrativeSeed) ? 'coop_narrative' : 'neutral_info';
+      const fixedAiLevel = settings.coop_narrative.fixedAiLevel;
+      segmentAiStates = { 1: fixedAiLevel, 2: fixedAiLevel, 3: fixedAiLevel };
+      sideDispatchMode = settings.coop_narrative.fixedSideDispatchMode;
+      fixedVariables.aiLevel = fixedAiLevel;
+      fixedVariables.sideDispatchMode = sideDispatchMode;
+    }
+
+    if (narrativeGroup === 'coop_narrative') {
+      seeds.themeOrderSeed = this.generateSeed();
+      themeOrder = this.shuffleWithSeed(THEME_LABELS, seeds.themeOrderSeed);
+    }
+
+    return {
+      experimentMode: mode,
+      upgradeCohort,
+      segmentAiStates,
+      sideDispatchMode,
+      narrativeGroup,
+      themeOrder,
+      fixedVariables,
+      seeds,
+    };
+  }
+
+  private normalizeExperimentMode(value?: string): ExperimentMode {
+    if (value === 'ai_upgrade' || value === 'side_reminder' || value === 'coop_narrative') return value;
+    return 'manual';
+  }
+
+  private normalizeExperimentModeSettings(value: unknown) {
+    const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const aiUpgrade = raw.ai_upgrade && typeof raw.ai_upgrade === 'object' ? raw.ai_upgrade as Record<string, unknown> : {};
+    const sideReminder = raw.side_reminder && typeof raw.side_reminder === 'object' ? raw.side_reminder as Record<string, unknown> : {};
+    const coopNarrative = raw.coop_narrative && typeof raw.coop_narrative === 'object' ? raw.coop_narrative as Record<string, unknown> : {};
+    return {
+      ai_upgrade: {
+        fixedSideDispatchMode: this.normalizeDispatchMode(aiUpgrade.fixedSideDispatchMode),
+        fixedNarrativeGroup: this.normalizeNarrativeGroup(aiUpgrade.fixedNarrativeGroup),
+      },
+      side_reminder: {
+        fixedAiLevel: this.normalizeAiLevel(sideReminder.fixedAiLevel),
+        fixedNarrativeGroup: this.normalizeNarrativeGroup(sideReminder.fixedNarrativeGroup),
+      },
+      coop_narrative: {
+        fixedAiLevel: this.normalizeAiLevel(coopNarrative.fixedAiLevel),
+        fixedSideDispatchMode: this.normalizeDispatchMode(coopNarrative.fixedSideDispatchMode),
+      },
+    };
+  }
+
+  private normalizeAiLevel(value: unknown): AiLevel {
+    return String(value ?? 'BASIC').toUpperCase() === 'ADVANCED' ? AiLevel.ADVANCED : AiLevel.BASIC;
+  }
+
+  private normalizeDispatchMode(value: unknown): DispatchMode {
+    return String(value ?? 'continuous') === 'batch' ? 'batch' : 'continuous';
+  }
+
+  private normalizeNarrativeGroup(value: unknown): NarrativeGroup {
+    return String(value ?? 'neutral_info') === 'coop_narrative' ? 'coop_narrative' : 'neutral_info';
   }
 
   private generateCode() {

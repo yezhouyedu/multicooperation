@@ -75,6 +75,11 @@ export default function BreakPage() {
           <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-[#1e80ff]">
             当前休息剩余时间：{countdownLabel}
           </div>
+          {runtime?.aiUpgradeNotice?.type === 'break' ? (
+            <div className="mb-6 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-700">
+              {runtime.aiUpgradeNotice.message}
+            </div>
+          ) : null}
 
           {submitted ? (
             <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-sm leading-7 text-green-700">

@@ -86,8 +86,11 @@ export default function InstructionPage() {
   const roleLabel = role === 'A' ? '尽调员' : role === 'B' ? '投资经理' : '加载中';
   const roleDesc =
     role === 'A'
-      ? '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。'
-      : '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。';
+      ? runtime?.instructionBlocks?.roleA ?? '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。'
+      : runtime?.instructionBlocks?.roleB ?? '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。';
+  const instructionTitle = runtime?.instructionBlocks?.commonTitle ?? '开始前，请先阅读以下提示';
+  const commonBody = runtime?.instructionBlocks?.commonBody ?? '本实验会先完成测试题和测试轮，再进入正式任务。';
+  const activeModeText = runtime?.instructionBlocks?.activeModeText ?? '';
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
@@ -105,7 +108,7 @@ export default function InstructionPage() {
         >
           <div className="border-b border-[#eaecf0] px-8 py-6">
             <div className="mb-1 text-xs font-medium text-[#86909c]">实验说明</div>
-            <div className="text-xl font-semibold text-[#1d2129]">开始前，请先阅读以下提示</div>
+            <div className="text-xl font-semibold text-[#1d2129]">{instructionTitle}</div>
           </div>
 
           <div className="space-y-5 px-8 py-6 text-sm leading-relaxed text-[#4e5969]">
@@ -113,6 +116,16 @@ export default function InstructionPage() {
               <div className="mb-1 font-semibold text-[#1e80ff]">你的角色：{roleLabel}</div>
               <div>{roleDesc}</div>
             </div>
+
+            <div className="rounded-xl border border-[#eaecf0] bg-gray-50 p-4">
+              {commonBody}
+            </div>
+
+            {activeModeText.trim() ? (
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-[#1e80ff]">
+                {activeModeText}
+              </div>
+            ) : null}
 
             <div>
               <div className="mb-2 font-semibold text-[#1d2129]">实验流程</div>
