@@ -1,14 +1,17 @@
 import { mkdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
-// Force .env values to override system environment variables
-try {
-  const envContent = readFileSync(resolve(process.cwd(), '.env'), 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const match = line.match(/^([^#\s][^=]*)=(.*)$/);
-    if (match) process.env[match[1].trim()] = match[2].trim();
-  }
-} catch {}
+// In local development, prefer the app .env over Windows-level variables.
+// In production containers, compose-provided environment variables must win.
+if (process.env.NODE_ENV !== 'production') {
+  try {
+    const envContent = readFileSync(resolve(process.cwd(), '.env'), 'utf-8');
+    for (const line of envContent.split('\n')) {
+      const match = line.match(/^([^#\s][^=]*)=(.*)$/);
+      if (match) process.env[match[1].trim()] = match[2].trim();
+    }
+  } catch {}
+}
 
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';

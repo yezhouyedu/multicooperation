@@ -14,8 +14,13 @@ apps/server/coverage/
 .env
 .env.*
 !.env.example
+!.env.production.example
 !apps/server/.env.example
 !apps/web/.env.local.example
+.secrets/
+*.pem
+*.key
+*.crt
 
 # Local runtime storage
 storage/

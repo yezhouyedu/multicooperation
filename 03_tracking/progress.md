@@ -1281,3 +1281,87 @@
 - 重写根目录 `启动prompt.txt`，更新为 2026-06-06 后的项目接手 prompt。
 - 新 prompt 明确开局必读文档、当前 8 个大模块、实验 1/2/3 口径、变量导出结构、启动端口、Git 和文档修改纪律。
 - 准备把本阶段代码、schema、migration、规格文档、测试导出样本和启动 prompt 一并收口提交。
+
+### 2026-06-06 上线前 P0 部署结构第一期
+
+**背景**：用户已购买服务器与域名，域名 ICP 审核中；当前目标从本地实测推进到服务器裸 IP 可部署验证。
+
+**本轮新增**：
+- 新增 `02_specs/05_server_deploy/上线前工作指导.md`，明确 SSH 私钥不进仓库、P0/P1/P2 上线阶段、数据持久化和正式实验前运维边界。
+- 新增 `02_specs/05_server_deploy/部署运行手册.md`，记录 Docker 单机部署、生产环境变量、compose 启停、日志查看和 P1/P2 收口提醒。
+- 新增 `02_specs/05_server_deploy/README.md`，把服务器上线文档从 `04_pre_deploy` 的变量/数据库文档中拆出。
+- 新增 `apps/web/Dockerfile`、`apps/server/Dockerfile`、`apps/server/docker-entrypoint.sh`、`compose.production.yml`、`.env.production.example`、`.dockerignore`。
+- `.gitignore` 补充 `.secrets/`、私钥后缀与 `.env.production.example` 放行规则。
+- 记录部署协作经验：长耗时环境配置任务后续优先写成带阶段进度输出的脚本或分步骤命令，便于用户自行运行并观察进度。
+
+**本轮修复**：
+- `apps/server/package.json` 的 `start:prod` 从 `node dist/main` 修正为 `node dist/src/main`，匹配当前 NestJS 构建产物。
+- `apps/server` 补充直接生产依赖 `express` 与 `multer`，避免容器生产启动时依赖靠间接安装侥幸存在。
+- `apps/server/src/main.ts` 的强制读取 `.env` 逻辑改为仅在非 production 生效，避免生产容器中的 `DATABASE_URL` 被本地 `.env` 覆盖成 `localhost:5432`。
+- Docker build 上下文排除真实 `.env` 与私钥文件。
+
+**SSH 私钥位置**：
+- 已从桌面移动到仓库外：`E:\Own_program\multi_cooperation_secrets\ssh\first_try.pem`。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- `docker compose --env-file .env.production.example -f compose.production.yml config` 通过。
+- `docker compose --env-file .env.production.example -f compose.production.yml build` 通过。
+- 使用临时端口 `3100/3101` 本地启动生产式 compose 验证：
+  - PostgreSQL healthy。
+  - server healthy。
+  - `http://localhost:3101/health` 返回 `{"status":"ok","service":"server"}`。
+  - `http://localhost:3100/login` 返回 HTTP 200。
+
+**下一步**：
+- 进入服务器裸 IP 部署：安装/检查 Docker，上传或拉取项目，创建服务器 `.env.production`，执行生产 compose 启动。
+- 裸 IP 跑通后再接 P1：域名、HTTPS、反向代理和公网端口收口。
+
+### 2026-06-06 上线部署可观察脚本补充
+
+**背景**：用户反馈 Docker / 环境配置类任务耗时长，后续希望优先写出脚本并带阶段进度输出，由用户运行并观察终端反馈。
+
+**本轮新增**：
+- 新增 `02_specs/05_server_deploy/命令运行清单.md`，集中列出后续本地 PowerShell、SSH 登录、服务器初始化、生产启动、日志查看、重启停止和重新部署命令。
+- 新增 `scripts/deploy/check-server.ps1`：本地通过 SSH 检查服务器登录、系统、CPU、内存、磁盘、Docker、端口和防火墙提示。
+- 新增 `scripts/deploy/fix-ssh-key-permissions.ps1`：修复 Windows OpenSSH 报 `UNPROTECTED PRIVATE KEY FILE` 时的私钥 ACL。
+- 新增 `scripts/deploy/probe-ssh-users.ps1`：私钥权限修复后若仍 `Permission denied (publickey)`，自动试探常见 Linux 用户名。
+- 新增 `scripts/deploy/upload-project.ps1`：本地打包项目并上传到 `/opt/multi-cooperation`，排除 `.git`、`node_modules`、构建产物、`.env*`、`storage` 和私钥。
+- 新增 `scripts/deploy/prepare-server.sh`：服务器侧安装基础工具、Docker / compose plugin，并创建应用目录。
+- 新增 `scripts/deploy/deploy-prod.sh`：服务器侧执行 compose config、build、up、server health、web 检查，并输出每阶段进度。
+- 新增 `scripts/deploy/show-prod-logs.sh`：服务器侧快速查看 compose 服务日志。
+- 更新 `02_specs/05_server_deploy/部署运行手册.md`，把服务器 P0 部署拆成“检查服务器 -> 上传项目 -> 初始化服务器 -> 创建 env -> 启动生产服务”的可观察步骤。
+- `check-server.ps1` 改为远程命令失败后立即停止，避免 SSH 失败后继续跑后续检查造成误导。
+- SSH / SCP 命令补 `IdentitiesOnly=yes`，避免 Windows OpenSSH 混用其他身份文件导致判断不清。
+- `upload-project.ps1` 修正为原生命令失败后立即停止；创建 `/opt/multi-cooperation` 时若普通用户无权限，会尝试 `sudo mkdir` 并 `sudo chown ubuntu`。
+- `check-server.ps1` 的防火墙提示改为可尝试 `sudo ufw status`，避免非 root 用户只看到误导性报错。
+- `upload-project.ps1` 修正远端 staging 目录位置：不再使用 `/opt/multi-cooperation/.deploy-new`，改用 `/tmp/multi-cooperation-deploy-new`，避免 `rsync --delete` 同步父目录时导致源文件 vanished。
+
+**验证**：
+- `check-server.ps1` PowerShell 语法检查通过。
+- `upload-project.ps1` PowerShell 语法检查通过。
+- 本机 `bash.exe` 是 Windows/WSL stub 且缺少可用 `/bin/bash`，shell 脚本语法需在服务器真实 bash 环境下再执行 `bash -n`。
+- SSH 用户名已探测确认为 `ubuntu`，不是 `root`；`命令运行清单.md` 已改为显式使用 `-User ubuntu`。
+- 后续服务器部署步骤改为逐步执行，每一步由用户明确允许或自行运行，不默认连续推进。
+
+### 2026-06-07 服务器 P0 裸 IP 部署前置检查与上传
+
+**背景**：进入服务器裸 IP 部署验证前，先按可观察脚本逐步检查 SSH、服务器基础环境并上传项目。
+
+**本轮结果**：
+- SSH 私钥 Windows ACL 已修复，OpenSSH 不再因 `UNPROTECTED PRIVATE KEY FILE` 拒绝使用。
+- 服务器 SSH 用户名确认为 `ubuntu`，主机名为 `VM-4-3-ubuntu`。
+- 服务器基础检查通过：
+  - CPU：4 核。
+  - 内存：约 7.6GiB，总可用约 6.9GiB。
+  - 系统盘：约 178G，剩余约 164G。
+  - Docker：`29.5.2`。
+  - Docker Compose：`v5.1.4`。
+  - 当前监听端口主要为 `22`。
+- `upload-project.ps1 -User ubuntu` 已成功把项目上传并解压到服务器：`/opt/multi-cooperation`。
+
+**下一步**：
+- SSH 登录服务器，执行 `bash scripts/deploy/prepare-server.sh` 做服务器初始化复核。
+- 创建服务器 `.env.production`。
+- 执行 `bash scripts/deploy/deploy-prod.sh` 启动生产 compose 并验证 `3000 / 3001` 裸 IP 访问。
