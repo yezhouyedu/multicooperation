@@ -14,6 +14,8 @@ type ChatBody = {
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   aiLevel?: 'BASIC' | 'ADVANCED' | 'basic' | 'advanced';
+  taskAssignmentId?: string;
+  sideTaskPlanId?: string;
 };
 
 @Controller('ai')

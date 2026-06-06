@@ -22,6 +22,7 @@ import {
 import { Observable, Subject, Subscription } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMaterialPublicUrl, normalizeMaterials } from '../admin/materials';
+import { ExperimentAuditService } from '../recording/experiment-audit.service';
 
 type EnterExperimentInput = {
   nickname?: string;
@@ -96,7 +97,10 @@ const PRACTICE_TUTORIAL_STEPS = [
 export class ExperimentService {
   private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: ExperimentAuditService,
+  ) {}
 
   async createSession(_input: EnterExperimentInput = {}) {
     return {
@@ -292,6 +296,27 @@ export class ExperimentService {
       await this.startPracticePhase(tx, session.id, synced.config, new Date());
     });
 
+    await this.audit.recordMany([
+      {
+        sessionId: session.id,
+        participantId,
+        role: participant.role,
+        eventType: 'practice_quiz_submitted',
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        payload,
+      },
+      {
+        sessionId: session.id,
+        participantId,
+        role: participant.role,
+        eventType: passed ? 'practice_quiz_passed' : 'practice_quiz_failed',
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        payload,
+      },
+    ]);
+
     this.emitRuntimeInvalidated(sessionCode);
     return { ok: true, correctCount, passCount, passed };
   }
@@ -447,7 +472,8 @@ export class ExperimentService {
       instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
       aiUpgradeNotice: this.buildAiUpgradeNotice(config, session),
-      ...(await this.getSideTaskRuntime(session.id, session.currentSegmentIndex, config, participantId)),
+      feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
+      ...(await this.getSideTaskRuntime(session, config, participantId)),
       syncState,
       questionnaireTemplate:
         session.runtimePhase === RuntimePhase.FORMAL_BREAK && config.activeQuestionnaireTemplate
@@ -500,6 +526,28 @@ export class ExperimentService {
         stage: input.stage,
         payload: input.payload,
       },
+    });
+
+    const taskId =
+      input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+        ? String((input.payload as Record<string, unknown>).taskId ?? '')
+        : '';
+    const task = taskId
+      ? await this.prisma.taskAssignment.findFirst({
+          where: { id: taskId, sessionId: session.id },
+          select: { id: true, companyId: true, phase: true },
+        })
+      : null;
+    await this.audit.record({
+      sessionId: session.id,
+      participantId: participant.id,
+      taskAssignmentId: task?.id ?? null,
+      companyId: task?.companyId ?? null,
+      role: input.role,
+      eventType: input.stage,
+      phase: task?.phase ?? session.currentPhase ?? null,
+      segmentIndex: session.currentSegmentIndex,
+      payload: input.payload ?? null,
     });
 
     const eventPayload = {
@@ -805,6 +853,15 @@ export class ExperimentService {
         payload: answers,
       },
     });
+    await this.audit.record({
+      sessionId: synced.session.id,
+      participantId,
+      role: participant.role,
+      eventType: 'break_questionnaire_submitted',
+      phase: ExperimentPhase.FORMAL,
+      segmentIndex: synced.session.currentSegmentIndex,
+      payload: answers,
+    });
 
     this.emitSessionEvent(sessionCode, {
       type: 'break_questionnaire_submitted',
@@ -830,9 +887,9 @@ export class ExperimentService {
       throw new NotFoundException('副线题目不存在');
     }
 
-    // Check if already answered (idempotent)
+    // Check if already answered by this participant (idempotent per participant).
     const existing = await this.prisma.sideTaskExposureLog.findFirst({
-      where: { sideTaskPlanId: planId, eventType: 'side_task_answered' },
+      where: { sideTaskPlanId: planId, participantId, eventType: 'side_task_answered' },
       select: { id: true },
     });
 
@@ -845,6 +902,15 @@ export class ExperimentService {
           eventType: 'side_task_answered',
           payload: { answer } as Prisma.InputJsonValue,
         },
+      });
+      await this.audit.record({
+        sessionId: synced.session.id,
+        participantId,
+        sideTaskPlanId: planId,
+        eventType: 'side_task_answered',
+        phase: synced.session.currentPhase ?? null,
+        segmentIndex: synced.session.currentSegmentIndex,
+        payload: { answer } as Prisma.InputJsonValue,
       });
     }
 
@@ -960,12 +1026,26 @@ export class ExperimentService {
 
       const participantB = session.pairings[0]?.participantB;
       if (participantB) {
+        const eventType = task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed';
         await tx.taskProgress.create({
           data: {
             sessionId: session.id,
             participantId: participantB.id,
-            stage: task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed',
+            stage: eventType,
             payload: { taskId, sortOrder: task.sortOrder },
+          },
+        });
+        await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+          data: {
+            sessionId: session.id,
+            participantId: participantB.id,
+            taskAssignmentId: taskId,
+            companyId: task.companyId,
+            role: ParticipantRole.B,
+            eventType,
+            phase: task.phase,
+            segmentIndex: session.currentSegmentIndex,
+            payload: { taskId, sortOrder: task.sortOrder } as Prisma.InputJsonValue,
           },
         });
       }
@@ -1085,6 +1165,17 @@ export class ExperimentService {
             payload: { target } satisfies Prisma.InputJsonValue,
           },
         });
+        await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+          data: {
+            sessionId: session.id,
+            participantId,
+            role: participantId === pairing.participantAId ? ParticipantRole.A : ParticipantRole.B,
+            eventType: stage,
+            phase: target === 'practice' ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL,
+            segmentIndex: session.currentSegmentIndex,
+            payload: { target } as Prisma.InputJsonValue,
+          },
+        });
       }
 
       const readyIds = new Set(
@@ -1101,14 +1192,16 @@ export class ExperimentService {
       const now = new Date();
 
       if (!bothReady) {
-        await tx.session.update({
-          where: { id: session.id },
-          data: {
-            runtimePhase: waitingPhase,
-            currentSegmentStarts: null,
-            currentSegmentEnds: null,
-          },
-        });
+        if (!(target === 'formal' && session.runtimePhase === RuntimePhase.PRACTICE)) {
+          await tx.session.update({
+            where: { id: session.id },
+            data: {
+              runtimePhase: waitingPhase,
+              currentSegmentStarts: null,
+              currentSegmentEnds: null,
+            },
+          });
+        }
         return { ok: true, started: false, waiting: true };
       }
 
@@ -1165,6 +1258,11 @@ export class ExperimentService {
           });
         }
         await this.advanceAfterWork(tx, session, config, now);
+        return;
+      }
+
+      if (session.runtimePhase === RuntimePhase.PRACTICE && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
+        await this.advanceAfterPractice(tx, session, now);
         return;
       }
 
@@ -1316,6 +1414,89 @@ export class ExperimentService {
     this.emitRuntimeInvalidated(sessionCode);
   }
 
+  private async advanceAfterPractice(
+    tx: Prisma.TransactionClient,
+    session: RuntimeSession,
+    now: Date,
+  ) {
+    const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
+    if (practiceTask && !practiceTask.aSubmittedAt) {
+      await tx.taskAssignment.update({
+        where: { id: practiceTask.id },
+        data: {
+          aSubmittedAt: now,
+          aUnlockedForBAt: now,
+          bCanSubmitAt: now,
+          aDeadlineAt: null,
+          aRemainingSeconds: 0,
+        },
+      });
+    }
+    if (practiceTask && !practiceTask.bCompletedAt) {
+      await tx.taskAssignment.update({
+        where: { id: practiceTask.id },
+        data: { bCompletedAt: now },
+      });
+    }
+
+    const pairing = session.pairings[0];
+    const progressRows: Prisma.TaskProgressCreateManyInput[] = [];
+    if (practiceTask && pairing?.participantAId && !practiceTask.aSubmittedAt) {
+      progressRows.push({
+        sessionId: session.id,
+        participantId: pairing.participantAId,
+        stage: 'practice_a_task_auto_submitted',
+        payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'practice_timeout' },
+      });
+    }
+    if (practiceTask && pairing?.participantBId && !practiceTask.bCompletedAt) {
+      progressRows.push({
+        sessionId: session.id,
+        participantId: pairing.participantBId,
+        stage: 'practice_b_task_auto_completed',
+        payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'practice_timeout' },
+      });
+    }
+    if (progressRows.length > 0) {
+      await tx.taskProgress.createMany({ data: progressRows });
+    }
+
+    await tx.sessionSegmentState.updateMany({
+      where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+      data: { completedAt: now },
+    });
+    await tx.sideTaskPlan.updateMany({
+      where: {
+        sessionId: session.id,
+        segmentIndex: 0,
+        isArchivedAtSegmentEnd: false,
+      },
+      data: { isArchivedAtSegmentEnd: true },
+    });
+    await tx.experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        eventType: 'practice_completed',
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        serverTime: now,
+        payload: { nextPhase: 'FORMAL_READY' } as Prisma.InputJsonValue,
+      },
+    });
+    await tx.session.update({
+      where: { id: session.id },
+      data: {
+        runtimePhase: RuntimePhase.FORMAL_READY,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: 1,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: null,
+        currentSegmentEnds: null,
+        practiceCompletedAt: now,
+      },
+    });
+  }
+
   private async advanceAfterWork(
     tx: Prisma.TransactionClient,
     session: RuntimeSession,
@@ -1397,6 +1578,16 @@ export class ExperimentService {
       where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex },
       data: { completedAt: now },
     });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        eventType: 'formal_work_segment_completed',
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: session.currentSegmentIndex,
+        serverTime: now,
+        payload: { nextPhase: session.currentSegmentIndex >= 5 ? 'END' : 'FORMAL_BREAK' } as Prisma.InputJsonValue,
+      },
+    });
 
     // Archive unanswered side task plans for this segment
     const sidetaskTx = tx as Prisma.TransactionClient & {
@@ -1439,6 +1630,16 @@ export class ExperimentService {
       where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex + 1 },
       data: { startedAt: now, endsAt: breakEnds },
     });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        eventType: 'formal_break_started',
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: session.currentSegmentIndex + 1,
+        serverTime: now,
+        payload: { endsAt: breakEnds.toISOString() } as Prisma.InputJsonValue,
+      },
+    });
   }
 
   private async advanceAfterBreak(
@@ -1450,6 +1651,15 @@ export class ExperimentService {
     await tx.sessionSegmentState.updateMany({
       where: { sessionId: session.id, segmentIndex: session.currentSegmentIndex },
       data: { completedAt: now },
+    });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        eventType: 'formal_break_completed',
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: session.currentSegmentIndex,
+        serverTime: now,
+      },
     });
 
     const nextWorkIndex = session.currentSegmentIndex + 1;
@@ -1520,12 +1730,18 @@ export class ExperimentService {
   }
 
   private async getSyncState(session: RuntimeSession, assignedRole: ParticipantRole) {
-    const barrier =
+    let barrier =
       session.runtimePhase === RuntimePhase.PRACTICE_READY
         ? 'practice'
         : session.runtimePhase === RuntimePhase.FORMAL_READY
           ? 'formal'
           : null;
+    if (!barrier && session.runtimePhase === RuntimePhase.PRACTICE) {
+      const formalReadyCount = await this.prisma.taskProgress.count({
+        where: { sessionId: session.id, stage: 'formal_ready' },
+      });
+      if (formalReadyCount > 0) barrier = 'formal';
+    }
     if (!barrier) return null;
 
     const stage = barrier === 'practice' ? 'practice_ready' : 'formal_ready';
@@ -1578,6 +1794,16 @@ export class ExperimentService {
     const practiceTask = await tx.taskAssignment.findFirst({
       where: { sessionId, phase: ExperimentPhase.PRACTICE },
     });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId,
+        eventType: 'practice_started',
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        serverTime: now,
+        payload: { endsAt: endsAt.toISOString() } as Prisma.InputJsonValue,
+      },
+    });
     if (practiceTask) {
       await this.activateCurrentATask(
         tx,
@@ -1623,6 +1849,16 @@ export class ExperimentService {
     await tx.sessionSegmentState.updateMany({
       where: { sessionId, phase: ExperimentPhase.FORMAL, segmentIndex },
       data: { startedAt: now, endsAt: workEnds },
+    });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId,
+        eventType: 'formal_work_segment_started',
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex,
+        serverTime: now,
+        payload: { endsAt: workEnds.toISOString() } as Prisma.InputJsonValue,
+      },
     });
 
     const currentATask = await tx.taskAssignment.findFirst({
@@ -1687,7 +1923,7 @@ export class ExperimentService {
     });
     if (plans.length === 0) return;
 
-    const dispatchMode = sessionConfig.dispatchMode;
+    const dispatchMode = segmentIndex === 0 ? 'continuous' : sessionConfig.dispatchMode;
     const interval = config.sideTaskContinuousIntervalSec;
     const jitter = config.sideTaskContinuousJitterSec;
 
@@ -1736,7 +1972,13 @@ export class ExperimentService {
     const existingCount = await sidetaskTx.sideTaskPlan.count({
       where: { sessionId, segmentIndex: 0 },
     });
-    if (existingCount > 0) return;
+    if (existingCount > 0) {
+      await sidetaskTx.sideTaskPlan.updateMany({
+        where: { sessionId, segmentIndex: 0 },
+        data: { dispatchMode: 'continuous', narrativeGroup: 'neutral_info', batchNo: null },
+      });
+      return;
+    }
 
     const sessionConfig = await sidetaskTx.sideTaskSessionConfig.findUnique({
       where: { sessionId },
@@ -1776,8 +2018,8 @@ export class ExperimentService {
           sessionId,
           segmentIndex: 0,
           itemId: item.id,
-          dispatchMode: sessionConfig.dispatchMode,
-          narrativeGroup: sessionConfig.narrativeGroup,
+          dispatchMode: 'continuous',
+          narrativeGroup: 'neutral_info',
           themeLabel: 'practice',
           queueOrder: queueOrder + 1,
         },
@@ -1816,11 +2058,12 @@ export class ExperimentService {
   }
 
   private async getSideTaskRuntime(
-    sessionId: string,
-    currentSegmentIndex: number,
+    session: RuntimeSession,
     config: ExperimentConfig,
     participantId?: string,
   ) {
+    const sessionId = session.id;
+    const currentSegmentIndex = session.currentSegmentIndex;
     const sessionConfig = await this.prisma.sideTaskSessionConfig.findUnique({
       where: { sessionId },
     });
@@ -1839,6 +2082,7 @@ export class ExperimentService {
           totalAnswered: 0,
           totalArchived: 0,
           nextScheduledAt: null as string | null,
+          notificationPulse: null,
           pendingLabel: '待处理事宜',
           tickerMessage: '您有新事项入库，请尽快处理',
         },
@@ -1846,6 +2090,12 @@ export class ExperimentService {
     }
 
     const now = new Date();
+    const effectiveDispatchMode =
+      currentSegmentIndex === 0 ? 'continuous' : sessionConfig.dispatchMode;
+    const effectivePauseSec =
+      effectiveDispatchMode === 'continuous'
+        ? config.sideTaskContinuousPauseSec
+        : config.sideTaskBatchPauseSec;
     const isSideTaskSegment =
       currentSegmentIndex === 0 ||
       (currentSegmentIndex % 2 === 1 && currentSegmentIndex >= 1 && currentSegmentIndex <= 5);
@@ -1866,6 +2116,7 @@ export class ExperimentService {
           totalAnswered: 0,
           totalArchived: 0,
           nextScheduledAt: null,
+          notificationPulse: null,
           pendingLabel: '待处理事宜',
           tickerMessage: '您有新事项入库，请尽快处理',
         },
@@ -1873,6 +2124,11 @@ export class ExperimentService {
     }
 
     if (currentSegmentIndex === 0) {
+      await this.prisma.sideTaskPlan.updateMany({
+        where: { sessionId, segmentIndex: 0 },
+        data: { dispatchMode: 'continuous', narrativeGroup: 'neutral_info', batchNo: null },
+      });
+
       const existingPracticePlans = await this.prisma.sideTaskPlan.count({
         where: { sessionId, segmentIndex: 0 },
       });
@@ -1910,8 +2166,8 @@ export class ExperimentService {
                 sessionId,
                 segmentIndex: 0,
                 itemId: item.id,
-                dispatchMode: sessionConfig.dispatchMode,
-                narrativeGroup: sessionConfig.narrativeGroup,
+                dispatchMode: 'continuous',
+                narrativeGroup: 'neutral_info',
                 themeLabel: 'practice',
                 queueOrder: queueOrder + 1,
                 scheduledAt: now,
@@ -1922,19 +2178,14 @@ export class ExperimentService {
       }
     }
 
-    // participantId filter for per-participant answered tracking
-    const answeredWhere = participantId
-      ? { eventType: 'side_task_answered' as const, participantId }
-      : { eventType: 'side_task_answered' as const };
-
     const plans = await this.prisma.sideTaskPlan.findMany({
       where: { sessionId, segmentIndex: currentSegmentIndex },
       include: {
         item: { select: { text: true, question: true, optionA: true, optionB: true, directAiFlag: true, narrativeCategory: true } },
         exposureLogs: {
-          where: answeredWhere,
-          select: { id: true, payload: true },
-          take: 1,
+          where: participantId ? { participantId } : undefined,
+          select: { id: true, eventType: true, eventAt: true, payload: true },
+          orderBy: { eventAt: 'asc' },
         },
       },
       orderBy: { queueOrder: 'asc' },
@@ -1947,44 +2198,112 @@ export class ExperimentService {
     // totalReleased: frontend真实首次看到 = releasedAt !== null (服务端认定)
     const releasedCount = plans.filter((p) => p.releasedAt !== null).length;
     // totalAnswered: per-participant (当前 participant 答了多少)
-    const answeredCount = plans.filter((p) => p.exposureLogs.length > 0).length;
+    const answeredCount = plans.filter((p) =>
+      p.exposureLogs.some((log) => log.eventType === 'side_task_answered'),
+    ).length;
     const archivedUnansweredCount = plans.filter(
-      (p) => p.isArchivedAtSegmentEnd && p.exposureLogs.length === 0,
+      (p) =>
+        p.isArchivedAtSegmentEnd &&
+        !p.exposureLogs.some((log) => log.eventType === 'side_task_answered'),
     ).length;
     const nextPlan = plans.find((p) => p.scheduledAt && p.scheduledAt > now);
+    const notificationPulse = this.buildSideTaskNotificationPulse({
+      plans: visiblePlans,
+      dispatchMode: effectiveDispatchMode,
+      segmentIndex: currentSegmentIndex,
+      segmentStarts: session.currentSegmentStarts,
+      batchTriggerSec: config.sideTaskBatchTriggerSec,
+      now,
+    });
 
-    const queue = visiblePlans.map((p) => ({
-      planId: p.id,
-      text: p.item.text,
-      question: p.item.question,
-      optionA: p.item.optionA,
-      optionB: p.item.optionB,
-      directAiFlag: p.item.directAiFlag,
-      narrativeCategory: p.item.narrativeCategory,
-      queueOrder: p.queueOrder,
-      batchNo: p.batchNo,
-      answered: p.exposureLogs.length > 0,
-      answer: p.exposureLogs.length > 0 ? (p.exposureLogs[0].payload as Record<string, unknown>)?.answer ?? null : null,
-    }));
+    const queue = visiblePlans.map((p) => {
+      const answeredLog = p.exposureLogs.find((log) => log.eventType === 'side_task_answered');
+      return {
+        planId: p.id,
+        text: p.item.text,
+        question: p.item.question,
+        optionA: p.item.optionA,
+        optionB: p.item.optionB,
+        directAiFlag: p.item.directAiFlag,
+        narrativeCategory: p.item.narrativeCategory,
+        queueOrder: p.queueOrder,
+        batchNo: p.batchNo,
+        answered: Boolean(answeredLog),
+        answer: answeredLog ? (answeredLog.payload as Record<string, unknown>)?.answer ?? null : null,
+      };
+    });
 
     return {
       sideTaskQueue: queue,
       sideTaskConfig: {
-        dispatchMode: sessionConfig.dispatchMode as 'continuous' | 'batch',
+        dispatchMode: effectiveDispatchMode as 'continuous' | 'batch',
         scrollDurationSec: config.sideTaskScrollDurationSec,
         holdSec: config.sideTaskHoldSec,
         fadeSec: config.sideTaskFadeSec,
-        pauseSec: sessionConfig.dispatchMode === 'continuous'
-          ? config.sideTaskContinuousPauseSec
-          : config.sideTaskBatchPauseSec,
+        pauseSec: effectivePauseSec,
         totalPlanned: plans.length,
         totalReleased: releasedCount,
         totalAnswered: answeredCount,
         totalArchived: archivedUnansweredCount,
         nextScheduledAt: nextPlan?.scheduledAt?.toISOString() ?? null,
+        notificationPulse,
         pendingLabel: '待处理事宜',
         tickerMessage: '您有新事项入库，请尽快处理',
       },
+    };
+  }
+
+  private buildSideTaskNotificationPulse(input: {
+    plans: Array<{
+      id: string;
+      scheduledAt: Date | null;
+      exposureLogs: Array<{ eventType: string; eventAt: Date }>;
+    }>;
+    dispatchMode: string;
+    segmentIndex: number;
+    segmentStarts: Date | null;
+    batchTriggerSec: number;
+    now: Date;
+  }) {
+    const pendingUnnotified = input.plans.filter((plan) => {
+      const answered = plan.exposureLogs.some((log) => log.eventType === 'side_task_answered');
+      const notified = plan.exposureLogs.some((log) => log.eventType === 'side_task_notified');
+      return !answered && !notified;
+    });
+    if (pendingUnnotified.length === 0) return null;
+
+    if (input.dispatchMode !== 'batch' || input.segmentIndex === 0) {
+      const newest = pendingUnnotified[pendingUnnotified.length - 1];
+      return {
+        id: `continuous:${input.segmentIndex}:${newest.id}`,
+        reason: 'continuous_arrival',
+        planIds: pendingUnnotified.map((plan) => plan.id),
+        newCount: pendingUnnotified.length,
+        windowStart: pendingUnnotified[0]?.scheduledAt?.toISOString() ?? null,
+        windowEnd: newest?.scheduledAt?.toISOString() ?? null,
+      };
+    }
+
+    const segmentStarts = input.segmentStarts ?? input.now;
+    const triggerSec = Math.max(1, input.batchTriggerSec || 300);
+    const elapsedSec = Math.floor((input.now.getTime() - segmentStarts.getTime()) / 1000);
+    const currentWindow = Math.floor(elapsedSec / triggerSec);
+    if (currentWindow <= 0) return null;
+
+    const windowEnd = new Date(segmentStarts.getTime() + currentWindow * triggerSec * 1000);
+    const windowStart = new Date(windowEnd.getTime() - triggerSec * 1000);
+    const windowPlans = pendingUnnotified.filter(
+      (plan) => plan.scheduledAt && plan.scheduledAt <= windowEnd,
+    );
+    if (windowPlans.length === 0) return null;
+
+    return {
+      id: `batch:${input.segmentIndex}:${windowEnd.toISOString()}`,
+      reason: 'batch_window',
+      planIds: windowPlans.map((plan) => plan.id),
+      newCount: windowPlans.length,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
     };
   }
 
@@ -2043,6 +2362,7 @@ export class ExperimentService {
       const seed = `${sessionId}:b_assign:${nextSeq}`;
       const pick = Math.floor(this.seededRandom(seed) * pool.length);
       const picked = pool[pick];
+      const assignedAt = new Date();
       await tx.taskAssignment.update({
         where: { id: picked.id },
         data: {
@@ -2050,6 +2370,20 @@ export class ExperimentService {
           bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel,
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...picked, bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel }),
         },
+      });
+      await this.appendBAssignmentLog(tx, sessionId, {
+        assignedAt: assignedAt.toISOString(),
+        taskAssignmentId: picked.id,
+        chosenTaskAssignmentId: picked.id,
+        chosenCompanyId: picked.companyId,
+        bSequenceIndex: nextSeq,
+        assignmentPath: 'locked_pool',
+        method: 'locked_pool',
+        lockedPoolSize: pool.length,
+        eligibleCompanyIds: pool.map((task) => task.companyId),
+        eligibleTaskAssignmentIds: pool.map((task) => task.id),
+        assignmentSeed: seed,
+        preAActiveCompanyId: null,
       });
       return { assigned: picked, method: 'pool_random' };
     }
@@ -2060,6 +2394,7 @@ export class ExperimentService {
     );
 
     if (preaCandidate) {
+      const assignedAt = new Date();
       await tx.taskAssignment.update({
         where: { id: preaCandidate.id },
         data: {
@@ -2067,6 +2402,20 @@ export class ExperimentService {
           bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel,
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...preaCandidate, bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel }),
         },
+      });
+      await this.appendBAssignmentLog(tx, sessionId, {
+        assignedAt: assignedAt.toISOString(),
+        taskAssignmentId: preaCandidate.id,
+        chosenTaskAssignmentId: preaCandidate.id,
+        chosenCompanyId: preaCandidate.companyId,
+        bSequenceIndex: nextSeq,
+        assignmentPath: 'preA_fallback',
+        method: 'preA_fallback',
+        lockedPoolSize: 0,
+        eligibleCompanyIds: [],
+        eligibleTaskAssignmentIds: [],
+        assignmentSeed: `${sessionId}:b_assign:${nextSeq}:preA`,
+        preAActiveCompanyId: preaCandidate.companyId,
       });
       return { assigned: preaCandidate, method: 'prea_fallback' };
     }
@@ -2080,6 +2429,7 @@ export class ExperimentService {
     segmentIndex: number,
     session?: Pick<Session, 'experimentSnapshot'> | null,
   ) {
+    if (segmentIndex === 0) return AiLevel.BASIC;
     const snapshot = this.parseExperimentSnapshot(session?.experimentSnapshot);
     const aiStates = snapshot?.segmentAiStates;
     const segmentNumber = segmentIndex <= 1 ? 1 : segmentIndex <= 3 ? 2 : 3;
@@ -2089,6 +2439,37 @@ export class ExperimentService {
     if (segmentIndex <= 1) return config.segmentOneAiLevel;
     if (segmentIndex <= 3) return config.segmentTwoAiLevel;
     return config.segmentThreeAiLevel;
+  }
+
+  private async appendBAssignmentLog(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    entry: Prisma.InputJsonObject,
+  ) {
+    const auditTx = tx as Prisma.TransactionClient & {
+      randomizationAudit: typeof this.prisma.randomizationAudit;
+      experimentEvent: typeof this.prisma.experimentEvent;
+    };
+    const audit = await auditTx.randomizationAudit.findUnique({
+      where: { sessionId },
+      select: { bAssignmentLog: true },
+    });
+    const current = Array.isArray(audit?.bAssignmentLog) ? audit.bAssignmentLog : [];
+    await auditTx.randomizationAudit.update({
+      where: { sessionId },
+      data: { bAssignmentLog: [...current, entry] as Prisma.InputJsonValue },
+    });
+    await auditTx.experimentEvent.create({
+      data: {
+        sessionId,
+        taskAssignmentId: String(entry.taskAssignmentId ?? ''),
+        companyId: String(entry.chosenCompanyId ?? ''),
+        role: ParticipantRole.B,
+        eventType: 'b_company_assigned',
+        phase: ExperimentPhase.FORMAL,
+        payload: entry,
+      },
+    });
   }
 
   private parseExperimentSnapshot(value: unknown): RuntimeExperimentSnapshot | null {

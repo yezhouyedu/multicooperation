@@ -92,10 +92,10 @@ export default function WorkspaceBPage() {
             ? runtime.syncState?.selfReady
               ? '/ready?target=practice'
               : null
+            : !loading && runtime?.phase === 'practice' && runtime.currentTask?.bCompletedAt
+              ? '/ready?target=formal'
             : !loading && runtime?.phase === 'formal_ready'
-              ? runtime.syncState?.selfReady
-                ? '/ready?target=formal'
-                : null
+              ? '/ready?target=formal'
               : !loading && runtime?.phase === 'formal_break'
                 ? '/break'
                 : !loading && runtime?.phase === 'end'
@@ -261,6 +261,8 @@ export default function WorkspaceBPage() {
             aiLevel={runtime.aiLevel}
             sideTaskQueue={runtime.sideTaskQueue}
             sideTaskConfig={runtime.sideTaskConfig}
+            phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
+            segmentIndex={runtime.segmentIndex}
           />
         ) : null}
         <div className="min-h-0 flex-1 overflow-hidden p-2">
@@ -338,6 +340,7 @@ export default function WorkspaceBPage() {
                       accent="purple"
                       contextType="main"
                       companyId={company.id}
+                      taskAssignmentId={runtime.currentTask?.id}
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}

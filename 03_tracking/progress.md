@@ -1053,3 +1053,231 @@
 - 大数组优先使用 `jsonl`，小摘要使用 `json`。
 - 建议新增 `BehaviorEvent`、`SessionConfigSnapshot`、`ExportJob`，并补强 `AiMessageLog` 的任务索引和请求状态字段。
 - admin 负责触发导出任务、查看状态、下载 zip；导出包生成在服务器侧，后续上线可接对象存储或受控临时 URL。
+
+### 2026-06-06 变量保存模块第一期实现
+
+**背景**：根据 `02_specs/04_pre_deploy/变量记录与服务器导出方案.md`，开始把变量保存从方案推进到代码实现。目标不是临时导出大 JSON，而是建立实验审计事件、服务器导出任务、A/B 分目录归档和变量实现自检。
+
+**本轮实现**：
+- 新增 Prisma 模型：
+  - `ExperimentEvent`：统一记录关键实验事件。
+  - `ExportJob`：记录服务器导出任务状态、范围、输出路径和错误。
+  - `AiMessageLog` 补 `taskAssignmentId / sideTaskPlanId / completedAt / latencyMs / providerStatus / errorMessage`。
+- 新增后端 `recording` 模块：
+  - `ExperimentAuditService`：旁路写实验事件，不阻断被试流程。
+  - `StorageService`：默认本地 `storage/exports`、`storage/attachments`，为后续 Docker volume / 对象存储预留替换点。
+  - `ExportService`：生成 `session -> participants -> participant data` 树状导出包，并压缩为 zip。
+- admin 导出改为服务器任务：
+  - `POST /admin/export-jobs`
+  - `GET /admin/export-jobs/:id`
+  - `GET /admin/export-jobs/:id/download`
+  - 旧 `/admin/export` 保留为兼容入口，但不再直接返回超大 JSON。
+- 修复副线作答去重：
+  - A/B 可对同一道 `sideTaskPlanId` 独立作答。
+  - migration 中增加 partial unique index，避免同一 participant 对同一道副线题重复提交。
+- B 公司分配记录补强：
+  - locked pool / PreA fallback 写入 `RandomizationAudit.bAssignmentLog`。
+  - 导出时进入 `company_metadata.json` 和 `randomization.json`。
+- AI 记录补强：
+  - 保存主线/副线 AI 请求耗时、模型名、AI 档位、provider 状态和错误。
+  - 图片附件保存到服务器文件，聊天 JSON 只保存 `imageRef + relativePath`。
+- admin 前端“导出全部数据”改为创建导出任务、轮询状态、下载 zip。
+- 新增 `02_specs/04_pre_deploy/变量实现自检表.md`，逐项标明变量保存来源、触发点、导出位置和实现状态。
+
+**验证**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+**仍不属于第一期**：
+- 后测问卷流程。
+- 内容质量评分、gold fact / gold issue。
+- 滚动、focus/blur、细粒度停留时长。
+- AI 采纳率自动编码。
+
+### 2026-06-06 测试轮默认变量与时间线 debug
+
+**背景**：测试时发现两个问题：一是测试轮会受到实验 1/2/3 的正式处理变量影响；二是测试轮倒计时结束后没有稳定推进到正式阶段准备页。
+
+**本轮修复**：
+- 测试轮变量固定为默认口径，不再继承正式实验处理变量：
+  - AI 固定 `BASIC`。
+  - 副线固定 `continuous` 高频推送。
+  - 叙事固定 `neutral_info` 中性信息。
+- 新 session 创建测试轮副线计划时写入固定默认变量。
+- 旧 session 若已生成测试轮副线计划，runtime 读取时会纠正为 `continuous + neutral_info`，并清除 `batchNo`。
+- `getCurrentAiLevel()` 对 `segmentIndex === 0` 强制返回 `BASIC`。
+- 测试轮到时后，后端 `syncRuntime()` 会自动执行 `advanceAfterPractice()`：
+  - 结束测试轮。
+  - 归档测试轮未完成副线。
+  - 写入 `practice_completed` 事件。
+  - 将 session 推进到 `FORMAL_READY`。
+- 前端跳转条件回正：`instruction / practice-quiz / practice / workspace/a / workspace/b` 只要看到 `formal_ready`，都跳转到 `/ready?target=formal`，避免尚未点正式 ready 的参与者卡在旧页面。
+
+**时间线复核结论**：
+- 当前代码主流程为：`login -> waiting-room -> instruction -> ready(practice) -> practice-quiz -> practice -> ready(formal) -> formal work 1 -> break 1 -> formal work 2 -> break 2 -> formal work 3 -> end`。
+- 测试题双方通过后自动进入测试轮。
+- 测试轮到时后进入正式阶段同步准备页，不直接进入正式工作段。
+- 正式 ready 双方都点击后启动正式工作段 1。
+- 正式工作段、休息段的自动推进逻辑代码层面已连通。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- 未运行 `web build`，因为本轮前端只改跳转条件，且用户反馈构建命令过慢；需在浏览器端继续做完整 A/B 流程实测。
+
+### 2026-06-06 测试轮单公司收口、全屏 Esc、反馈弹窗与副线提醒 debug
+
+**背景**：测试时发现测试轮只应保留一家公司，但 B 在提交后仍会刷新回同一家公司；同时希望尽量维持被试全屏、允许研究者用 `Shift+Esc` 退出；A 收到 B 反馈的弹窗时长需要 admin 可调；副线提醒需要确认不会在没有题目时提示。
+
+**本轮修复**：
+- 测试轮收口为单公司逻辑：A 5 分钟窗口到点后自动提交并可进入正式阶段 ready；B 在 A 信息解锁后可提交，提交后进入正式阶段 ready，不再刷新回 P01。
+- 测试轮总时长到点时，若 B 仍未提交，后端自动补记 `practice_b_task_auto_completed`，并进入正式阶段 ready。
+- 单个参与者进入 `formal_ready` 等待时，不再提前把整个 session 切到 `FORMAL_READY`，避免把另一名还在测试轮工作的参与者踢出工作台。
+- 全屏 Esc 行为调整：`Shift+Esc` 保留为研究者退出全屏；普通 `Esc` 在应用层阻止默认行为，若浏览器仍因原生 Fullscreen API 退出，则尝试自动重新请求全屏；副线任务面板内普通 `Esc` 绑定为“返回主界面”。
+- A 端 B 反馈弹窗新增 admin 可调配置：`feedbackNotificationDurationSec`，默认 10 秒。
+- 副线滚动提醒仅在 `pendingCount > 0` 时运行；后端队列只返回 `scheduledAt <= now` 且未归档的副线计划，因此不会在服务端尚未释放题目前出现在前端队列。
+
+**验证**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server exec prisma migrate deploy` 已应用 `202606060002_feedback_notification_duration`。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+**注意**：浏览器原生全屏的普通 `Esc` 是浏览器保留行为，网页无法 100% 禁用；当前实现是应用层拦截 + 非 `Shift+Esc` 退出后尝试拉回全屏。
+
+### 2026-06-06 副线 Continuous / Batch 提醒触发逻辑修正
+
+**背景**：复核实验 2 时明确：两种条件下后台题目都应按固定间隔连续进入队列；差异只在提醒频率。Continuous 应“每来一道提醒一次”；Batch 应“后台持续到题，但约每个批量窗口提醒一次，打开后看到过去窗口里攒下的多道题”。因此仅用 `pendingCount > 0` 循环滚动只能防止空提醒，不能作为提醒触发条件。
+
+**本轮修复**：
+- 后端 `runtime.sideTaskConfig` 新增 `notificationPulse`：
+  - `continuous_arrival`：当前 participant 有未作答、未提醒的新到题时触发。
+  - `batch_window`：batch 条件下，到达批量提醒窗口后，把窗口内未作答、未提醒的题合并成一次提醒。
+- 前端 ticker 不再因为 `pendingCount > 0` 自动循环滚动；只在收到新的 `notificationPulse.id` 时播放一次。
+- 前端播放或因副线面板已展开而抑制播放后，都会写入 `side_task_notified` 曝光日志，避免同一批题反复提醒。
+- `pendingCount > 0` 保留为防空提醒保护条件；ticker 文案中的数量优先使用本次 pulse 的 `newCount`。
+- 开发预览页补齐 `notificationPulse: null` mock 配置。
+
+**当前语义**：
+- 题目到达：由 `scheduledAt <= now` 决定，两种模式都连续到达。
+- Continuous 提醒：跟随新题到达。
+- Batch 提醒：跟随批量窗口到点，且窗口内确实有未提醒题才提醒。
+- 如果没有 pending 题，不会出现空提醒。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+### 2026-06-06 变量实现自检表动态化
+
+**背景**：原 `variable_implementation_checklist.*` 是静态说明表，容易在实际导出包存在问题时仍显示“已实现”。复核后决定保留自检表，但把它改成轻量动态验收，而不是删除。
+
+**本轮修复**：
+- `writeSelfCheck()` 改为调用动态自检逻辑，基于本次导出的 session、participant 与生成目录检查关键项。
+- 自检项现在会实际检查：
+  - `session_metadata.json`、`randomization.json` 是否存在。
+  - participant 核心文件是否齐全。
+  - 公司级 `company_metadata.json`、`answer_content.json`、`ai_chat.jsonl`、`snapshots.jsonl` 是否存在。
+  - 图片附件 JSON 路径是否为 participant 相对路径，且文件是否真的在 `attachments/images/` 下。
+  - 副线作答正确率是否可计算。
+  - 副线 `reactionTimeMs` 是否出现负数。
+  - 主线 AI 是否带 `companyId`、`taskAssignmentId`、`segmentIndex`。
+  - 副线 AI 是否带 `phase`、`segmentIndex`，并提示缺少 `sideTaskPlanId` 的风险。
+  - 新 session 是否有 `participant_login` 登录事件。
+  - `variables.json` 是否存在。
+- `variable_implementation_summary.json` 现在会输出：
+  - `rawSaved`
+  - `risks`
+  - `missingSource`
+  - `postProcessable`
+  - `outOfPhaseOne`
+- `variable_implementation_checklist_meta.json` 标记 `mode: dynamic_export_self_check`。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+### 2026-06-06 变量记录导出结构 debug 修复
+
+**背景**：对照测试导出包与 `变量记录与服务器导出方案.md` 时发现若干导出层问题。图片文件实际已经复制，但路径嵌套成 `participant/sessions/SESSION/participants/PARTICIPANT/attachments/images`，说明附件保存路径和 participant 导出根路径拼接不一致。
+
+**本轮修复**：
+- 图片附件导出路径修正为 participant 目录下的 `attachments/images/...`。
+- `ai_chat.jsonl` 中的附件对象清洗：
+  - 去掉本机 `absolutePath`。
+  - `relativePath` 改为导出包内可用的 `attachments/images/...`。
+- 副线作答正确率修正：
+  - `goldAnswer=A/B` 会映射到 `optionA/optionB`。
+  - 新增 `selectedOptionKey` 与 `correctAnswerText`。
+  - `isCorrect` 不再用完整选项文本直接和 `A/B` 比较。
+- 副线反应时修正：
+  - `openedAt` 取作答前最近一次 `side_task_opened`。
+  - 避免作答后打开面板导致 `reactionTimeMs` 为负数。
+  - `side_responses.jsonl` 新增 `notifiedAt`，保留提醒曝光时间。
+- `variables.json` 角色指标修正：
+  - `meanTimeToViewASeconds`、`meanBSubmitDelaySeconds` 仅对投资经理计算，尽调员为 `null`。
+- 公司导出目录防覆盖：
+  - 公司目录名改为 `companyCode__companyId`；如果 code 本身就是 id，则直接用 id。
+  - `company_metadata.json` 内的 `companyCode` 保持原业务代号不变。
+- AI 日志阶段归属修正：
+  - 主线 AI 也保存 `segmentIndex`。
+  - 副线 AI 从工作台 runtime 传入真实 `phase`、`segmentIndex`。
+  - 副线 AI 在选中具体副线题时写入 `sideTaskPlanId`。
+- 登录事件补充：
+  - 登录/重连写入 `participant_login` 事件。
+  - `participant_metadata.loginAt` 优先使用真实登录事件时间，旧数据无事件时回退到 participant 创建时间。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+### 2026-06-06 admin 首次加载、教学框选与变量导出自检修正
+
+**背景**：用户用新 `CCC/DDD` session 重新导出后复核变量模块，同时发现 admin Session 页第一次打开偶发 `Failed to fetch`、副线教学步骤框选位置因滚动布局调整后不准。
+
+**本轮修复**：
+- admin Session 概览首次加载增加短重试，缓解一键启动时 web 已 ready 但 server 尚未完全监听导致的首包竞态；刷新后正常的现象本质上就是这个启动时序问题。
+- 测试轮教学的副线作答步骤从框选选项容器改为框选第一枚可点击选项按钮，避免上一题 / 下一题固定区与可滚动答题区改版后定位偏移。
+- 动态变量自检表继续保留，但修正判断口径：旧 session 缺登录事件、历史 AI 日志缺字段、未选具体副线题的 side AI 只标为“有风险”，不再误归类为“缺失原始数据”。
+
+**新导出包复核**：
+- `C:\Users\ASUS\Desktop\1` 中新 session 为 `0P937N`，参与者 `CCC/DDD`；旧 `AAA/BBB` session 仍在包内，审计时需区分。
+- 新 session 已看到 participant 目录、练习轮公司、正式段 1/2、测试题、两段休息问卷、主线 AI、图片附件、副线计划/释放/提醒/作答与 `variables.json`。
+- 新包图片路径已回正到 participant 下 `attachments/images/...`，AI JSON 中附件引用可解析。
+
+**验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+
+### 2026-06-06 数据库文件夹手册新增
+
+**背景**：变量记录模块第一期基本收口后，需要一份研究者能快速读懂导出包的手册，把 `变量记录与服务器导出方案.md` 的设计口径和当前实际数据库 / 导出结构对齐。
+
+**本轮新增**：
+- 新增 `02_specs/04_pre_deploy/数据库文件夹手册.md`。
+- 手册按实际导出路径解释：
+  - 根目录 `manifest` 与变量自检文件。
+  - session 层 `session_metadata.json`、`randomization.json`。
+  - participant 层 `participant_metadata.json`、`variables.json`。
+  - 问卷、练习轮、正式三段、公司目录、AI 聊天、副线目录、事件目录、图片附件。
+  - Prisma 数据表到导出文件的对应关系。
+  - 常用变量查找路径和快速审查清单。
+
+### 2026-06-06 neat-freak 文档收尾
+
+**背景**：本阶段完成实验 1/2/3、变量记录、服务器导出和数据库文件夹手册后，项目入口文档需要同步，避免下次接手者仍按旧的 7 模块或启动阶段理解项目。
+
+**本轮同步**：
+- 根 `README.md` 新增“变量记录与服务器导出”模块，补齐 `storage/`、关键 Prisma 模型、当前完成状态与上线前待办。
+- `02_specs/README.md` 补齐 `04_pre_deploy/`、实验 123 计划、变量记录方案、自检表和数据库文件夹手册。
+- `apps/server/README.md` 补齐 `recording` 模块、export job 接口、附件/导出存储口径。
+- `01_rules/PROJECT_RULES.md` 将“启动阶段”旧口径更新为 2026-06-06 的“长期实现 + 本地实测 + 上线前收口”阶段。
+
+### 2026-06-06 启动 prompt 更新与阶段 Git 收口
+
+**背景**：当前项目已完成实验 1/2/3、变量记录、服务器导出、自检表和数据库文件夹手册，需要把下一轮新对话的启动提示更新到最新口径，并将本阶段进度提交到本地 Git。
+
+**本轮同步**：
+- 重写根目录 `启动prompt.txt`，更新为 2026-06-06 后的项目接手 prompt。
+- 新 prompt 明确开局必读文档、当前 8 个大模块、实验 1/2/3 口径、变量导出结构、启动端口、Git 和文档修改纪律。
+- 准备把本阶段代码、schema、migration、规格文档、测试导出样本和启动 prompt 一并收口提交。

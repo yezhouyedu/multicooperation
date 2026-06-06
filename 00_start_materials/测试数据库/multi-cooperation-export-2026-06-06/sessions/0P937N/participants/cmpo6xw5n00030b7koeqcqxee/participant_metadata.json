@@ -1,0 +1,15 @@
+{
+  "participantId": "cmpo6xw5n00030b7koeqcqxee",
+  "phone": "DDD",
+  "internalRole": "B",
+  "displayRole": "投资经理",
+  "partnerParticipantId": "cmpo6xu5400020b7kk3tldjhn",
+  "loginAt": "2026-06-06T10:14:23.540Z",
+  "instructionViewedAt": "2026-06-06T10:14:24.568Z",
+  "practiceReadyAt": "2026-06-06T10:14:29.823Z",
+  "formalReadyAt": "2026-06-06T10:15:42.030Z",
+  "completedAt": null,
+  "qualityFlags": [
+    "session_not_completed"
+  ]
+}

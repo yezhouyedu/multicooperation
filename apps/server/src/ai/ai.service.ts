@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AiLevel, ExperimentPhase, ParticipantRole } from '@prisma/client';
+import { AiLevel, ExperimentPhase, ParticipantRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExperimentAuditService } from '../recording/experiment-audit.service';
+import { StorageService } from '../recording/storage.service';
 
 type ChatInput = {
   sessionCode: string;
@@ -15,6 +17,8 @@ type ChatInput = {
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   aiLevel?: 'BASIC' | 'ADVANCED' | 'basic' | 'advanced';
+  taskAssignmentId?: string;
+  sideTaskPlanId?: string;
 };
 
 type UserContentPart = {
@@ -28,16 +32,20 @@ type ResolvedChatContext = {
   participantId: string | null;
   contextType: 'main' | 'side';
   companyId: string | null;
+  taskAssignmentId: string | null;
+  sideTaskPlanId: string | null;
   phase: ExperimentPhase;
   segmentIndex: number;
   requestedLevel: AiLevel;
   requestId: string;
+  sessionCode: string;
   endpoint: string | null;
   apiKey: string | null;
   model: string;
   contextLimit: number;
   trimmed: string;
   attachments: string[];
+  attachmentLog: Array<Record<string, unknown>>;
   followUpContext: string;
   userMessage: { role: 'user'; content: string | UserContentPart[] };
   historyMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
@@ -55,6 +63,8 @@ export class AiService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly audit: ExperimentAuditService,
+    private readonly storage: StorageService,
   ) {}
 
   async getHistory(input: {
@@ -94,11 +104,16 @@ export class AiService {
 
   async chat(input: ChatInput) {
     const ctx = await this.resolveChatContext(input);
+    const startedAt = Date.now();
     await this.persistUserMessage(ctx);
 
     if (!ctx.endpoint || !ctx.apiKey) {
       const reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
-      const assistantMessage = await this.persistAssistantMessage(ctx, reply);
+      const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
+        latencyMs: Date.now() - startedAt,
+        providerStatus: 'mock',
+      });
+      await this.recordAiEvent(ctx, Date.now() - startedAt, 'mock');
       return {
         ok: true,
         mode: 'mock',
@@ -108,18 +123,30 @@ export class AiService {
       };
     }
 
-    const response = await fetch(ctx.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${ctx.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: ctx.model,
-        messages: [{ role: 'system', content: ctx.systemPrompt }, ...ctx.historyMessages, ctx.userMessage],
-        temperature: 0.65,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(ctx.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${ctx.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: ctx.model,
+          messages: [{ role: 'system', content: ctx.systemPrompt }, ...ctx.historyMessages, ctx.userMessage],
+          temperature: 0.65,
+        }),
+      });
+    } catch (error) {
+      const latencyMs = Date.now() - startedAt;
+      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型接口调用失败', {
+        latencyMs,
+        providerStatus: 'error',
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+      await this.recordAiEvent(ctx, latencyMs, 'error', error instanceof Error ? error.message : String(error));
+      throw error;
+    }
 
     const raw = await response.text();
     let data: any = null;
@@ -132,11 +159,24 @@ export class AiService {
     }
 
     if (!response.ok) {
+      const latencyMs = Date.now() - startedAt;
+      const errorMessage = data?.error?.message || data?.message || raw || '上游模型接口调用失败';
+      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型接口调用失败', {
+        latencyMs,
+        providerStatus: 'error',
+        errorMessage,
+      });
+      await this.recordAiEvent(ctx, latencyMs, 'error', errorMessage);
       throw new BadRequestException(data?.error?.message || data?.message || raw || '上游模型接口调用失败');
     }
 
     const reply = this.extractReply(data) || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
-    const assistantMessage = await this.persistAssistantMessage(ctx, reply);
+    const latencyMs = Date.now() - startedAt;
+    const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
+      latencyMs,
+      providerStatus: 'provider',
+    });
+    await this.recordAiEvent(ctx, latencyMs, 'provider');
     return {
       ok: true,
       mode: 'provider',
@@ -149,13 +189,19 @@ export class AiService {
 
   async chatStream(input: ChatInput, callbacks: StreamCallbacks = {}) {
     const ctx = await this.resolveChatContext(input);
+    const startedAt = Date.now();
     await this.persistUserMessage(ctx);
     callbacks.onStart?.({ requestId: ctx.requestId });
 
     if (!ctx.endpoint || !ctx.apiKey) {
       const reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
       callbacks.onDelta?.(reply);
-      const assistantMessage = await this.persistAssistantMessage(ctx, reply);
+      const latencyMs = Date.now() - startedAt;
+      const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
+        latencyMs,
+        providerStatus: 'mock',
+      });
+      await this.recordAiEvent(ctx, latencyMs, 'mock');
       callbacks.onDone?.({
         messageId: assistantMessage.id,
         createdAt: assistantMessage.createdAt.toISOString(),
@@ -181,6 +227,13 @@ export class AiService {
 
     if (!response.ok || !response.body) {
       const raw = await response.text();
+      const latencyMs = Date.now() - startedAt;
+      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型流式接口调用失败', {
+        latencyMs,
+        providerStatus: 'error',
+        errorMessage: raw || '上游模型流式接口调用失败',
+      });
+      await this.recordAiEvent(ctx, latencyMs, 'error', raw || '上游模型流式接口调用失败');
       throw new BadRequestException(raw || '上游模型流式接口调用失败');
     }
 
@@ -217,7 +270,12 @@ export class AiService {
     }
 
     const finalReply = reply.trim() || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
-    const assistantMessage = await this.persistAssistantMessage(ctx, finalReply);
+    const latencyMs = Date.now() - startedAt;
+    const assistantMessage = await this.persistAssistantMessage(ctx, finalReply, {
+      latencyMs,
+      providerStatus: 'provider',
+    });
+    await this.recordAiEvent(ctx, latencyMs, 'provider');
     callbacks.onDone?.({
       messageId: assistantMessage.id,
       createdAt: assistantMessage.createdAt.toISOString(),
@@ -242,6 +300,18 @@ export class AiService {
     const phase = input.phase === 'practice' ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
     const segmentIndex = input.segmentIndex ?? 0;
     const requestId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const attachmentLog: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < attachments.length; index += 1) {
+      const item = attachments[index];
+      const saved = await this.storage.saveDataUrlAttachment({
+        dataUrl: item,
+        sessionCode: input.sessionCode,
+        participantId,
+        requestId,
+        index,
+      });
+      attachmentLog.push(saved ?? { type: 'image', imageRef: `external_${requestId}_${index}`, relativePath: item, absolutePath: null });
+    }
     const isAdvanced = requestedLevel === AiLevel.ADVANCED;
     const settings = await this.prisma.aiSettings.findUnique({ where: { id: 'default' } });
     const endpointBase = isAdvanced
@@ -293,9 +363,12 @@ export class AiService {
 
     return {
       sessionId: session.id,
+      sessionCode: input.sessionCode,
       participantId,
       contextType,
       companyId: contextType === 'main' ? input.companyId ?? null : null,
+      taskAssignmentId: input.taskAssignmentId ?? null,
+      sideTaskPlanId: input.sideTaskPlanId ?? null,
       phase,
       segmentIndex,
       requestedLevel,
@@ -306,6 +379,7 @@ export class AiService {
       contextLimit,
       trimmed,
       attachments,
+      attachmentLog,
       followUpContext,
       userMessage,
       historyMessages,
@@ -319,36 +393,72 @@ export class AiService {
         sessionId: ctx.sessionId,
         participantId: ctx.participantId,
         companyId: ctx.companyId,
+        taskAssignmentId: ctx.taskAssignmentId,
+        sideTaskPlanId: ctx.sideTaskPlanId,
         contextType: ctx.contextType,
         phase: ctx.phase,
-        segmentIndex: ctx.contextType === 'side' ? ctx.segmentIndex : null,
+        segmentIndex: ctx.segmentIndex,
         aiLevel: ctx.requestedLevel,
         modelVersion: ctx.model,
         imageUploadEnabled: ctx.requestedLevel === AiLevel.ADVANCED,
         messageRole: 'user',
         requestId: ctx.requestId,
         content: ctx.trimmed || '（发送了图片）',
-        attachments: ctx.attachments,
+        attachments: ctx.attachmentLog.length > 0 ? ctx.attachmentLog as Prisma.InputJsonValue : Prisma.JsonNull,
+        providerStatus: 'user',
       },
     });
   }
 
-  private persistAssistantMessage(ctx: ResolvedChatContext, reply: string) {
+  private persistAssistantMessage(
+    ctx: ResolvedChatContext,
+    reply: string,
+    meta: { latencyMs?: number; providerStatus?: string; errorMessage?: string } = {},
+  ) {
     return this.prisma.aiMessageLog.create({
       data: {
         sessionId: ctx.sessionId,
         participantId: ctx.participantId,
         companyId: ctx.companyId,
+        taskAssignmentId: ctx.taskAssignmentId,
+        sideTaskPlanId: ctx.sideTaskPlanId,
         contextType: ctx.contextType,
         phase: ctx.phase,
-        segmentIndex: ctx.contextType === 'side' ? ctx.segmentIndex : null,
+        segmentIndex: ctx.segmentIndex,
         aiLevel: ctx.requestedLevel,
         modelVersion: ctx.model,
         imageUploadEnabled: ctx.requestedLevel === AiLevel.ADVANCED,
         messageRole: 'assistant',
         requestId: ctx.requestId,
         content: reply,
+        completedAt: new Date(),
+        latencyMs: meta.latencyMs,
+        providerStatus: meta.providerStatus ?? 'provider',
+        errorMessage: meta.errorMessage,
       },
+    });
+  }
+
+  private recordAiEvent(ctx: ResolvedChatContext, latencyMs: number, providerStatus: string, errorMessage?: string) {
+    return this.audit.record({
+      sessionId: ctx.sessionId,
+      participantId: ctx.participantId,
+      taskAssignmentId: ctx.taskAssignmentId,
+      companyId: ctx.companyId,
+      sideTaskPlanId: ctx.sideTaskPlanId,
+      eventType: ctx.contextType === 'side' ? 'side_ai_request_completed' : 'main_ai_request_completed',
+      phase: ctx.phase,
+      segmentIndex: ctx.segmentIndex,
+      payload: {
+        requestId: ctx.requestId,
+        contextType: ctx.contextType,
+        aiLevel: ctx.requestedLevel,
+        modelVersion: ctx.model,
+        latencyMs,
+        providerStatus,
+        errorMessage: errorMessage ?? null,
+        attachmentCount: ctx.attachmentLog.length,
+      } as Prisma.InputJsonValue,
     });
   }
 

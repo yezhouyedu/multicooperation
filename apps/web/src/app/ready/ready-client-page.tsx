@@ -24,7 +24,16 @@ export default function ReadyClientPage() {
     }
     if (!runtime) return;
 
-    if (runtime.phase === 'practice') {
+    const practiceTaskDone =
+      target === 'formal' &&
+      runtime.phase === 'practice' &&
+      Boolean(
+        runtime.assignedRole === 'A'
+          ? runtime.currentTask?.aSubmittedAt
+          : runtime.currentTask?.bCompletedAt,
+      );
+
+    if (runtime.phase === 'practice' && !practiceTaskDone) {
       router.replace('/practice');
       return;
     }

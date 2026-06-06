@@ -1,0 +1,12 @@
+{
+  "workSegment": 3,
+  "segmentIndex": 5,
+  "startedAt": null,
+  "plannedEndsAt": null,
+  "endedAt": null,
+  "aiLevel": "ADVANCED",
+  "sideDispatchMode": "continuous",
+  "narrativeGroup": "coop_narrative",
+  "themeLabel": "共同责任",
+  "companyIdsTouchedByParticipant": []
+}

@@ -1,0 +1,87 @@
+{
+  "company": {
+    "companyId": "company-library-practice-p01",
+    "companyCode": "P01",
+    "companyName": "P01",
+    "sequenceIndex": 0,
+    "materialVersion": "v1"
+  },
+  "task": {
+    "taskAssignmentId": "cmq274rhk00060b54lnkptiii",
+    "phase": "PRACTICE",
+    "workSegmentFirstSeen": 0,
+    "internalRole": "A",
+    "displayRole": "尽调员",
+    "bSequenceIndex": null,
+    "bAssignmentPath": null,
+    "bAssignmentDetail": null
+  },
+  "materials": {
+    "companyId": "company-library-practice-p01",
+    "materialVersion": "v1",
+    "visibleMaterialIds": [
+      "84f21a11-5105-4740-8a5c-eaf3bbcf7f87",
+      "c5027e45-26c7-4483-830f-9bdfd2b034c2",
+      "7ad827f6-9e07-4e6d-af53-8b24fb545571",
+      "a33aa6e0-468b-4a82-8a8a-beb206617be6",
+      "2dab08ca-d134-4537-b920-9e4b81398db8",
+      "3247cfea-8b40-485d-a45b-3917196a2b7f",
+      "4f27cb99-b56d-4f54-93f7-eb22f6d29c12",
+      "47ecbc3f-c931-4dd9-b69b-2e108507b3b7",
+      "2865ce6f-4184-4d37-b4d1-fced73bea7cd"
+    ],
+    "visibleMaterialNames": [
+      "1.公司简介（文）.txt",
+      "2.财务摘要与关键指标.docx",
+      "3.行业链与竞争格局（文或图）.docx",
+      "4.内部访谈纪要（文或图）.docx",
+      "5.外部访谈纪要（文或图）.docx",
+      "6.生产与质量情况（文或图）.docx",
+      "688110-2025.pdf",
+      "7.社会舆情与法务（文或图）.docx",
+      "8.客户与订单概况（文）.docx"
+    ],
+    "visibleScopes": [
+      "shared",
+      "shared",
+      "shared",
+      "shared",
+      "shared",
+      "shared",
+      "shared",
+      "shared",
+      "shared"
+    ],
+    "diligenceMaterialIds": [],
+    "managerMaterialIds": [],
+    "researchOnlyMaterialIds": [
+      "897fd259-fd6e-4d55-b025-edebbccc383d"
+    ],
+    "storageKeys": [
+      "1779971842164-4e213338.txt",
+      "1779971842168-949ee26e.docx",
+      "1779971842172-bc877418.docx",
+      "1779971842176-cb5034da.docx",
+      "1779971842182-0a607c70.docx",
+      "1779971842188-091e0be7.docx",
+      "1779971842194-0c3351b8.pdf",
+      "1779971842200-41aaa11f.docx",
+      "1779971842205-04d2d1ba.docx"
+    ]
+  },
+  "timing": {
+    "aStartedAt": "2026-06-06T10:14:40.544Z",
+    "aDeadlineAt": null,
+    "aSubmittedAt": "2026-06-06T10:15:40.621Z",
+    "aUnlockedForBAt": "2026-06-06T10:15:40.621Z",
+    "bAssignedAt": null,
+    "bViewedAInfoAt": null,
+    "bCompletedAt": "2026-06-06T10:15:40.621Z"
+  },
+  "aiState": {
+    "aAiLevelAtWindow": "BASIC",
+    "bPreAAiLevel": null,
+    "bPostAAiLevel": null,
+    "crossUpgradeBoundaryFlag": false
+  }
+}

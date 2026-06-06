@@ -104,13 +104,14 @@
 当前主要存：
 
 - admin 上传后的材料文件
-- 临时上传文件
+- AI 图片附件
+- 服务器导出归档包
 
 ---
 
 ## 3. 当前系统有哪些大模块
 
-现在可以把整个项目理解成 7 个大模块。
+现在可以把整个项目理解成 8 个大模块。
 
 ### 模块 A：参与者实验主流程
 
@@ -319,6 +320,40 @@
 
 ---
 
+### 模块 H：变量记录与服务器导出
+
+这是当前上线前最关键的数据模块之一。
+
+它负责：
+
+- 统一实验事件记录
+- A/B 被试分目录导出
+- 主线公司答题全文导出
+- 副线计划、提醒、打开、作答导出
+- 主线 / 副线 AI 聊天导出
+- 图片附件归档
+- 变量实现动态自检
+- admin 创建导出任务并下载 zip
+
+核心文件：
+
+- [apps/server/src/recording/export.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/export.service.ts)
+- [apps/server/src/recording/storage.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/storage.service.ts)
+- [apps/server/src/recording/experiment-audit.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/experiment-audit.service.ts)
+- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
+- [02_specs/04_pre_deploy/变量记录与服务器导出方案.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/变量记录与服务器导出方案.md)
+- [02_specs/04_pre_deploy/数据库文件夹手册.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/数据库文件夹手册.md)
+
+当前导出包按这个主干组织：
+
+```text
+sessions/SESSION_CODE/participants/PARTICIPANT_ID/
+```
+
+session 只保存共享事实；participant 保存个人问卷、答题、AI、副线、事件和图片附件。
+
+---
+
 ## 4. 题库系统现在怎么用
 
 如果你只是想快速导入案例材料，优先看：
@@ -343,21 +378,35 @@
 - `Participant`
 - `Session`
 - `Pairing`
+- `RandomizationAudit`
+- `ExperimentEvent`
 - `TaskAssignment`
 - `TaskSnapshot`
 - `Company`
 - `AiMessageLog`
 - `QuestionnaireResponse`
+- `SideTaskItem`
+- `SideTaskPlan`
+- `SideTaskExposureLog`
+- `SideTaskSessionConfig`
+- `ExportJob`
 
 可以这样粗暴理解：
 
 - `Participant`：谁能进实验
 - `Session`：一轮实验
 - `Pairing`：一组尽调员/投资经理配对
+- `RandomizationAudit`：角色、公司顺序、实验模式、B 动态分配的随机化留痕
+- `ExperimentEvent`：关键行为事件
 - `Company`：题库中的一个案例
 - `TaskAssignment`：某轮实验里这组人被分到哪个案例
 - `TaskSnapshot`：冻结与恢复记录
 - `AiMessageLog`：AI 对话日志
+- `SideTaskItem`：副线题库题目
+- `SideTaskPlan`：session 级副线抽题与释放计划
+- `SideTaskExposureLog`：副线释放、提醒、打开、作答事件
+- `SideTaskSessionConfig`：session 级副线模式、叙事组、主题顺序
+- `ExportJob`：服务器导出任务
 
 ---
 
@@ -374,12 +423,16 @@
 - 题库目录自动识别导入
 - 参与者端隐藏研究者材料
 - 两张主表向 Word 真相源精修
+- 实验 1/2/3 模式互斥切换
+- 变量记录与服务器导出第一期
+- 导出包动态自检与数据库文件夹手册
 
 仍然值得继续抠细节的地方：
 
 - 表单与 Word 的最后一轮像素级/行距级精修
 - 更多案例批量接入
 - admin 更细的错误提示与批量校验
+- 上线部署、持久化卷和对象存储对接
 
 ---
 

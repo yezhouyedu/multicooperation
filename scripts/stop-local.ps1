@@ -1,4 +1,5 @@
 $projectRoot = 'E:\Own_program\multi cooperation'
+$devPorts = @(3000, 3001, 3002)
 
 Write-Host '[1/2] Stopping web/server node processes...' -ForegroundColor Cyan
 Get-CimInstance Win32_Process |
@@ -39,6 +40,39 @@ Get-CimInstance Win32_Process |
       Write-Host ("Closed PowerShell PID {0}" -f $_.ProcessId) -ForegroundColor Yellow
     } catch {
       Write-Host ("Skip PowerShell PID {0}: {1}" -f $_.ProcessId, $_.Exception.Message) -ForegroundColor DarkYellow
+    }
+  }
+
+Write-Host '[extra] Releasing local dev ports 3000/3001/3002...' -ForegroundColor Cyan
+$portProcessIds = @()
+foreach ($port in $devPorts) {
+  $lines = netstat -ano | Select-String (":$port\s")
+  foreach ($line in $lines) {
+    $parts = ($line.Line -split '\s+') | Where-Object { $_ }
+    if ($parts.Count -lt 5) { continue }
+    if ($parts[0] -notin @('TCP', 'UDP')) { continue }
+    if ($parts[1] -notmatch ":$port$") { continue }
+    $processIdText = $parts[-1]
+    $processIdValue = 0
+    if ([int]::TryParse($processIdText, [ref]$processIdValue) -and $processIdValue -gt 0 -and $processIdValue -ne $PID) {
+      $portProcessIds += $processIdValue
+    }
+  }
+}
+
+$portProcessIds |
+  Sort-Object -Unique |
+  ForEach-Object {
+    try {
+      $process = Get-Process -Id $_ -ErrorAction Stop
+      if ($process.ProcessName -notin @('node', 'powershell', 'pwsh')) {
+        Write-Host ("Skip PID {0} on dev port: process is {1}" -f $_, $process.ProcessName) -ForegroundColor DarkYellow
+        return
+      }
+      Stop-Process -Id $_ -Force -ErrorAction Stop
+      Write-Host ("Released dev port by stopping PID {0} ({1})" -f $_, $process.ProcessName) -ForegroundColor Yellow
+    } catch {
+      Write-Host ("Skip PID {0}: {1}" -f $_, $_.Exception.Message) -ForegroundColor DarkYellow
     }
   }
 

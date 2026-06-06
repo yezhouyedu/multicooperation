@@ -11,6 +11,7 @@ import {
   SessionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExperimentAuditService } from '../recording/experiment-audit.service';
 
 type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
 type DispatchMode = 'continuous' | 'batch';
@@ -37,7 +38,10 @@ const THEME_LABELS = ['互补分工', '验证留痕', '共同责任'];
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: ExperimentAuditService,
+  ) {}
 
   async login(phone: string) {
     const participant = await this.prisma.participant.findUnique({ where: { phone } });
@@ -79,6 +83,18 @@ export class AuthService {
           if (role) {
             await tx.participant.update({ where: { id: participant.id }, data: { role } });
           }
+          await tx.experimentEvent.create({
+            data: {
+              sessionId: existingSession.id,
+              participantId: participant.id,
+              role,
+              eventType: 'participant_login',
+              payload: {
+                loginType: 'reconnect_existing_session',
+                sessionStatus: existingSession.status,
+              } as Prisma.InputJsonValue,
+            },
+          });
           return { sessionCode: existingSession.code, role };
         }
 
@@ -101,6 +117,14 @@ export class AuthService {
           });
           await tx.pairing.create({ data: { sessionId: session.id, participantAId: participant.id } });
           await tx.participant.update({ where: { id: participant.id }, data: { role: null } });
+          await tx.experimentEvent.create({
+            data: {
+              sessionId: session.id,
+              participantId: participant.id,
+              eventType: 'participant_login',
+              payload: { loginType: 'created_waiting_session' } as Prisma.InputJsonValue,
+            },
+          });
           return { sessionCode: session.code, role: null };
         }
 
@@ -134,6 +158,31 @@ export class AuthService {
           roleAssignmentMethod: 'seeded_coin_flip_after_pairing',
           roleAssignmentSeed,
           roleAssignedAt,
+        });
+
+        await tx.experimentEvent.create({
+          data: {
+            sessionId: waitingSession.id,
+            participantId: participant.id,
+            role: participantAId === participant.id ? ParticipantRole.A : ParticipantRole.B,
+            eventType: 'participant_login',
+            payload: { loginType: 'joined_waiting_session' } as Prisma.InputJsonValue,
+          },
+        });
+
+        await this.audit.record({
+          sessionId: waitingSession.id,
+          participantId: participantAId,
+          role: ParticipantRole.A,
+          eventType: 'role_assigned',
+          payload: { role: ParticipantRole.A, roleAssignmentSeed } as Prisma.InputJsonValue,
+        });
+        await this.audit.record({
+          sessionId: waitingSession.id,
+          participantId: participantBId,
+          role: ParticipantRole.B,
+          eventType: 'role_assigned',
+          payload: { role: ParticipantRole.B, roleAssignmentSeed } as Prisma.InputJsonValue,
         });
 
         return {
@@ -273,6 +322,8 @@ export class AuthService {
 
     const dispatchMode = experimentSnapshot.sideDispatchMode;
     const narrativeGroup = experimentSnapshot.narrativeGroup;
+    const practiceDispatchMode: DispatchMode = 'continuous';
+    const practiceNarrativeGroup: NarrativeGroup = 'neutral_info';
     const themeOrder = experimentSnapshot.themeOrder ?? [];
     const segmentThemes: (string | null)[] =
       narrativeGroup === 'coop_narrative' ? [themeOrder[0] ?? null, themeOrder[1] ?? null, themeOrder[2] ?? null] : [null, null, null];
@@ -328,8 +379,8 @@ export class AuthService {
             sessionId,
             segmentIndex: 0,
             itemId: item.id,
-            dispatchMode,
-            narrativeGroup,
+            dispatchMode: practiceDispatchMode,
+            narrativeGroup: practiceNarrativeGroup,
             themeLabel: 'practice',
             queueOrder: queueOrder + 1,
           },

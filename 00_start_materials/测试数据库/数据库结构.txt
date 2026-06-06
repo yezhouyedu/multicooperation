@@ -1,0 +1,131 @@
+PS C:\Users\ASUS> tree "E:\Own_program\multi cooperation\00_start_materials\测试数据库\multi-cooperation-export-2026-06-06" /f
+文件夹 PATH 列表
+卷序列号为 09C1-B27D
+E:\OWN_PROGRAM\MULTI COOPERATION\00_START_MATERIALS\测试数据库\MULTI-COOPERATION-EXPORT-2026-06-06
+│  manifest.json
+│  variable_implementation_checklist.jsonl
+│  variable_implementation_checklist.md
+│  variable_implementation_checklist_meta.json
+│  variable_implementation_summary.json
+│
+└─sessions
+    └─0P937N
+        │  randomization.json
+        │  session_metadata.json
+        │
+        └─participants
+            ├─cmpo6xu5400020b7kk3tldjhn
+            │  │  participant_metadata.json
+            │  │  variables.json
+            │  │
+            │  ├─attachments
+            │  │  └─images
+            │  │          img_20260606T101613_ai-1780740973696-rulevl_0.png
+            │  │
+            │  ├─events
+            │  │      events.jsonl
+            │  │
+            │  ├─formal_segments
+            │  │  ├─segment_1
+            │  │  │  │  segment_metadata.json
+            │  │  │  │
+            │  │  │  └─companies
+            │  │  │      └─P01__company-p01-baseline
+            │  │  │              ai_chat.jsonl
+            │  │  │              answer_content.json
+            │  │  │              company_metadata.json
+            │  │  │              snapshots.jsonl
+            │  │  │
+            │  │  ├─segment_2
+            │  │  │  │  segment_metadata.json
+            │  │  │  │
+            │  │  │  └─companies
+            │  │  │      └─P01__company-p01-baseline
+            │  │  │              ai_chat.jsonl
+            │  │  │              answer_content.json
+            │  │  │              company_metadata.json
+            │  │  │              snapshots.jsonl
+            │  │  │
+            │  │  └─segment_3
+            │  │          segment_metadata.json
+            │  │
+            │  ├─practice_round
+            │  │  │  round_metadata.json
+            │  │  │  side_ai_chat.jsonl
+            │  │  │  side_tasks.jsonl
+            │  │  │
+            │  │  └─companies
+            │  │      └─P01__company-library-practice-p01
+            │  │              ai_chat.jsonl
+            │  │              answer_content.json
+            │  │              company_metadata.json
+            │  │              snapshots.jsonl
+            │  │
+            │  ├─questionnaires
+            │  │      break_1.json
+            │  │      break_2.json
+            │  │      practice_quiz.json
+            │  │
+            │  └─side_tasks
+            │          side_ai_chat.jsonl
+            │          side_events.jsonl
+            │          side_plan.json
+            │          side_responses.jsonl
+            │
+            └─cmpo6xw5n00030b7koeqcqxee
+                │  participant_metadata.json
+                │  variables.json
+                │
+                ├─attachments
+                │  └─images
+                │          img_20260606T101721_ai-1780741041420-s7p1p9_0.png
+                │
+                ├─events
+                │      events.jsonl
+                │
+                ├─formal_segments
+                │  ├─segment_1
+                │  │  │  segment_metadata.json
+                │  │  │
+                │  │  └─companies
+                │  │      └─P01__company-p01-baseline
+                │  │              ai_chat.jsonl
+                │  │              answer_content.json
+                │  │              company_metadata.json
+                │  │              snapshots.jsonl
+                │  │
+                │  ├─segment_2
+                │  │  │  segment_metadata.json
+                │  │  │
+                │  │  └─companies
+                │  │      └─P01__company-p01-baseline
+                │  │              ai_chat.jsonl
+                │  │              answer_content.json
+                │  │              company_metadata.json
+                │  │              snapshots.jsonl
+                │  │
+                │  └─segment_3
+                │          segment_metadata.json
+                │
+                ├─practice_round
+                │  │  round_metadata.json
+                │  │  side_ai_chat.jsonl
+                │  │  side_tasks.jsonl
+                │  │
+                │  └─companies
+                │      └─P01__company-library-practice-p01
+                │              ai_chat.jsonl
+                │              answer_content.json
+                │              company_metadata.json
+                │              snapshots.jsonl
+                │
+                ├─questionnaires
+                │      break_1.json
+                │      break_2.json
+                │      practice_quiz.json
+                │
+                └─side_tasks
+                        side_ai_chat.jsonl
+                        side_events.jsonl
+                        side_plan.json
+                        side_responses.jsonl

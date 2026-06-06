@@ -1,13 +1,15 @@
-你好，我们继续一个项目。
+你好，我们继续一个长期项目。请先不要急着改代码，先完成“理解项目并同步当前进度”这一步，再开始任何实现。
 
-你先不要急着改代码，先完成“理解项目并同步当前进度”这一步，再开始任何实现。
-
-## 1. 项目根目录
+## 0. 项目根目录
 
 项目根目录：
 `E:\Own_program\multi cooperation`
 
-## 2. 你这次开局必须先读的文档
+当前日期口径：请以 `2026-06-06` 之后的项目文档为准。旧聊天记录、旧方案、废案和 `04_archive/` 里的内容不能覆盖最新代码与最新 specs。
+
+---
+
+## 1. 开局必须先读的核心文档
 
 请优先完整阅读这些 Markdown：
 
@@ -18,81 +20,279 @@
 5. `E:\Own_program\multi cooperation\02_specs\README.md`
 6. `E:\Own_program\multi cooperation\02_specs\00_overview\APP_FLOW.md`
 7. `E:\Own_program\multi cooperation\03_tracking\progress.md`
-8. 根据你当前任务，再补读对应模块的 specs
+8. 当前任务对应的模块 specs
 
-其中请特别注意：
+其中尤其注意：
 
-- `03_tracking/progress.md` 是项目进度真相源，要先看最新进度再判断现在做到哪里
-- `02_specs` 下面的文档已经整理过，不要凭旧印象理解项目
-- `APP_FLOW.md` 是主流程真相源
-- `experiment_necessary.md` 是实验方法与论文回溯相关的真相源
+- `03_tracking/progress.md` 是项目进度真相源，必须先看最新记录再判断做到哪里。
+- `02_specs/00_overview/APP_FLOW.md` 是主流程真相源。
+- `01_rules/experiment_necessary.md` 是实验方法、论文回溯、实验必要口径相关真相源。
+- `02_specs/04_pre_deploy/数据库文件夹手册.md` 是当前变量导出包阅读真相源。
+- `02_specs/04_pre_deploy/变量记录与服务器导出方案.md` 是变量记录设计真相源。
+- `02_specs/03_execution/实验123计划.md` 是实验 1/2/3 模式切换真相源。
 
-## 3. 你需要知道的当前项目口径
+如果要理解环境，也顺手读：
 
-请先按下面这些口径理解项目，避免被旧历史记录误导：
+- `E:\Own_program\multi cooperation\apps\web\README.md`
+- `E:\Own_program\multi cooperation\apps\server\README.md`
 
-- 参与者前台不要暴露 `A/B` 字母角色，统一使用“尽调员 / 投资经理”
-- 系统不是“先来固定 A、后来固定 B”，而是先按进入顺序成组，再随机分配角色
-- 公司顺序是 session 内共享的 seed 随机顺序，需要可复现
-- 尽调员对单家公司 5 分钟内不能提前提交，5 分钟到点系统自动提交
-- 投资经理可以提前看自己材料并写草稿；尽调信息解锁后可以直接提交
-- 是否点击过“查看尽调员信息”要记录，但不再作为提交门槛
-- 副线任务系统已经不是原型，而是正式队列式系统
-- AI 区已经支持 Markdown、流式输出、图片上传/粘贴、追问条
-- 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`
+---
 
-## 4. 代码位置
+## 2. 当前项目阶段，一句话理解
 
-主要代码在这里：
+这已经不是早期原型，而是一个围绕“尽调员 / 投资经理”协作实验的长期全栈实验平台。
+
+当前阶段是：
+
+**长期实现 + 本地实测 + 上线前收口。**
+
+已经稳定落地的大模块包括：
+
+1. 参与者实验主流程
+2. runtime 阶段引擎与 SSE
+3. A/B 主工作台三区
+4. 草稿 / 快照 / 恢复系统
+5. admin 管理后台
+6. 题库与材料系统
+7. AI 上下文系统
+8. 变量记录与服务器导出系统
+
+---
+
+## 3. 不能被旧记录误导的当前口径
+
+请按下面口径理解项目：
+
+- 参与者前台不要暴露 `A/B` 字母角色，统一使用“尽调员 / 投资经理”。
+- 系统不是“先来固定 A、后来固定 B”，而是先按进入顺序成组，再在组内随机分配角色。
+- 角色随机、公司顺序、实验模式随机结果都要可复现、可导出。
+- 正式公司顺序是 session 内共享 seed 随机顺序。
+- 尽调员按共享正式公司顺序推进。
+- 投资经理不是机械跟随固定顺序，而是在共享 formal 公司池上动态分配：
+  1. 优先 locked pool：`A 已提交 && B 未完成 && B 未分配`
+  2. 锁定池为空时 fallback 到 PreA 公司
+  3. 都没有时进入空窗
+- 尽调员对单家公司 5 分钟内不能提前提交；5 分钟到点系统自动提交。
+- 投资经理可以提前看自己材料、写草稿、用 AI；尽调信息解锁后可以直接提交。
+- 是否点击过“查看尽调员信息”要记录，但不再作为提交门槛。
+- 测试轮固定默认变量：基础 AI、continuous 高频副线提醒、neutral_info 中性信息。
+- 测试轮只是一家公司；测试轮到时或完成后进入正式阶段 ready，不直接进入正式工作段。
+- 正式工作段默认 20 分钟；休息段默认 5 分钟；尽调员单家公司窗口固定 5 分钟。
+- 副线任务系统已经是正式队列式系统，不是原型。
+- continuous / batch 操纵的是提醒频率，不改变后台题目实际到达节奏。
+- 后台副线题目按计划连续进入队列；continuous 每条提醒，batch 按窗口合并提醒。
+- AI 区已经支持 Markdown、流式输出、图片上传/粘贴、追问条。
+- AI 区标题栏会显示基础版 / 升级版 badge。
+- 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`。
+- admin 已支持实验 1/2/3 互斥模式卡片。
+- 变量保存模块第一期已经实现：事件、内容、AI 聊天、副线、图片附件、服务器导出 zip、自检表。
+
+---
+
+## 4. 实验 1/2/3 当前实现口径
+
+admin 同一时间只能选择一种模式：
+
+- `manual`：手动 / 通用
+- `ai_upgrade`：实验 1，AI 能力升级
+- `side_reminder`：实验 2，副线提醒频率
+- `coop_narrative`：实验 3，合作叙事
+
+切换 admin 模式只影响新 session，旧 session 使用创建时保存的快照。
+
+默认固定变量按师兄口径：
+
+- AI：基础版
+- 副线提醒：continuous 高频提醒
+- 叙事：neutral_info 中性信息
+
+实验 1：
+
+- 随机 `upgradeCohort = early_upgrade / late_upgrade`
+- early：段 1 BASIC，段 2 ADVANCED，段 3 ADVANCED
+- late：段 1 BASIC，段 2 BASIC，段 3 ADVANCED
+- 固定副线和叙事，默认 `continuous + neutral_info`
+
+实验 2：
+
+- 随机 `sideDispatchMode = continuous / batch`
+- 固定 AI 和叙事，默认 `BASIC + neutral_info`
+
+实验 3：
+
+- 随机 `narrativeGroup = coop_narrative / neutral_info`
+- 合作叙事组再随机主题顺序
+- 固定 AI 和副线，默认 `BASIC + continuous`
+
+---
+
+## 5. 变量记录与导出当前口径
+
+变量记录模块不是只做一个导出按钮，而是“实验审计 + 服务器导出”。
+
+当前导出包主干：
+
+```text
+sessions/SESSION_CODE/participants/PARTICIPANT_ID/
+```
+
+session 层只保存共享事实：
+
+- `session_metadata.json`
+- `randomization.json`
+
+participant 层保存个人事实：
+
+- `participant_metadata.json`
+- `variables.json`
+- `questionnaires/`
+- `practice_round/`
+- `formal_segments/`
+- `side_tasks/`
+- `events/`
+- `attachments/images/`
+
+重点文件：
+
+- `variables.json`：核心 treatment、主线、AI、副线、问卷摘要。
+- `answer_content.json`：每家公司答题区全文。
+- `ai_chat.jsonl`：每家公司主线 AI 聊天。
+- `side_responses.jsonl`：副线计划题 + 呈现 + 作答 + 正确率 + 反应时。
+- `side_events.jsonl`：副线释放、提醒、打开、作答事件。
+- `events/events.jsonl`：实验关键行为事件和 legacy progress。
+- `variable_implementation_summary.json`：导出包动态自检摘要。
+
+图片附件：
+
+- 图片文件保存到 `attachments/images/`
+- AI JSON 里只保存 `imageRef + relativePath`
+- 不要把 base64 塞进 JSON
+
+第一期不做但后续可能要做：
+
+- 后测问卷
+- 内容质量评分
+- gold fact / gold issue
+- 滚动、focus/blur、复制粘贴、细粒度停留时间
+- AI 采纳率自动编码
+
+---
+
+## 6. 主要代码位置
+
+主要代码在：
 
 - `E:\Own_program\multi cooperation\apps`
 - `E:\Own_program\multi cooperation\infra`
 - `E:\Own_program\multi cooperation\packages`
 - `E:\Own_program\multi cooperation\scripts`
 
-这些目录通常不需要你优先看：
+核心后端：
+
+- `apps/server/src/experiment/experiment.service.ts`
+- `apps/server/src/admin/admin.service.ts`
+- `apps/server/src/ai/ai.service.ts`
+- `apps/server/src/recording/export.service.ts`
+- `apps/server/src/recording/experiment-audit.service.ts`
+- `apps/server/src/recording/storage.service.ts`
+- `apps/server/prisma/schema.prisma`
+
+核心前端：
+
+- `apps/web/src/app/admin/page.tsx`
+- `apps/web/src/app/practice/page.tsx`
+- `apps/web/src/app/workspace/a/page.tsx`
+- `apps/web/src/app/workspace/b/page.tsx`
+- `apps/web/src/components/ai-chat-panel.tsx`
+- `apps/web/src/components/sidetask-strip.tsx`
+- `apps/web/src/components/practice-tutorial-overlay.tsx`
+- `apps/web/src/lib/session-runtime.ts`
+
+通常不要优先看：
 
 - `node_modules`
 - `04_archive`
+- `apps/server/storage`
+- `storage`
+- 旧测试导出包
 
-除非我明确让你看，否则不要把主要精力花在这些地方。
+除非我明确让你看。
 
-## 5. 启动与环境
+---
+
+## 7. 启动与环境
 
 一键启动脚本：
+
 `E:\Own_program\multi cooperation\启动本地开发环境.bat`
 
-如果你要理解环境，也请顺手确认：
+一键停止脚本：
 
-- `apps/web/README.md`
-- `apps/server/README.md`
+`E:\Own_program\multi cooperation\停止本地开发环境.bat`
 
-## 6. 本次对话的工作方式
+一键重启脚本：
 
-你开始工作后，请先做这三步：
+`E:\Own_program\multi cooperation\重启本地开发环境.bat`
 
-1. 先用自己的话总结你理解到的“项目当前状态”
-2. 明确告诉我：你这次准备先看哪些文件、为什么
-3. 如果发现文档与代码冲突，优先相信最新代码与最新 specs，再向我汇报冲突点
+当前启动脚本已经会先清理残留 web/server dev 进程，避免 3000 / 3001 / 3002 混乱。
 
-## 7. 文档修改规则
+默认地址：
 
-如果这次任务涉及改 Markdown，请严格遵守：
+- web：`http://localhost:3000`
+- server：`http://localhost:3001`
+- admin：`http://localhost:3000/admin`
 
-- 只删错的内容，不删对的内容
-- 优先补齐和现代码不一致的口径
-- 不要随意重写历史追踪文档
-- `progress.md`、`lessons.md` 这类文档是记录，不要把它们当成“全部重写目标”
+常用验证命令：
 
-编码注意：
+```powershell
+corepack pnpm --filter server prisma:generate
+corepack pnpm --filter server build
+corepack pnpm --filter web build
+```
 
-- 在这个项目里，严禁用 PowerShell 的 `Add-Content` 或 `>>` 直接写中文 `.md`
-- 修改中文 Markdown 时，优先用安全编辑方式，避免编码损坏
+本项目默认使用 `corepack pnpm`，不要在子包里用 `npm install`。
 
-## 8. 这次开始后先回复我什么
+---
 
-请先回复我一版简短同步：
+## 8. Git 与工作区注意
 
-1. 你已经读了哪些核心文档
-2. 你理解的当前项目阶段是什么
-3. 你接下来准备先做什么
+本项目已经启用本地 Git。
+
+开始实现前请先看：
+
+```powershell
+git status --short
+```
+
+注意：
+
+- 不要随意 revert 用户或前一轮 agent 的改动。
+- 如果有无关测试数据、导出包、临时文件，优先不要提交。
+- 源码、schema、migration、规格文档、README、progress 这类项目事实应该提交。
+- 提交备注请用中文，简短说明本轮主题。
+
+---
+
+## 9. 文档修改规则
+
+如果任务涉及改 Markdown：
+
+- 只删错的内容，不删对的内容。
+- 优先补齐和现代码不一致的口径。
+- 不要随意重写历史追踪文档。
+- `progress.md`、`lessons.md` 是记录，不要当成“全部重写目标”。
+- 严禁用 PowerShell 的 `Add-Content` 或 `>>` 直接写中文 `.md`。
+- 修改中文 Markdown 时，优先用安全编辑方式，避免编码损坏。
+
+---
+
+## 10. 本次对话开始后你先回复什么
+
+请先回复一版简短同步，必须包含：
+
+1. 你已经读了哪些核心文档。
+2. 你理解的当前项目阶段是什么。
+3. 你这次准备先看哪些文件，为什么。
+4. 如果发现文档与代码冲突，优先相信最新代码与最新 specs，并向我报告冲突点。
+
+在完成这一步前，不要直接进入实现。

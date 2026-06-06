@@ -14,11 +14,12 @@ type FeedbackPayload = {
 type Props = {
   sessionCode: string;
   participantId?: string;
+  durationSec?: number;
 };
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
-export function AFeedbackNotification({ sessionCode, participantId }: Props) {
+export function AFeedbackNotification({ sessionCode, participantId, durationSec = 10 }: Props) {
   const [visible, setVisible] = useState(false);
   const [payload, setPayload] = useState<FeedbackPayload | null>(null);
   const seenIds = useRef<Set<string>>(new Set());
@@ -28,8 +29,8 @@ export function AFeedbackNotification({ sessionCode, participantId }: Props) {
     if (timerRef.current) clearTimeout(timerRef.current);
     setPayload(p);
     setVisible(true);
-    timerRef.current = setTimeout(() => setVisible(false), 5000);
-  }, []);
+    timerRef.current = setTimeout(() => setVisible(false), Math.max(1, durationSec) * 1000);
+  }, [durationSec]);
 
   useEffect(() => {
     if (!sessionCode) return;

@@ -20,6 +20,8 @@ async function bootstrap() {
   const uploadsRoot = resolve(process.cwd(), 'storage');
   mkdirSync(resolve(uploadsRoot, 'materials'), { recursive: true });
   mkdirSync(resolve(uploadsRoot, 'tmp'), { recursive: true });
+  mkdirSync(resolve(uploadsRoot, 'exports'), { recursive: true });
+  mkdirSync(resolve(uploadsRoot, 'attachments'), { recursive: true });
 
   const app = await NestFactory.create(AppModule, {
     cors: true,

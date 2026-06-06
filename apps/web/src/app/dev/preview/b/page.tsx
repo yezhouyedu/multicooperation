@@ -61,6 +61,7 @@ export default async function PreviewBPage(props: { searchParams: SearchParams }
             totalAnswered: 0,
             totalArchived: 0,
             nextScheduledAt: null,
+            notificationPulse: null,
             pendingLabel: '待处理事宜',
             tickerMessage: '您有新事项入库，请尽快处理',
           }}

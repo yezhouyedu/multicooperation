@@ -137,6 +137,7 @@ export class AdminService {
             }
           : null,
         practiceQuizPassCount: config.practiceQuizPassCount,
+        feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
         sideTask: {
           continuousIntervalSec: config.sideTaskContinuousIntervalSec,
           continuousJitterSec: config.sideTaskContinuousJitterSec,
@@ -165,6 +166,7 @@ export class AdminService {
     practiceQuizTitle?: string;
     practiceQuizItems: SingleChoiceQuestionInput[];
     practiceQuizPassCount?: number;
+    feedbackNotificationDurationSec?: number;
     sideTask?: {
       continuousIntervalSec?: number;
       continuousJitterSec?: number;
@@ -264,6 +266,7 @@ export class AdminService {
         activeQuestionnaireTemplateId: template.id,
         practiceQuizTemplateId: practiceTemplate.id,
         practiceQuizPassCount: Math.max(0, Number(input.practiceQuizPassCount) || 0),
+        feedbackNotificationDurationSec: Math.max(1, Number(input.feedbackNotificationDurationSec) || 10),
         ...sideTaskData,
       },
       create: {
@@ -280,6 +283,7 @@ export class AdminService {
         activeQuestionnaireTemplateId: template.id,
         practiceQuizTemplateId: practiceTemplate.id,
         practiceQuizPassCount: Math.max(0, Number(input.practiceQuizPassCount) || 0),
+        feedbackNotificationDurationSec: Math.max(1, Number(input.feedbackNotificationDurationSec) || 10),
         ...sideTaskData,
       },
       include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },

@@ -32,7 +32,7 @@ export default function PracticeQuizPage() {
       router.replace('/practice');
       return;
     }
-    if (runtime.phase === 'formal_ready' && runtime.syncState?.selfReady) {
+    if (runtime.phase === 'formal_ready') {
       router.replace('/ready?target=formal');
       return;
     }

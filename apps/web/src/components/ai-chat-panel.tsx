@@ -26,6 +26,8 @@ type Props = {
   accent: 'blue' | 'purple';
   contextType?: 'main' | 'side';
   companyId?: string;
+  taskAssignmentId?: string;
+  sideTaskPlanId?: string;
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   aiLevel?: 'BASIC' | 'ADVANCED';
@@ -208,6 +210,8 @@ export function AiChatPanel({
   accent,
   contextType = 'main',
   companyId,
+  taskAssignmentId,
+  sideTaskPlanId,
   phase = 'formal',
   segmentIndex = 0,
   aiLevel = 'BASIC',
@@ -381,6 +385,8 @@ export function AiChatPanel({
           attachments: draftAttachments,
           contextType,
           companyId,
+          taskAssignmentId,
+          sideTaskPlanId,
           phase,
           segmentIndex,
           aiLevel,

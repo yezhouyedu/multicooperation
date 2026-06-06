@@ -71,6 +71,7 @@ type ExperimentConfig = {
     items: QuestionnaireItem[];
   } | null;
   practiceQuizPassCount: number;
+  feedbackNotificationDurationSec: number;
 };
 
 const MODE_META: Record<ExperimentMode, { title: string; random: string; fixed: string }> = {
@@ -119,6 +120,22 @@ const NAV_ITEMS: { id: TabId; label: string }[] = [
   { id: 'ai-settings', label: 'AI 参数' },
 ];
 
+async function fetchJsonWithRetry<T>(url: string, init?: RequestInit, attempts = 4): Promise<T> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
+      return (await response.json()) as T;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      await new Promise((resolve) => window.setTimeout(resolve, attempt * 350));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('request failed');
+}
+
 function SessionsTab() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedCode, setSelectedCode] = useState('');
@@ -128,14 +145,16 @@ function SessionsTab() {
   async function loadSessions() {
     setStatus('正在加载 Session...');
     try {
-      const response = await fetch(`${serverBaseUrl}/admin/sessions`, { cache: 'no-store' });
-      if (!response.ok) throw new Error('sessions failed');
-      const data = (await response.json()) as { sessions: SessionSummary[] };
+      const data = await fetchJsonWithRetry<{ sessions: SessionSummary[] }>(
+        `${serverBaseUrl}/admin/sessions`,
+        { cache: 'no-store' },
+      );
       setSessions(data.sessions ?? []);
       setStatus('');
-    } catch {
+    } catch (error) {
       setSessions([]);
-      setStatus('Session 加载失败：请确认后端 http://localhost:3001 已启动');
+      const message = error instanceof Error ? error.message : 'unknown error';
+      setStatus(`Session 加载失败：${message}；请确认后端 ${serverBaseUrl} 已启动`);
     }
   }
 
@@ -154,20 +173,38 @@ function SessionsTab() {
   }
 
   async function exportData() {
-    setStatus('导出中...');
+    setStatus('正在生成服务器导出包...');
     try {
-      const response = await fetch(`${serverBaseUrl}/admin/export`, { cache: 'no-store' });
-      const data = await response.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const response = await fetch(`${serverBaseUrl}/admin/export-jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeIncompleteSessions: true }),
+      });
+      if (!response.ok) throw new Error('export job failed');
+      const data = await response.json() as { job?: { id: string; status: string } };
+      const jobId = data.job?.id;
+      if (!jobId) throw new Error('missing job id');
+      let statusValue = data.job?.status ?? 'running';
+      for (let i = 0; i < 30 && statusValue !== 'completed' && statusValue !== 'failed'; i += 1) {
+        setStatus(`导出任务 ${jobId}：${statusValue}`);
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        const poll = await fetch(`${serverBaseUrl}/admin/export-jobs/${jobId}`, { cache: 'no-store' });
+        const pollData = await poll.json() as { job?: { status: string } };
+        statusValue = pollData.job?.status ?? statusValue;
+      }
+      if (statusValue !== 'completed') throw new Error(`export ${statusValue}`);
+      const blobResponse = await fetch(`${serverBaseUrl}/admin/export-jobs/${jobId}/download`, { cache: 'no-store' });
+      if (!blobResponse.ok) throw new Error('download failed');
+      const blob = await blobResponse.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `multi-cooperation-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `multi-cooperation-export-${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setStatus('已导出');
+      setStatus('已生成并下载导出包');
     } catch {
       setStatus('导出失败');
     }
@@ -560,6 +597,7 @@ function ConfigTab() {
         practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
         practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
         practiceQuizPassCount: currentConfig.practiceQuizPassCount,
+        feedbackNotificationDurationSec: currentConfig.feedbackNotificationDurationSec,
       }),
     });
     setStatus('已保存');
@@ -673,7 +711,7 @@ function ConfigTab() {
 
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-4 font-bold text-[#1d2129]">时间参数</div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           <label className="text-sm text-[#4e5969]">
             测试轮时长（分钟）
             <input type="number" min={1} value={config.practiceDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceDurationMinutes: Number(event.target.value) || 10 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
@@ -685,6 +723,10 @@ function ConfigTab() {
           <label className="text-sm text-[#4e5969]">
             休息段时长（分钟）
             <input type="number" min={1} value={config.breakDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, breakDurationMinutes: Number(event.target.value) || 5 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
+          </label>
+          <label className="text-sm text-[#4e5969]">
+            A反馈弹窗停留（秒）
+            <input type="number" min={1} value={config.feedbackNotificationDurationSec ?? 10} onChange={(event) => setConfig((prev) => (prev ? { ...prev, feedbackNotificationDurationSec: Number(event.target.value) || 10 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
           </label>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-4">

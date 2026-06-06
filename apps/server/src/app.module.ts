@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { ExperimentController } from './experiment/experiment.controller';
 import { ExperimentService } from './experiment/experiment.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { RecordingModule } from './recording/recording.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AiModule,
     AuthModule,
     AdminModule,
+    RecordingModule,
   ],
   controllers: [AppController, ExperimentController],
   providers: [AppService, ExperimentService],

@@ -1,0 +1,73 @@
+{
+  "roleAssignment": {
+    "method": "seeded_coin_flip_after_pairing",
+    "seed": "f4c183d3de8019c5d7893ac6ca7fe617",
+    "assignedAt": "2026-06-06T10:14:22.684Z",
+    "participantAId": "cmpo6xu5400020b7kk3tldjhn",
+    "participantBId": "cmpo6xw5n00030b7koeqcqxee"
+  },
+  "companySequence": {
+    "method": "seeded_fisher_yates_v1",
+    "seed": "8982339a883d4b20a622c6164d66c74a",
+    "generatedAt": "2026-06-06T10:14:22.684Z",
+    "sequence": [
+      {
+        "companyId": "company-p01-baseline",
+        "companyName": "P01",
+        "sequenceIndex": 1
+      },
+      {
+        "companyId": "company-library-p01",
+        "companyName": "P01",
+        "sequenceIndex": 2
+      },
+      {
+        "companyId": "company-library-formal-p01",
+        "companyName": "P01",
+        "sequenceIndex": 3
+      }
+    ]
+  },
+  "bAssignment": {
+    "method": "pool_based_random_v1",
+    "log": [
+      {
+        "method": "preA_fallback",
+        "assignedAt": "2026-06-06T10:15:43.789Z",
+        "assignmentPath": "preA_fallback",
+        "assignmentSeed": "cmq274nl500000b54s0m6p677:b_assign:1:preA",
+        "bSequenceIndex": 1,
+        "lockedPoolSize": 0,
+        "chosenCompanyId": "company-p01-baseline",
+        "taskAssignmentId": "cmq274ri000080b54ouivxf0d",
+        "eligibleCompanyIds": [],
+        "preAActiveCompanyId": "company-p01-baseline",
+        "chosenTaskAssignmentId": "cmq274ri000080b54ouivxf0d",
+        "eligibleTaskAssignmentIds": []
+      }
+    ]
+  },
+  "experiment": {
+    "seeds": {
+      "narrativeSeed": "0dc311696fad6ca2d502820ac0c7f4d7",
+      "newsOrderSeed": "3224252011a4a0ee9a308d3637976bce",
+      "themeOrderSeed": "ed6f77bd4c22c6053cf7b5936c523681",
+      "sideDispatchSeed": "d8a0bdc47046e8cebf9a9af1837d0722"
+    },
+    "themeOrder": [
+      "互补分工",
+      "验证留痕",
+      "共同责任"
+    ],
+    "upgradeCohort": null,
+    "experimentMode": "manual",
+    "fixedVariables": {},
+    "narrativeGroup": "coop_narrative",
+    "segmentAiStates": {
+      "1": "ADVANCED",
+      "2": "ADVANCED",
+      "3": "ADVANCED"
+    },
+    "sideDispatchMode": "continuous"
+  }
+}

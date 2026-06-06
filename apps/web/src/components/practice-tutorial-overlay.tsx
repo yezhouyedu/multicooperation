@@ -64,7 +64,7 @@ function buildSteps(role: 'A' | 'B'): Step[] {
       title: '副线作答',
       detail: '请在副线任务中选择一个答案，体验副线答题流程。',
       eventType: 'sidetask_answer',
-      anchor: 'sidetask-options',
+      anchor: 'sidetask-option',
       requireAction: true,
     },
   ];

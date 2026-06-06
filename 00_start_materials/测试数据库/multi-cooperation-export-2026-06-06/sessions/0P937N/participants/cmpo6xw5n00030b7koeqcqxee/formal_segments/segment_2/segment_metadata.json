@@ -1,0 +1,14 @@
+{
+  "workSegment": 2,
+  "segmentIndex": 3,
+  "startedAt": "2026-06-06T10:18:47.071Z",
+  "plannedEndsAt": "2026-06-06T10:20:47.071Z",
+  "endedAt": null,
+  "aiLevel": "ADVANCED",
+  "sideDispatchMode": "continuous",
+  "narrativeGroup": "coop_narrative",
+  "themeLabel": "验证留痕",
+  "companyIdsTouchedByParticipant": [
+    "company-p01-baseline"
+  ]
+}

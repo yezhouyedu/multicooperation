@@ -34,10 +34,10 @@ export default function WorkspaceAPage() {
             ? runtime.syncState?.selfReady
               ? '/ready?target=practice'
               : null
+            : !loading && runtime?.phase === 'practice' && runtime.currentTask?.aSubmittedAt
+              ? '/ready?target=formal'
             : !loading && runtime?.phase === 'formal_ready'
-              ? runtime.syncState?.selfReady
-                ? '/ready?target=formal'
-                : null
+              ? '/ready?target=formal'
               : !loading && runtime?.phase === 'formal_break'
                 ? '/break'
                 : !loading && runtime?.phase === 'end'
@@ -102,6 +102,8 @@ export default function WorkspaceAPage() {
             aiLevel={runtime.aiLevel}
             sideTaskQueue={runtime.sideTaskQueue}
             sideTaskConfig={runtime.sideTaskConfig}
+            phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
+            segmentIndex={runtime.segmentIndex}
           />
         ) : null}
         <div className="min-h-0 flex-1 p-2">
@@ -153,6 +155,7 @@ export default function WorkspaceAPage() {
                       accent="blue"
                       contextType="main"
                       companyId={company.id}
+                      taskAssignmentId={runtime.currentTask?.id}
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
@@ -170,7 +173,13 @@ export default function WorkspaceAPage() {
           )}
         </div>
       </div>
-      {bootstrap ? <AFeedbackNotification sessionCode={bootstrap.sessionCode} participantId={bootstrap.participantId} /> : null}
+      {bootstrap ? (
+        <AFeedbackNotification
+          sessionCode={bootstrap.sessionCode}
+          participantId={bootstrap.participantId}
+          durationSec={runtime?.feedbackNotificationDurationSec ?? 10}
+        />
+      ) : null}
       {bootstrap && runtime?.phase === 'practice' && !runtime.practiceTutorialState?.completed ? (
         <PracticeTutorialOverlay
           sessionCode={bootstrap.sessionCode}

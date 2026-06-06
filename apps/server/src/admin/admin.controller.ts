@@ -6,19 +6,26 @@ import {
   Param,
   Patch,
   Post,
+  Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { resolve } from 'path';
 import { AdminService } from './admin.service';
+import { ExportService } from '../recording/export.service';
 
 const TEMP_UPLOAD_DIR = resolve(process.cwd(), 'storage', 'tmp');
 
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly exportService: ExportService,
+  ) {}
 
   @Get('participants')
   getParticipants() {
@@ -49,6 +56,7 @@ export class AdminController {
     practiceQuizTitle?: string;
     practiceQuizItems: { id?: string; prompt: string; options: string[]; correctOption?: string }[];
     practiceQuizPassCount?: number;
+    feedbackNotificationDurationSec?: number;
     sideTask?: {
       continuousIntervalSec?: number;
       continuousJitterSec?: number;
@@ -161,8 +169,30 @@ export class AdminController {
   }
 
   @Get('export')
-  exportData() {
-    return this.adminService.exportData();
+  exportData(@Query('sessionCodes') sessionCodes?: string) {
+    return this.exportService.createExportJob({
+      sessionCodes: sessionCodes ? sessionCodes.split(',').map((item) => item.trim()).filter(Boolean) : [],
+      includeIncompleteSessions: true,
+    });
+  }
+
+  @Post('export-jobs')
+  createExportJob(@Body() body: { sessionCodes?: string[]; includeIncompleteSessions?: boolean }) {
+    return this.exportService.createExportJob({
+      sessionCodes: body.sessionCodes ?? [],
+      includeIncompleteSessions: body.includeIncompleteSessions ?? true,
+    });
+  }
+
+  @Get('export-jobs/:jobId')
+  getExportJob(@Param('jobId') jobId: string) {
+    return this.exportService.getExportJob(jobId);
+  }
+
+  @Get('export-jobs/:jobId/download')
+  async downloadExportJob(@Param('jobId') jobId: string, @Res() res: Response) {
+    const file = await this.exportService.getDownloadPath(jobId);
+    res.download(file.path, file.filename);
   }
 
   @Get('ai-settings')

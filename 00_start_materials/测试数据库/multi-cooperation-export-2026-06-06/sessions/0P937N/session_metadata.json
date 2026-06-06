@@ -1,0 +1,40 @@
+{
+  "sessionId": "cmq274nl500000b54s0m6p677",
+  "sessionCode": "0P937N",
+  "createdAt": "2026-06-06T10:14:17.705Z",
+  "completedAt": null,
+  "status": "IN_PROGRESS",
+  "runtimePhase": "FORMAL_WORK",
+  "durations": {
+    "practiceMinutes": 1,
+    "workMinutes": 2,
+    "breakMinutes": 1,
+    "aCompanyWindowSeconds": 300
+  },
+  "experimentConfigSnapshot": {
+    "activeExperimentMode": "manual",
+    "snapshot": {
+      "seeds": {
+        "narrativeSeed": "0dc311696fad6ca2d502820ac0c7f4d7",
+        "newsOrderSeed": "3224252011a4a0ee9a308d3637976bce",
+        "themeOrderSeed": "ed6f77bd4c22c6053cf7b5936c523681",
+        "sideDispatchSeed": "d8a0bdc47046e8cebf9a9af1837d0722"
+      },
+      "themeOrder": [
+        "互补分工",
+        "验证留痕",
+        "共同责任"
+      ],
+      "upgradeCohort": null,
+      "experimentMode": "manual",
+      "fixedVariables": {},
+      "narrativeGroup": "coop_narrative",
+      "segmentAiStates": {
+        "1": "ADVANCED",
+        "2": "ADVANCED",
+        "3": "ADVANCED"
+      },
+      "sideDispatchMode": "continuous"
+    }
+  }
+}

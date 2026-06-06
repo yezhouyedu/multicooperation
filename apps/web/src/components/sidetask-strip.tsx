@@ -17,6 +17,8 @@ type Props = {
   aiLevel?: 'BASIC' | 'ADVANCED';
   sideTaskQueue: QueueItem[];
   sideTaskConfig: SideTaskConfig;
+  phase?: 'practice' | 'formal';
+  segmentIndex?: number;
 };
 
 export function SideTaskStrip({
@@ -26,6 +28,8 @@ export function SideTaskStrip({
   aiLevel = 'BASIC',
   sideTaskQueue,
   sideTaskConfig,
+  phase = 'formal',
+  segmentIndex = 0,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -37,8 +41,8 @@ export function SideTaskStrip({
   // Ticker animation refs
   const tickerRef = useRef<HTMLButtonElement>(null);
   const rafRef = useRef<number>(0);
-  const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(false);
+  const handledPulseIdsRef = useRef<Set<string>>(new Set());
 
   // Detect new arrivals and report side_task_released
   const reportReleased = useCallback(
@@ -85,74 +89,18 @@ export function SideTaskStrip({
     };
   }, []);
 
-  // Ticker animation using sideTaskConfig parameters
   useEffect(() => {
-    if (expanded) return; // Don't run ticker when expanded
-
-    const el = tickerRef.current;
-    if (!el) return;
-
-    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
-    cancelAnimationFrame(rafRef.current);
-    activeRef.current = true;
-
-    const SCROLL = sideTaskConfig.scrollDurationSec * 1000;
-    const HOLD = sideTaskConfig.holdSec * 1000;
-    const FADE = sideTaskConfig.fadeSec * 1000;
-    const PAUSE = sideTaskConfig.pauseSec * 1000;
-    const TOTAL = SCROLL + HOLD + FADE;
-
-    function runTicker() {
-      const el = tickerRef.current;
-      if (!el) return;
-
-      el.style.display = '';
-      el.style.position = 'absolute';
-      el.style.top = '50%';
-      el.style.transform = 'translateY(-50%)';
-      el.style.whiteSpace = 'nowrap';
-      el.style.left = '100%';
-      el.style.opacity = '1';
-
-      const t0 = performance.now();
-
-      function tick(now: number) {
-        if (!activeRef.current) return;
-        const e = now - t0;
-
-        if (e < SCROLL) {
-          el!.style.left = `${100 * (1 - e / SCROLL)}%`;
-          el!.style.opacity = '1';
-          rafRef.current = requestAnimationFrame(tick);
-        } else if (e < SCROLL + HOLD) {
-          el!.style.left = '0%';
-          el!.style.opacity = '1';
-          rafRef.current = requestAnimationFrame(tick);
-        } else if (e < TOTAL) {
-          el!.style.left = '0%';
-          el!.style.opacity = String(1 - (e - SCROLL - HOLD) / FADE);
-          rafRef.current = requestAnimationFrame(tick);
-        } else {
-          el!.style.display = 'none';
-          if (activeRef.current) {
-            pauseTimerRef.current = setTimeout(() => {
-              if (activeRef.current) runTicker();
-            }, PAUSE);
-          }
-        }
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
+    if (!expanded) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape' || event.shiftKey) return;
+      event.preventDefault();
+      setExpanded(false);
+      setSelectedPlanId(null);
     }
 
-    runTicker();
-
-    return () => {
-      activeRef.current = false;
-      cancelAnimationFrame(rafRef.current);
-      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
-    };
-  }, [expanded, sideTaskConfig.scrollDurationSec, sideTaskConfig.holdSec, sideTaskConfig.fadeSec, sideTaskConfig.pauseSec]);
+    window.addEventListener('keydown', handleEscape, true);
+    return () => window.removeEventListener('keydown', handleEscape, true);
+  }, [expanded]);
 
   // Merge server answers with optimistic answers
   const effectiveQueue = useMemo(
@@ -165,9 +113,111 @@ export function SideTaskStrip({
     [sideTaskQueue, optimisticAnswers],
   );
 
+  const reportNotified = useCallback(
+    async (planIds: string[], pulse: NonNullable<SideTaskConfig['notificationPulse']>, displayed: boolean) => {
+      if (!participantId || planIds.length === 0) return;
+      for (const planId of planIds) {
+        try {
+          await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/sidetask/${planId}/exposure`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              participantId,
+              eventType: 'side_task_notified',
+              payload: {
+                pulseId: pulse.id,
+                reason: pulse.reason,
+                newCount: pulse.newCount,
+                windowStart: pulse.windowStart,
+                windowEnd: pulse.windowEnd,
+                displayed,
+              },
+            }),
+          });
+        } catch {
+          // ignore network errors for exposure reporting
+        }
+      }
+    },
+    [participantId, sessionCode],
+  );
+
   const pendingItems = useMemo(() => effectiveQueue.filter((i) => !i.answered), [effectiveQueue]);
   const answeredItems = useMemo(() => effectiveQueue.filter((i) => i.answered), [effectiveQueue]);
   const pendingCount = pendingItems.length;
+
+  // Play one ticker pass for each server-side notification pulse.
+  useEffect(() => {
+    const pulse = sideTaskConfig.notificationPulse;
+    if (!pulse || handledPulseIdsRef.current.has(pulse.id)) return;
+    handledPulseIdsRef.current.add(pulse.id);
+
+    if (expanded || pendingCount === 0) {
+      const el = tickerRef.current;
+      if (el) el.style.display = 'none';
+      void reportNotified(pulse.planIds, pulse, false);
+      return;
+    }
+
+    const el = tickerRef.current;
+    if (!el) return;
+
+    cancelAnimationFrame(rafRef.current);
+    activeRef.current = true;
+    void reportNotified(pulse.planIds, pulse, true);
+
+    const SCROLL = sideTaskConfig.scrollDurationSec * 1000;
+    const HOLD = sideTaskConfig.holdSec * 1000;
+    const FADE = sideTaskConfig.fadeSec * 1000;
+    const TOTAL = SCROLL + HOLD + FADE;
+
+    el.style.display = '';
+    el.style.position = 'absolute';
+    el.style.top = '50%';
+    el.style.transform = 'translateY(-50%)';
+    el.style.whiteSpace = 'nowrap';
+    el.style.left = '100%';
+    el.style.opacity = '1';
+
+    const t0 = performance.now();
+
+    function tick(now: number) {
+      if (!activeRef.current) return;
+      const e = now - t0;
+
+      if (e < SCROLL) {
+        el!.style.left = `${100 * (1 - e / SCROLL)}%`;
+        el!.style.opacity = '1';
+        rafRef.current = requestAnimationFrame(tick);
+      } else if (e < SCROLL + HOLD) {
+        el!.style.left = '0%';
+        el!.style.opacity = '1';
+        rafRef.current = requestAnimationFrame(tick);
+      } else if (e < TOTAL) {
+        el!.style.left = '0%';
+        el!.style.opacity = String(1 - (e - SCROLL - HOLD) / FADE);
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        el!.style.display = 'none';
+        activeRef.current = false;
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      activeRef.current = false;
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, [
+    expanded,
+    pendingCount,
+    reportNotified,
+    sideTaskConfig.fadeSec,
+    sideTaskConfig.holdSec,
+    sideTaskConfig.notificationPulse,
+    sideTaskConfig.scrollDurationSec,
+  ]);
 
   // Auto-select first unanswered when opening
   useEffect(() => {
@@ -216,7 +266,8 @@ export function SideTaskStrip({
     }
   }
 
-  const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(pendingCount));
+  const tickerCount = sideTaskConfig.notificationPulse?.newCount ?? pendingCount;
+  const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(tickerCount));
 
   // Queue list sidebar
   const sidebar = (
@@ -270,8 +321,8 @@ export function SideTaskStrip({
 
   // Detail pane
   const taskPane = selectedItem ? (
-    <div className="flex h-full flex-col justify-between p-5 text-sm text-[#4e5969]">
-      <div>
+    <div className="flex h-full min-h-0 flex-col p-5 text-sm text-[#4e5969]">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[#86909c]">
           副线题目 #{selectedItem.queueOrder}
           {selectedItem.answered && <span className="ml-2 text-green-500">已作答</span>}
@@ -279,12 +330,13 @@ export function SideTaskStrip({
         <div className="mb-4 leading-7">{selectedItem.text}</div>
         <div className="mb-5 text-base font-bold text-[#1d2129]">{selectedItem.question}</div>
         <div data-tutorial-anchor="sidetask-options" className="space-y-3">
-          {[selectedItem.optionA, selectedItem.optionB].map((option) => {
+          {[selectedItem.optionA, selectedItem.optionB].map((option, optionIndex) => {
             const selected = selectedItem.answer === option;
             return (
               <button
                 key={option}
                 type="button"
+                data-tutorial-anchor={!selectedItem.answered && optionIndex === 0 ? 'sidetask-option' : undefined}
                 onClick={() => !selectedItem.answered && answerSideTask(selectedItem.planId, option)}
                 disabled={selectedItem.answered}
                 className={`block w-full rounded-lg border px-4 py-3 text-left transition ${
@@ -302,7 +354,7 @@ export function SideTaskStrip({
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-[#e5e6eb] pt-4">
+      <div className="mt-4 flex shrink-0 items-center justify-between border-t border-[#e5e6eb] pt-4">
         <div className="text-xs text-[#86909c]">
           待处理: {pendingCount} / {sideTaskConfig.totalPlanned}
         </div>
@@ -396,6 +448,9 @@ export function SideTaskStrip({
                       role={role}
                       accent={role === 'A' ? 'blue' : 'purple'}
                       contextType="side"
+                      sideTaskPlanId={selectedPlanId ?? undefined}
+                      phase={phase}
+                      segmentIndex={segmentIndex}
                       aiLevel={aiLevel}
                     />
                   ) : (

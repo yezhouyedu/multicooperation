@@ -96,6 +96,7 @@ export type RuntimeState = {
   };
   aiLevel: 'BASIC' | 'ADVANCED';
   aiUpgradeNotice: { type: 'break' | 'workspace'; message: string } | null;
+  feedbackNotificationDurationSec: number;
   sideTaskQueue: Array<{
     planId: string;
     text: string;
@@ -120,6 +121,14 @@ export type RuntimeState = {
     totalAnswered: number;
     totalArchived: number;
     nextScheduledAt: string | null;
+    notificationPulse: {
+      id: string;
+      reason: 'continuous_arrival' | 'batch_window';
+      planIds: string[];
+      newCount: number;
+      windowStart: string | null;
+      windowEnd: string | null;
+    } | null;
     pendingLabel: string;
     tickerMessage: string;
   };
