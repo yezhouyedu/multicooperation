@@ -1328,6 +1328,7 @@
 - 新增 `scripts/deploy/fix-ssh-key-permissions.ps1`：修复 Windows OpenSSH 报 `UNPROTECTED PRIVATE KEY FILE` 时的私钥 ACL。
 - 新增 `scripts/deploy/probe-ssh-users.ps1`：私钥权限修复后若仍 `Permission denied (publickey)`，自动试探常见 Linux 用户名。
 - 新增 `scripts/deploy/upload-project.ps1`：本地打包项目并上传到 `/opt/multi-cooperation`，排除 `.git`、`node_modules`、构建产物、`.env*`、`storage` 和私钥。
+- 新增 `scripts/deploy/create-prod-env.ps1`：从本地 `apps/server/.env` 读取 AI provider 配置，生成 PostgreSQL 密码并上传服务器 `.env.production`，避免在聊天或文档中暴露 API key。
 - 新增 `scripts/deploy/prepare-server.sh`：服务器侧安装基础工具、Docker / compose plugin，并创建应用目录。
 - 新增 `scripts/deploy/deploy-prod.sh`：服务器侧执行 compose config、build、up、server health、web 检查，并输出每阶段进度。
 - 新增 `scripts/deploy/show-prod-logs.sh`：服务器侧快速查看 compose 服务日志。
@@ -1337,6 +1338,8 @@
 - `upload-project.ps1` 修正为原生命令失败后立即停止；创建 `/opt/multi-cooperation` 时若普通用户无权限，会尝试 `sudo mkdir` 并 `sudo chown ubuntu`。
 - `check-server.ps1` 的防火墙提示改为可尝试 `sudo ufw status`，避免非 root 用户只看到误导性报错。
 - `upload-project.ps1` 修正远端 staging 目录位置：不再使用 `/opt/multi-cooperation/.deploy-new`，改用 `/tmp/multi-cooperation-deploy-new`，避免 `rsync --delete` 同步父目录时导致源文件 vanished。
+- `upload-project.ps1` 修正环境变量排除规则：不再把 `.env.production.example` 当作 `.env.*` 排除，后续上传会保留生产环境变量模板。
+- 补充口径：`.env.production` 里的 `POSTGRES_PASSWORD` 是 PostgreSQL 内部数据库密码；`OPENAI_*` 是 AI provider 接入配置，基础版/高级版 AI 仍由实验运行时配置和前端能力控制，不靠两套 key 表示。
 
 **验证**：
 - `check-server.ps1` PowerShell 语法检查通过。
@@ -1365,3 +1368,40 @@
 - SSH 登录服务器，执行 `bash scripts/deploy/prepare-server.sh` 做服务器初始化复核。
 - 创建服务器 `.env.production`。
 - 执行 `bash scripts/deploy/deploy-prod.sh` 启动生产 compose 并验证 `3000 / 3001` 裸 IP 访问。
+- 2026-06-07 补充：服务器 SSH 用户为 `ubuntu`，服务器端初始化和部署命令清单已改为 `sudo bash ...`；云厂商文件管理器默认 `/root` 看不到项目时，应切到 `/opt/multi-cooperation`。
+- 2026-06-07 补充：`命令运行清单.md` 增加”当前进度”与第 5 步提示，明确 1-4 已完成，第 5 步推荐退出 SSH 后回本地 PowerShell 执行 `create-prod-env.ps1`。
+
+### 2026-06-07 服务器 P0 裸 IP 部署完成
+
+**背景**：在完成前置检查、上传和初始化后，执行完整的 P0 部署流程。
+
+**本轮结果**：
+- 修复 `create-prod-env.ps1` 的 PowerShell 5.x 兼容问题：`RandomNumberGenerator::Fill()` 改为 `RNGCryptoServiceProvider.GetBytes()`。
+- `create-prod-env.ps1` 成功执行：从本地 `apps/server/.env` 读取 AI 配置，生成 PostgreSQL 密码，上传 `.env.production` 到服务器。
+- 修复容器名冲突：执行 `docker compose down` 清理旧容器后重新部署。
+- `deploy-prod.sh` 全部 8 个阶段通过：
+  - `[1/8]` 检查部署文件 ✅
+  - `[2/8]` 显示 Compose 配置 ✅
+  - `[3/8]` 构建镜像 ✅（server + web）
+  - `[4/8]` 启动服务 ✅（postgres healthy → server healthy → web started）
+  - `[5/8]` 等待容器 ✅
+  - `[6/8]` 检查 server 健康 ✅（`{“status”:”ok”,”service”:”server”}`）
+  - `[7/8]` 检查 web ✅
+  - `[8/8]` 部署摘要 ✅
+- 三个容器全部正常运行：
+  - PostgreSQL：`multi_cooperation_postgres_prod` — healthy
+  - Server：`multi_cooperation_server_prod` — healthy，端口 3001
+  - Web：`multi_cooperation_web_prod` — started，端口 3000
+- 云服务器防火墙已放行 TCP 3000 和 TCP 3001。
+
+**P0 验收状态**：
+- ✅ `docker compose up -d --build` 能启动完整服务
+- ✅ server 健康检查通过
+- ✅ 浏览器能打开前端
+- ⏳ 完整实验流程验证（登录 → 配对 → 指导语 → 测试题 → 测试轮 → 正式 ready）待本地浏览器验证
+
+**文档同步**：
+- `02_specs/05_server_deploy/命令运行清单.md` 重写为运维命令快速参考。
+- `02_specs/05_server_deploy/部署运行手册.md` 精简已完成的 P0 步骤。
+- `02_specs/05_server_deploy/上线前工作指导.md` 顶部标记 P0 已完成。
+- `02_specs/05_server_deploy/README.md` 更新文件说明。

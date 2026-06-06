@@ -46,7 +46,10 @@ try {
     --exclude="storage" `
     --exclude="apps/server/storage" `
     --exclude=".env" `
-    --exclude=".env.*" `
+    --exclude=".env.production" `
+    --exclude=".env.local" `
+    --exclude="apps/*/.env" `
+    --exclude="apps/*/.env.local" `
     --exclude=".secrets" `
     --exclude="*.pem" `
     --exclude="*.key" `
