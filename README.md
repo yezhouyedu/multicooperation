@@ -1,464 +1,143 @@
-# multi cooperation
-
-这是 `E:\Own_program\multi cooperation` 的主工作区。它现在已经不只是“实验原型”，而是一个包含：
-
-- 实验规则与规格
-- 前后端代码
-- 管理后台
-- 题库/材料系统
-- AI 协作工作台
-- 进度与经验沉淀
-
-的完整实验平台仓库。
-
-编者注：个人认为最重要的文件是"E:\Own_program\multi cooperation\02_specs\00_overview\APP_FLOW.md"与"E:\Own_program\multi cooperation\03_tracking\progress.md"
-
----
-
-## 1. 先看哪里
-
-每次继续开发，建议先看：
-
-1. [01_rules/PROJECT_RULES.md](/E:/Own_program/multi cooperation/01_rules/PROJECT_RULES.md)
-2. [01_rules/CLAUDE.md](/E:/Own_program/multi cooperation/01_rules/CLAUDE.md)
-3. [03_tracking/progress.md](/E:/Own_program/multi cooperation/03_tracking/progress.md)
-4. [02_specs/00_overview/APP_FLOW.md](/E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md)
-5. 当前模块对应的 `02_specs/*`
-
-一句话：
-
-**先同步规则、进度、流程，再动代码。**
-
----
-
-## 2. 根目录地图
-
-### `00_start_materials/`
-
-原始输入材料区。
-
-这里有三类东西：
-
-- 最早的会议文档、逻辑文档、前端参考材料
-- 参与者可见的正式题目材料
-- Word 真相源表单
-
-当前最关键的是：
-
-- [原始材料/A端尽调表_参与者可见版v2.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/A端尽调表_参与者可见版v2.docx)
-- [原始材料/B端投资判断表_参与者可见版.docx](/E:/Own_program/multi cooperation/00_start_materials/原始材料/B端投资判断表_参与者可见版.docx)
-- `原始材料/正式/*`
-- `原始材料/测试轮/P01/*`
-
-### `01_rules/`
-
-协作规则区。
-
-### `02_specs/`
-
-规格区。
-
-推荐重点：
-
-- [00_overview/APP_FLOW.md](/E:/Own_program/multi cooperation/02_specs/00_overview/APP_FLOW.md)
-- [00_overview/PRD.md](/E:/Own_program/multi cooperation/02_specs/00_overview/PRD.md)
-- [01_frontend/WORKBENCH_REFINEMENT_MASTER.md](/E:/Own_program/multi cooperation/02_specs/01_frontend/WORKBENCH_REFINEMENT_MASTER.md)
-- [02_backend/admin材料库上传手册.md](/E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md)
-- [02_backend/SIDETASK_REBUILD_SPEC.md](/E:/Own_program/multi cooperation/02_specs/02_backend/SIDETASK_REBUILD_SPEC.md)
-- [02_backend/VARIABLE_PERSISTENCE_SPEC.md](/E:/Own_program/multi cooperation/02_specs/02_backend/VARIABLE_PERSISTENCE_SPEC.md)
-- [04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md)
-
-### `03_tracking/`
-
-过程跟踪区。
-
-核心文件：
-
-- [progress.md](/E:/Own_program/multi cooperation/03_tracking/progress.md)
-- [lessons.md](/E:/Own_program/multi cooperation/03_tracking/lessons.md)
-
-### `04_archive/`
-
-旧方案归档区。
-
-### `apps/`
-
-真正运行中的前后端代码。
-
-### `infra/`
-
-本地基础设施与数据库环境。
-
-### `packages/`
-
-预留共享包区，目前基本未承载核心逻辑。
-
-### `scripts/`
-
-项目脚本区。
-
-### `storage/`
-
-运行态本地存储区。
-
-当前主要存：
-
-- admin 上传后的材料文件
-- AI 图片附件
-- 服务器导出归档包
-
----
-
-## 3. 当前系统有哪些大模块
-
-现在可以把整个项目理解成 8 个大模块。
-
-### 模块 A：参与者实验主流程
-
-负责页面：
-
-- `/login`
-- `/waiting-room`
-- `/instruction`
-- `/ready`
-- `/practice-quiz`
-- `/practice`
-- `/break`
-- `/workspace/a`
-- `/workspace/b`
-- `/workspace/b-waiting`
-- `/workspace/b-feedback`
-- `/workspace/end`
-
-前端主要文件：
-
-- [apps/web/src/app/login/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/login/page.tsx)
-- [apps/web/src/app/waiting-room/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/waiting-room/page.tsx)
-- [apps/web/src/app/instruction/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/instruction/page.tsx)
-- [apps/web/src/app/ready/ready-client-page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/ready/ready-client-page.tsx)
-- [apps/web/src/app/practice-quiz/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/practice-quiz/page.tsx)
-- [apps/web/src/app/practice/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/practice/page.tsx)
-- [apps/web/src/app/break/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/break/page.tsx)
-- [apps/web/src/app/workspace/a/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/a/page.tsx)
-- [apps/web/src/app/workspace/b/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b/page.tsx)
-- [apps/web/src/app/workspace/b-waiting/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-waiting/page.tsx)
-- [apps/web/src/app/workspace/b-feedback/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/workspace/b-feedback/page.tsx)
-
-后端主要文件：
-
-- [apps/server/src/experiment/experiment.controller.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.controller.ts)
-- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
-
----
-
-### 模块 B：统一运行态与阶段引擎
-
-负责：
-
-- 登录后 runtime 获取
-- 段切换
-- 倒计时
-- 工作段/休息段推进
-- A 信息解锁给投资经理
-- break 问卷状态
-- SSE 事件流
-
-核心文件：
-
-- [apps/web/src/lib/session-runtime.ts](/E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts)
-- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
-
-这是整个系统的“主时钟”。
-
----
-
-### 模块 C：主工作台三区
-
-负责工作台视觉与交互：
-
-- 材料区
-- 答题区
-- AI 区
-
-关键文件：
-
-- [apps/web/src/components/company-material-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx)
-- [apps/web/src/components/a-task-editor.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/a-task-editor.tsx)
-- [apps/web/src/components/b-task-editor.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/b-task-editor.tsx)
-- [apps/web/src/components/b-feedback-form.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/b-feedback-form.tsx)
-- [apps/web/src/components/ai-chat-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/ai-chat-panel.tsx)
-- [apps/web/src/components/session-topbar.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/session-topbar.tsx)
-
-当前状态：
-
-- 材料区已经支持 `txt / docx / pdf / xlsx`
-- 默认自适应填充材料区
-- 支持 `Ctrl + / Ctrl - / Ctrl 0`
-- 登录后默认尝试全屏
-
----
-
-### 模块 D：统一草稿 / 快照 / 恢复系统
-
-负责：
-
-- 主表自动保存
-- 跨工作段冻结
-- 休息后恢复
-- 导出时保留快照链路
-
-后端核心：
-
-- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
-- [apps/server/src/experiment/experiment.service.ts](/E:/Own_program/multi cooperation/apps/server/src/experiment/experiment.service.ts)
-
-前端配合：
-
-- [apps/web/src/lib/session-runtime.ts](/E:/Own_program/multi cooperation/apps/web/src/lib/session-runtime.ts)
-
-其中最关键的数据对象有：
-
-- `TaskAssignment.aDraft`
-- `TaskAssignment.bDraft`
-- `TaskAssignment.bFeedbackDraft`
-- `TaskSnapshot`
-
----
-
-### 模块 E：admin 管理后台
-
-负责：
-
-- 准入手机号名单
-- Session 概览
-- 导出实验数据
-- 清空实验运行数据
-- 实验配置
-- 题库/材料管理
-- 副线调度面板
-
-前端入口：
-
-- [apps/web/src/app/admin/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx)
-
-后端入口：
-
-- [apps/server/src/admin/admin.controller.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.controller.ts)
-- [apps/server/src/admin/admin.service.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts)
-
----
-
-### 模块 F：题库与材料系统
-
-这是当前最重要的新模块之一。
-
-它负责：
-
-- 每家公司/案例的材料组织
-- 参与者材料与研究者材料隔离
-- 自动填充源识别
-- admin 手工上传/替换/删除/排序
-- 本地目录自动识别导入
-
-核心文件：
-
-- [apps/server/src/admin/materials.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/materials.ts)
-- [apps/server/src/admin/admin.service.ts](/E:/Own_program/multi cooperation/apps/server/src/admin/admin.service.ts)
-- [apps/web/src/app/admin/page.tsx](/E:/Own_program/multi cooperation/apps/web/src/app/admin/page.tsx)
-- [apps/web/src/components/company-material-panel.tsx](/E:/Own_program/multi cooperation/apps/web/src/components/company-material-panel.tsx)
-
-当前实现要点：
-
-1. 题库默认扫描 `00_start_materials/原始材料/`
-2. 每个子文件夹视为一个案例目录
-3. 若存在 `participant/` 与 `research/` 子目录，会优先按子目录分流
-4. 若没有分层子目录，则按文件名自动判断研究者材料
-5. `研究者用 / 信息点记录 / 答案` 这类材料不会出现在参与者材料区
-
-材料目录当前已支持按角色分层：
-
-- `participant/shared`
-- `participant/diligence`
-- `participant/manager`
-- `research`
-
-前台显示口径仍然是“尽调员 / 投资经理”，不会向参与者暴露 A/B 字母角色。
-
----
-
-### 模块 G：AI 上下文系统
-
-负责：
-
-- 主线 AI
-- 副线 AI
-- 分公司隔离
-- 分阶段隔离
-- 消息日志记录
-
-核心文件：
-
-- [apps/server/src/ai/ai.service.ts](/E:/Own_program/multi cooperation/apps/server/src/ai/ai.service.ts)
-- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
-
-当前隔离维度：
-
-- `sessionId`
-- `participantId`
-- `companyId`
-- `contextType`
-- `phase`
-- `segmentIndex`
-
-当前已实现能力补充：
-
-- 主线与副线复用同一套 `AiChatPanel`
-- AI 回复支持 Markdown 渲染
-- 支持流式输出
-- 支持“追问提示条 + 隐藏上下文注入”
-- `advanced` 支持图片上传与粘贴
-
----
-
-### 模块 H：变量记录与服务器导出
-
-这是当前上线前最关键的数据模块之一。
-
-它负责：
-
-- 统一实验事件记录
-- A/B 被试分目录导出
-- 主线公司答题全文导出
-- 副线计划、提醒、打开、作答导出
-- 主线 / 副线 AI 聊天导出
-- 图片附件归档
-- 变量实现动态自检
-- admin 创建导出任务并下载 zip
-
-核心文件：
-
-- [apps/server/src/recording/export.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/export.service.ts)
-- [apps/server/src/recording/storage.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/storage.service.ts)
-- [apps/server/src/recording/experiment-audit.service.ts](/E:/Own_program/multi cooperation/apps/server/src/recording/experiment-audit.service.ts)
-- [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma)
-- [02_specs/04_pre_deploy/变量记录与服务器导出方案.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/变量记录与服务器导出方案.md)
-- [02_specs/04_pre_deploy/数据库文件夹手册.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/数据库文件夹手册.md)
-
-当前导出包按这个主干组织：
-
-```text
-sessions/SESSION_CODE/participants/PARTICIPANT_ID/
+# Multi Cooperation
+
+> [English](README.en.md) | 中文
+
+一个基于"尽调员—投资经理"协作场景的全栈实验平台，用于研究 AI 辅助下的人机协作行为。
+
+## 项目简介
+
+本平台支持双人协作实验：一名参与者扮演"尽调员"（负责尽职调查），另一名扮演"投资经理"（负责投资决策）。系统通过随机化角色分配、公司顺序、AI 升级时机、副线任务提醒频率和合作叙事等实验变量，支持多种实验条件的交叉研究。
+
+### 核心功能
+
+- **参与者实验主流程**：登录 → 自动配对 → 指导语 → 测试题 → 测试轮（含教学引导）→ 3 个正式工作段 + 2 个休息问卷段 → 结束
+- **统一运行态与阶段引擎**：基于 SSE 的实时状态推送，支持自动阶段切换、倒计时、A 信息解锁
+- **A/B 主工作台三区**：材料区（支持 txt/docx/pdf/xlsx 混合阅读）、答题区（结构化表单）、AI 区（支持流式输出、Markdown、图片上传）
+- **草稿/快照/恢复系统**：跨工作段内容冻结与自动恢复
+- **AI 上下文系统**：基础版/高级版 AI、主线/副线隔离、分公司隔离、按阶段隔离
+- **副线任务系统**：900 题题库、continuous/batch 提醒频率、neutral_info/coop_narrative 叙事组别
+- **admin 管理后台**：实验模式切换（实验 1/2/3）、材料管理、题库导入、导出任务
+- **变量记录与服务器导出**：A/B 分目录归档、事件/内容/AI/副线完整记录、zip 导出包 + 动态自检
+
+### 实验 1/2/3
+
+| 实验 | 随机变量 | 固定变量 |
+|------|----------|----------|
+| 实验 1：AI 能力升级 | `upgradeCohort`（early/late） | 副线 continuous + 中性叙事 |
+| 实验 2：副线提醒频率 | `sideDispatchMode`（continuous/batch） | 基础 AI + 中性叙事 |
+| 实验 3：合作叙事 | `narrativeGroup`（coop/neutral）+ 主题顺序 | 基础 AI + continuous 副线 |
+
+## 技术栈
+
+| 层 | 技术 |
+|---|---|
+| 前端 | Next.js 15 + React 19 + Tailwind CSS v4 |
+| 后端 | NestJS + Prisma 6 + PostgreSQL 16 |
+| AI | 阿里云千问（qwen-turbo / qwen3.6-plus） |
+| 部署 | Docker Compose（生产式单机部署） |
+| 包管理 | pnpm（monorepo workspace） |
+
+## 项目结构
+
+```
+multi cooperation/
+├── apps/
+│   ├── web/                  # Next.js 前端
+│   └── server/               # NestJS 后端
+├── infra/                    # 基础设施（Docker 等）
+├── packages/                 # 共享包（预留）
+├── scripts/                  # 脚本（启动/停止/部署）
+├── 00_start_materials/       # 原始材料（不入库）
+├── 01_rules/                 # 协作规则
+├── 02_specs/                 # 规格文档
+│   ├── 00_overview/          # 总览（APP_FLOW, PRD 等）
+│   ├── 01_frontend/          # 前端规格
+│   ├── 02_backend/           # 后端规格
+│   ├── 03_execution/         # 执行验收
+│   ├── 04_pre_deploy/        # 上线前数据准备
+│   └── 05_server_deploy/     # 服务器部署
+├── 03_tracking/              # 进度跟踪
+├── 04_archive/               # 归档
+└── storage/                  # 运行态存储
 ```
 
-session 只保存共享事实；participant 保存个人问卷、答题、AI、副线、事件和图片附件。
+## 快速开始
 
----
-
-## 4. 题库系统现在怎么用
-
-如果你只是想快速导入案例材料，优先看：
-
-- [02_specs/02_backend/admin材料库上传手册.md](/E:/Own_program/multi cooperation/02_specs/02_backend/admin材料库上传手册.md)
-- [02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md](/E:/Own_program/multi cooperation/02_specs/04_pre_deploy/STORAGE_AND_IMPORT_SPEC.md)
-
-一句话版本：
-
-1. 把案例目录放到 `00_start_materials/原始材料/`
-2. 用推荐结构组织 `participant/` 和 `research/`
-3. 打开 `/admin`
-4. 进入“材料管理”
-5. 点击“自动导入题库目录”
-
----
-
-## 5. 数据库里最关键的模型
-
-在 [apps/server/prisma/schema.prisma](/E:/Own_program/multi cooperation/apps/server/prisma/schema.prisma) 中，最重要的是：
-
-- `Participant`
-- `Session`
-- `Pairing`
-- `RandomizationAudit`
-- `ExperimentEvent`
-- `TaskAssignment`
-- `TaskSnapshot`
-- `Company`
-- `AiMessageLog`
-- `QuestionnaireResponse`
-- `SideTaskItem`
-- `SideTaskPlan`
-- `SideTaskExposureLog`
-- `SideTaskSessionConfig`
-- `ExportJob`
-
-可以这样粗暴理解：
-
-- `Participant`：谁能进实验
-- `Session`：一轮实验
-- `Pairing`：一组尽调员/投资经理配对
-- `RandomizationAudit`：角色、公司顺序、实验模式、B 动态分配的随机化留痕
-- `ExperimentEvent`：关键行为事件
-- `Company`：题库中的一个案例
-- `TaskAssignment`：某轮实验里这组人被分到哪个案例
-- `TaskSnapshot`：冻结与恢复记录
-- `AiMessageLog`：AI 对话日志
-- `SideTaskItem`：副线题库题目
-- `SideTaskPlan`：session 级副线抽题与释放计划
-- `SideTaskExposureLog`：副线释放、提醒、打开、作答事件
-- `SideTaskSessionConfig`：session 级副线模式、叙事组、主题顺序
-- `ExportJob`：服务器导出任务
-
----
-
-## 6. 当前已经完成到什么程度
-
-截至目前，已经稳定落地的内容包括：
-
-- 主流程页面
-- runtime + SSE
-- A/B 工作台主链路
-- 快照冻结与恢复
-- 材料区混合阅读器
-- admin 材料管理
-- 题库目录自动识别导入
-- 参与者端隐藏研究者材料
-- 两张主表向 Word 真相源精修
-- 实验 1/2/3 模式互斥切换
-- 变量记录与服务器导出第一期
-- 导出包动态自检与数据库文件夹手册
-
-仍然值得继续抠细节的地方：
-
-- 表单与 Word 的最后一轮像素级/行距级精修
-- 更多案例批量接入
-- admin 更细的错误提示与批量校验
-- 上线部署、持久化卷和对象存储对接
-
----
-
-## 7. 常用命令
-
-在根目录执行：
+### 本地开发
 
 ```powershell
+# 安装依赖
 corepack pnpm install
+
+# 启动数据库
+docker compose up -d postgres
+
+# 生成 Prisma Client
+corepack pnpm --filter server prisma:generate
+
+# 初始化数据库
+corepack pnpm --filter server prisma migrate dev
+
+# 填充测试数据
+corepack pnpm --filter server prisma:seed
+
+# 启动开发服务器
 corepack pnpm run dev:local
-corepack pnpm run dev:stop
-corepack pnpm run dev:restart
-corepack pnpm --filter web build
-corepack pnpm --filter server build
 ```
 
-也可以直接用：
+或者直接运行一键启动脚本：
 
-- [启动本地开发环境.bat](/E:/Own_program/multi cooperation/启动本地开发环境.bat)
-- [停止本地开发环境.bat](/E:/Own_program/multi cooperation/停止本地开发环境.bat)
-- [重启本地开发环境.bat](/E:/Own_program/multi cooperation/重启本地开发环境.bat)
+```powershell
+启动本地开发环境.bat
+```
 
----
+### 访问地址
 
-## 8. 一句话总结
+| 服务 | 地址 |
+|------|------|
+| 前端 | http://localhost:3000 |
+| 后端 | http://localhost:3001 |
+| Admin | http://localhost:3000/admin |
 
-这个仓库现在可以理解成：
+### 生产部署
 
-**一个围绕“尽调员—投资经理”协作实验而构建的、带题库系统、材料系统、AI 工作台、快照恢复和 admin 后台的长期维护平台。**
+```powershell
+# 上传到服务器
+powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-project.ps1 -User ubuntu
+
+# 创建生产环境变量
+powershell -ExecutionPolicy Bypass -File scripts/deploy/create-prod-env.ps1 -User ubuntu
+```
+
+然后 SSH 到服务器：
+
+```bash
+cd /opt/multi-cooperation
+sudo bash scripts/deploy/deploy-prod.sh
+```
+
+详见 `02_specs/05_server_deploy/运维命令快速参考.md`。
+
+## 文档导航
+
+| 文档 | 用途 |
+|------|------|
+| [APP_FLOW.md](02_specs/00_overview/APP_FLOW.md) | 实验主流程真相源 |
+| [PROJECT_RULES.md](01_rules/PROJECT_RULES.md) | 协作规则 |
+| [progress.md](03_tracking/progress.md) | 项目进度真相源 |
+| [实验123计划.md](02_specs/03_execution/实验123计划.md) | 实验 1/2/3 模式切换 |
+| [变量记录与服务器导出方案.md](02_specs/04_pre_deploy/变量记录与服务器导出方案.md) | 变量记录设计 |
+| [数据库文件夹手册.md](02_specs/04_pre_deploy/数据库文件夹手册.md) | 导出包阅读指南 |
+| [运维命令快速参考.md](02_specs/05_server_deploy/运维命令快速参考.md) | 服务器运维命令 |
+
+## 当前状态
+
+**阶段：长期实现 + 本地实测 + 上线前收口**
+
+- ✅ P0 服务器裸 IP 部署完成
+- ⏳ P1 等待 ICP 审核 → 接域名 + HTTPS
+- ⏳ P2 正式实验前备份、彩排、运维收口
+
+## 许可证
+
+本项目为学术研究用途，不公开许可。

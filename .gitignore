@@ -46,5 +46,5 @@ apps/web/.cache/
 apps/server/.cache/
 *.tsbuildinfo
 
-# Keep project documents and source materials trackable by default.
-# Do not globally ignore docx/pdf/xlsx/png because this project stores real source materials in-repo.
+# Source materials (too large for git, managed via admin upload)
+00_start_materials/
