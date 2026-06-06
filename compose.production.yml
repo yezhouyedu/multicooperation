@@ -31,6 +31,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_ADVANCED_BASE_URL: ${OPENAI_ADVANCED_BASE_URL:-}
+      OPENAI_ADVANCED_API_KEY: ${OPENAI_ADVANCED_API_KEY:-}
+      OPENAI_ADVANCED_MODEL: ${OPENAI_ADVANCED_MODEL:-}
     volumes:
       - server_storage:/app/storage
     ports:

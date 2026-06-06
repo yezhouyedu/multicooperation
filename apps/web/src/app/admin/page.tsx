@@ -326,7 +326,7 @@ function ParticipantsTab() {
       setStatus('');
     } catch {
       setParticipants([]);
-      setStatus('名单加载失败：请确认后端 http://localhost:3001 已启动');
+      setStatus(`名单加载失败：请确认后端服务 ${serverBaseUrl} 已启动`);
     }
   }
 

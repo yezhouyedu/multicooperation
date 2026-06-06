@@ -84,7 +84,9 @@ type CaseManifest = {
 };
 
 export const MATERIALS_STORAGE_ROOT = resolve(process.cwd(), 'storage', 'materials');
-export const CASE_LIBRARY_ROOT = resolve(process.cwd(), '..', '..', '00_start_materials', '原始材料');
+// CASE_LIBRARY_ROOT: 生产环境通过环境变量覆盖，本地开发时自动定位到项目根目录下的 00_start_materials
+export const CASE_LIBRARY_ROOT = process.env.CASE_LIBRARY_ROOT
+  || resolve(process.cwd(), '00_start_materials', '原始材料');
 export const FORMAL_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '正式');
 export const PRACTICE_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '测试轮');
 const BASELINE_P01_DIR = resolve(CASE_LIBRARY_ROOT, 'P01');

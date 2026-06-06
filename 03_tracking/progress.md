@@ -1405,3 +1405,52 @@
 - `02_specs/05_server_deploy/部署运行手册.md` 精简已完成的 P0 步骤。
 - `02_specs/05_server_deploy/上线前工作指导.md` 顶部标记 P0 已完成。
 - `02_specs/05_server_deploy/README.md` 更新文件说明。
+
+### 2026-06-07 线上 P0 debug：数据库 schema 漂移修复 + GitHub 推送
+
+**背景**：首次在线上测试登录和 admin 时发现 500 错误。
+
+**问题定位**：
+- 服务器日志报 `The column TaskAssignment.bSequenceIndex does not exist in the current database`
+- Prisma schema 有 `bSequenceIndex` 字段但从未生成对应 migration
+- 服务器数据库有 8 个迁移，但缺少此字段
+
+**修复**：
+- 直接在服务器 PostgreSQL 执行 `ALTER TABLE "TaskAssignment" ADD COLUMN IF NOT EXISTS "bSequenceIndex" INTEGER` + 创建索引
+- 重启 server 容器后健康检查通过
+
+**GitHub 推送**：
+- 完善中文 README.md（项目简介、技术栈、快速开始、文档导航）
+- 新增英文 README.en.md
+- 更新 .gitignore 排除 `00_start_materials/`（原始材料太大不适合入库）
+- 从 git 跟踪中移除 00_start_materials（本地文件保留）
+- 成功推送到 https://github.com/yezhouyedu/multicooperation
+
+**待办**：
+- 本地数据库也有 drift，需要在本地重新同步
+- 全面 debug 线上功能（APP_FLOW 每一步 check）
+
+### 2026-06-07 线上全面 debug：schema 漂移修复 + 代码兼容性修复
+
+**背景**：首次在线上测试时发现多个 500 错误和功能异常。
+
+**问题定位与修复**：
+1. **数据库 schema 漂移**：`TaskAssignment.bSequenceIndex` 和 `RandomizationAudit.bAssignmentMethod/bAssignmentLog` 列缺失
+   - Prisma schema 有这些字段但从未生成对应 migration
+   - 直接在服务器 PostgreSQL 执行 ALTER TABLE 添加缺失列
+2. **案例库导入路径**：`CASE_LIBRARY_ROOT` 用 `resolve(process.cwd(), '..', '..', '00_start_materials', '原始材料')`，在 Docker 中路径错误
+   - 修复为 `process.env.CASE_LIBRARY_ROOT || resolve(process.cwd(), '00_start_materials', '原始材料')`
+3. **高级版 AI 环境变量**：`compose.production.yml` 缺少 `OPENAI_ADVANCED_*` 变量
+   - 补充 `OPENAI_ADVANCED_BASE_URL/API_KEY/MODEL`
+4. **Admin 错误提示**：硬编码 `http://localhost:3001`
+   - 改为使用 `serverBaseUrl` 环境变量
+
+**APP_FLOW 兼容性审查结论**：
+- ✅ 前端 API 调用使用环境变量（Docker 构建时注入）
+- ✅ 后端无 Windows 硬编码路径
+- ✅ CORS 已开启
+- ✅ SSE 使用环境变量构建 URL
+- ✅ 数据库连接使用 Docker 内部 hostname
+- ✅ 文件上传/存储走 Docker volume
+- ✅ .env 文件未被 git 跟踪
+- ⚠️ 案例库导入需要通过环境变量配置路径（已修复）
