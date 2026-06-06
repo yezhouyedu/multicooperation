@@ -954,6 +954,35 @@
 - `corepack pnpm --filter server build` 通过
 - `corepack pnpm --filter web build` 通过
 
+### 2026-06-05 实验 1/2/3 模式切换首轮实现
+
+**背景**：师兄希望同一套实验页支持三种实验局：AI 能力升级、副线提醒频率、合作叙事；三种模式互斥，admin 切换只影响新 session，非目标变量默认基础 AI、continuous 高频提醒、中性信息。
+
+**本轮实现方向**：
+- 新增 `02_specs/03_execution/实验123计划.md`，记录模式互斥、固定变量下拉、指导语积木、前台提示与变量留痕口径。
+- Prisma schema 增加实验模式、session 快照、任务级 AI 状态、AI 请求模型/图片开关、随机化审计字段。
+- 后端 session 初始化开始基于 admin 当前实验模式生成 session 级快照；副线计划使用快照中的 dispatch / narrative 配置。
+- admin 实验配置页新增实验模式卡片，展示随机项和固定项；固定项可下拉调整。
+- 指导语页改为通用说明 + 角色说明 + 当前模式条件块；AI 区标题栏显示基础版/升级版 badge；实验 1 增加升级提示和 B 查看 A 信息时的 AI 状态提示。
+
+**验证**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- 本地 PostgreSQL 因历史迁移名 drift 未执行 `migrate dev`，已用 `corepack pnpm --filter server exec prisma db push` 同步当前 schema；`/admin/experiment-config` 已返回新实验模式配置字段。
+
+### 2026-06-05 本地启动脚本端口占用修复
+
+**背景**：上一轮验证留下隐藏 Next dev server，占用 3000，导致用户再次运行 `启动本地开发环境.bat` 时 Next 自动尝试 3002 后报 “Another next dev server is already running”。
+
+**修复**：
+- `scripts/start-local.ps1` 启动前先调用 `scripts/stop-local.ps1`，自动清理旧 web/server dev 进程。
+- `scripts/stop-local.ps1` 除 node 进程外，也会关闭本项目残留的 dev PowerShell 窗口。
+
+**验证**：
+- 已清理旧 PID 31672 等残留进程。
+- 重新运行启动脚本后，web 可访问 `http://localhost:3000`，server health 可访问 `http://localhost:3001/health`。
+
 ### 2026-06-05 Markdown 全仓审查回正 + 公司分配逻辑复核
 
 **背景**：本轮未改代码，专门审查 `README / 01_rules / 02_specs / apps/*/README` 与当前代码是否存在明显冲突，并补记当前真实的公司分配逻辑，避免后续继续被旧 spec 误导。
@@ -1009,3 +1038,18 @@
 3. **Git 收口**
    - 将本轮已确认的文档回正、测试轮相关实现、服务器准备文档与历史未提交变更统一收口进版本控制
    - 会议记录 `.docx` 这类无关文件不纳入本轮提交
+
+
+### 2026-06-05 变量记录与服务器导出方案整理
+
+**背景**：为正式实验上线前的数据留痕做方案收口，明确不只记录变量事件，也要记录被试答题内容、副线内容、问卷内容和 AI 聊天记录；由于数据量较大，正式导出不走 admin 直接大 JSON 响应，而改为服务器生成归档包。
+
+**本轮文档新增**：
+- `02_specs/04_pre_deploy/变量记录与服务器导出方案.md`
+
+**方案口径**：
+- 数据分为三层：事件数据、内容数据、AI 聊天与轻量任务上下文数据。
+- 每个被试按公司组织数据，并在被试目录下分 `events/`、`content/`、`ai/` 三个子目录。
+- 大数组优先使用 `jsonl`，小摘要使用 `json`。
+- 建议新增 `BehaviorEvent`、`SessionConfigSnapshot`、`ExportJob`，并补强 `AiMessageLog` 的任务索引和请求状态字段。
+- admin 负责触发导出任务、查看状态、下载 zip；导出包生成在服务器侧，后续上线可接对象存储或受控临时 URL。
