@@ -20,6 +20,30 @@ function Run-Native($Description, $ScriptBlock) {
   }
 }
 
+function Split-Archive($ArchivePath) {
+  $chunkDir = Join-Path $env:TEMP ("multi-cooperation-upload-chunks-" + (Get-Date -Format "yyyyMMddHHmmss"))
+  New-Item -ItemType Directory -Path $chunkDir | Out-Null
+  $chunkSize = 512KB
+  $buffer = New-Object byte[] $chunkSize
+  $stream = [System.IO.File]::OpenRead($ArchivePath)
+  try {
+    $index = 0
+    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $chunkPath = Join-Path $chunkDir ("part-{0:D4}" -f $index)
+      $out = [System.IO.File]::OpenWrite($chunkPath)
+      try {
+        $out.Write($buffer, 0, $read)
+      } finally {
+        $out.Close()
+      }
+      $index += 1
+    }
+  } finally {
+    $stream.Close()
+  }
+  return $chunkDir
+}
+
 Step "[1/5] Checking local project and SSH key"
 if (!(Test-Path -LiteralPath $ProjectRoot)) {
   throw "Project root not found: $ProjectRoot"
@@ -61,15 +85,34 @@ try {
 Get-Item -LiteralPath $ArchivePath | Select-Object FullName,Length,LastWriteTime
 
 Step "[4/5] Uploading and extracting archive"
-Run-Native "Uploading archive" {
-  scp -i $KeyPath -o IdentitiesOnly=yes $ArchivePath "${User}@${HostName}:/tmp/multi-cooperation-deploy.tar.gz"
+Step "[4.1/5] Splitting archive for observable upload"
+$ChunkDir = Split-Archive $ArchivePath
+$Chunks = @(Get-ChildItem -LiteralPath $ChunkDir -File | Sort-Object Name)
+Write-Host "Archive split into $($Chunks.Count) chunks at $ChunkDir"
+
+Run-Native "Preparing remote upload chunks" {
+  ssh -i $KeyPath -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 "$User@$HostName" "set -e; rm -rf /tmp/multi-cooperation-upload-chunks /tmp/multi-cooperation-deploy.tar.gz; mkdir -p /tmp/multi-cooperation-upload-chunks"
 }
+
+for ($i = 0; $i -lt $Chunks.Count; $i += 1) {
+  $chunk = $Chunks[$i]
+  Write-Host ("Uploading chunk {0}/{1}: {2}" -f ($i + 1), $Chunks.Count, $chunk.Name)
+  Run-Native "Uploading chunk $($chunk.Name)" {
+    scp -O -i $KeyPath -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 $chunk.FullName "${User}@${HostName}:/tmp/multi-cooperation-upload-chunks/$($chunk.Name)"
+  }
+}
+
+Run-Native "Combining remote chunks" {
+  ssh -i $KeyPath -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 "$User@$HostName" "set -e; cat /tmp/multi-cooperation-upload-chunks/part-* > /tmp/multi-cooperation-deploy.tar.gz; rm -rf /tmp/multi-cooperation-upload-chunks"
+}
+
 Run-Native "Extracting archive" {
   ssh -i $KeyPath -o IdentitiesOnly=yes "$User@$HostName" "set -e; STAGE_DIR='/tmp/multi-cooperation-deploy-new'; rm -rf `$STAGE_DIR; mkdir -p `$STAGE_DIR; tar -xzf /tmp/multi-cooperation-deploy.tar.gz -C `$STAGE_DIR; rsync -a --delete --exclude='.env.production' `$STAGE_DIR/ '$RemoteDir/'; rm -rf `$STAGE_DIR /tmp/multi-cooperation-deploy.tar.gz; rm -rf '$RemoteDir/.deploy-new'"
 }
 
 Step "[5/5] Cleaning local archive"
 Remove-Item -LiteralPath $ArchivePath -Force
+Remove-Item -LiteralPath $ChunkDir -Recurse -Force
 
 Write-Host ""
 Write-Host "Upload finished: $RemoteDir" -ForegroundColor Green

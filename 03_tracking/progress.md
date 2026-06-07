@@ -1454,3 +1454,76 @@
 - ✅ 文件上传/存储走 Docker volume
 - ✅ .env 文件未被 git 跟踪
 - ⚠️ 案例库导入需要通过环境变量配置路径（已修复）
+
+### 2026-06-07 线上 APP_FLOW smoke 验证 + 运维部署路线收口
+
+**背景**：P0 裸 IP 已跑通后，按 `APP_FLOW.md` 审查“本地可跑全流程上传到线上后是否有环境/路径/schema/导出问题”，并要求保留线上可回滚版本。
+
+**上线前备份**：
+- 在服务器创建 `/opt/multi-cooperation-backups/20260607_1238xx/` 备份目录。
+- 已备份：
+  - 当前项目目录压缩包 `project.tar.gz`
+  - 当前 PostgreSQL dump `database.sql`
+  - 当前 compose 状态 `compose-ps.txt`
+  - 后端 storage volume 快照 `server-storage.tar.gz`
+  - `SHA256SUMS.txt`
+
+**本轮修复**：
+- 新增正式 migration：`20260607093000_formalize_online_schema_drift`
+  - 幂等补齐 `TaskAssignment.bSequenceIndex`
+  - 幂等补齐 `RandomizationAudit.bAssignmentMethod/bAssignmentLog`
+  - 服务器 `prisma migrate deploy` 已记录该 migration。
+- 修复高级版 AI key 读取：
+  - advanced AI 先读 admin advanced 配置
+  - 再读 `OPENAI_ADVANCED_*`
+  - 最后 fallback 到基础版 `OPENAI_*`
+- `.env.production.example` 补齐 `OPENAI_ADVANCED_BASE_URL/API_KEY/MODEL`。
+- `create-prod-env.ps1` 改为：
+  - 后续重跑默认复用服务器已有 `POSTGRES_PASSWORD`
+  - 同步基础/高级 AI 配置
+  - scp 使用 `-O`，避免默认 SFTP 模式不稳定。
+- `upload-project.ps1` 尝试改为可观察分片上传，但本地到服务器的大包 SSH 上传仍不稳定。
+- 新增 `scripts/deploy/sync-from-github.sh`，后续推荐“本地 commit/push → 服务器 GitHub pull → deploy-prod.sh”的部署路线。
+
+**线上部署验证**：
+- 使用小补丁包上传本轮变更并执行 `sudo bash scripts/deploy/deploy-prod.sh`。
+- server/web 生产构建通过。
+- server health：`http://49.233.203.108:3001/health` 返回 200。
+- web login：`http://49.233.203.108:3000/login` 返回 200。
+- 三容器状态正常：
+  - postgres healthy
+  - server healthy
+  - web up
+
+**APP_FLOW smoke 测试结果**：
+- 创建线上测试被试并登录配对成功。
+- 角色随机分配成功，对外流程使用“尽调员 / 投资经理”。
+- instruction → ready practice → practice quiz 通过。
+- practice quiz 正确答案提交后进入 practice。
+- 测试轮草稿保存、AI 请求、5 分钟门槛、A 到点提交、B 查看 A 信息、B 完成通过。
+- 测试轮教学完成门槛生效：未记录 `practice_tutorial_completed` 时，formal ready 被拒绝；补齐后通过。
+- formal ready 双方通过后进入 formal work segment 1。
+- 正式段材料、草稿、副线 exposure/answer、A 提交解锁、B 查看/完成通过。
+- B 在正式段开始时处于 PreA fallback，符合“锁定池为空时 fallback 到 A 正在处理公司”的口径。
+
+**变量导出验证**：
+- admin export job 创建、完成、下载 zip、解压成功。
+- 导出包包含：
+  - `variables.json`
+  - `events/events.jsonl`
+  - `ai_chat.jsonl`
+  - `side_responses.jsonl`
+  - `variable_implementation_summary.json`
+- 正确归因的 AI 请求已进入对应公司 `ai_chat.jsonl`。
+- 副线导出 `side_responses.jsonl` 有记录。
+- 自检 `missingSource` 为空。
+- 本轮 smoke 中曾有一次手工 API 调用漏传 `companyId`，自检正确标记为 `main AI task attribution` risk；前端实际使用 `company.id` 传参，不属于线上产品 bug。
+
+**运维结论**：
+- 当前裸 IP 线上版本可运行，且已具备回滚备份。
+- 本地到服务器的大包 SSH 上传链路不稳定，后续不优先依赖全量 scp 上传。
+- 后续代码上线推荐：
+  1. 本地完成验证。
+  2. commit 并 push GitHub。
+  3. 服务器执行 `sudo bash scripts/deploy/sync-from-github.sh`。
+  4. 服务器执行 `sudo bash scripts/deploy/deploy-prod.sh`。

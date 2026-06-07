@@ -319,10 +319,10 @@ export class AiService {
       : settings?.basicBaseUrl || this.configService.get<string>('OPENAI_BASE_URL');
     const endpoint = endpointBase ? this.buildEndpoint(endpointBase) : null;
     const apiKey = isAdvanced
-      ? settings?.advancedApiKey || this.configService.get<string>('OPENAI_API_KEY') || null
+      ? settings?.advancedApiKey || this.configService.get<string>('OPENAI_ADVANCED_API_KEY') || this.configService.get<string>('OPENAI_API_KEY') || null
       : settings?.basicApiKey || this.configService.get<string>('OPENAI_API_KEY') || null;
     const model = isAdvanced
-      ? settings?.advancedModel || this.configService.get<string>('OPENAI_ADVANCED_MODEL') || 'gpt-4o-mini'
+      ? settings?.advancedModel || this.configService.get<string>('OPENAI_ADVANCED_MODEL') || this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini'
       : settings?.basicModel || this.configService.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
     const contextLimit = isAdvanced ? settings?.advancedContextLimit ?? 20 : settings?.basicContextLimit ?? 20;
     const trimmed = input.message?.trim() || '';
