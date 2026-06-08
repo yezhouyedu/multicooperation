@@ -810,6 +810,7 @@ export class AdminService {
   }
 
   private tryParseResearchProfile(companyId: string, material: StoredMaterialItem) {
+    if (material.kind !== 'txt') return null;
     const filePath = join(process.cwd(), 'storage', 'materials', companyId, material.storageKey);
     const raw = readUtf8File(filePath);
     return parseResearchProfileFromText(raw);

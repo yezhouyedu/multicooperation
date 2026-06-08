@@ -338,7 +338,10 @@ model SideTaskItem {
   itemCode          String   @unique
   poolType          String
   workSegment       Int
+  eventArchetype    String?
+  eventChain        String?
   surfaceScenario   String?
+  languageVariant   String?
   skeletonType      String?
   narrativeCategory String?
   narrativeSubtype  String?
@@ -352,6 +355,7 @@ model SideTaskItem {
   evidenceSpan      String?
   distractorType    String?
   distractorNote    String?
+  narrativeComponents String?
   spilloverRiskFlag Boolean  @default(false)
   spilloverRiskNote String?
   difficulty        String?
