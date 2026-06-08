@@ -34,6 +34,7 @@ services:
       OPENAI_ADVANCED_BASE_URL: ${OPENAI_ADVANCED_BASE_URL:-}
       OPENAI_ADVANCED_API_KEY: ${OPENAI_ADVANCED_API_KEY:-}
       OPENAI_ADVANCED_MODEL: ${OPENAI_ADVANCED_MODEL:-}
+      CASE_LIBRARY_ROOT: ${CASE_LIBRARY_ROOT:-/app/00_start_materials/原始材料}
     volumes:
       - server_storage:/app/storage
     ports:

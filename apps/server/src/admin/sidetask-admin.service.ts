@@ -22,10 +22,12 @@ export class SideTaskAdminService {
 
     let created = 0;
     let updated = 0;
+    const importedItemCodes: string[] = [];
 
     for (const row of rows) {
       const itemCode = String(row['item_id'] ?? '').trim();
       if (!itemCode) continue;
+      importedItemCodes.push(itemCode);
 
       const poolType = String(row['pool_type'] ?? '').trim();
       const workSegment = Number(row['work_segment']);
@@ -80,7 +82,17 @@ export class SideTaskAdminService {
       }
     }
 
-    return { ok: true, total: rows.length, created, updated };
+    const deactivated = importedItemCodes.length
+      ? await this.prisma.sideTaskItem.updateMany({
+          where: {
+            itemCode: { notIn: importedItemCodes },
+            isActive: true,
+          },
+          data: { isActive: false },
+        })
+      : { count: 0 };
+
+    return { ok: true, total: rows.length, created, updated, deactivated: deactivated.count };
   }
 
   async listItems(filters: {

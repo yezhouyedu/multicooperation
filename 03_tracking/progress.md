@@ -1527,3 +1527,51 @@
   2. commit 并 push GitHub。
   3. 服务器执行 `sudo bash scripts/deploy/sync-from-github.sh`。
   4. 服务器执行 `sudo bash scripts/deploy/deploy-prod.sh`。
+
+### 2026-06-08 最终版副线题库与公司材料库上线
+
+**背景**：师兄发来最终版公司材料库与副线题库，需要确认是否兼容当前 admin 导入与线上部署流程，并完成本地 / 服务器双侧验收。
+
+**副线题库审查**：
+- 对比 `副线组织信息识别正式题库_V1.0修订版.xlsx` 与旧 `C副线任务题库_V0.8.xlsx`。
+- 两版都保留 `正式题库` sheet，均为 900 题，普通中性池 360、合作叙事池 540，每段 300。
+- 新版不是单纯内容替换：旧版字段 `skeleton_type / narrative_subtype / distractor_note` 被弱化，新版新增 `event_archetype / event_chain / language_variant / narrative_components`。
+- 已适配新版字段：`SideTaskItem` 增加新版字段，导入服务读取并保存，导出 `side_responses.jsonl` 也带上新版字段。
+- 副线导入语义同步改为“替换式导入”：导入新 Excel 后，不在本次 Excel 中的旧题会自动停用，避免旧样例题混入后续抽题。
+
+**公司材料库审查**：
+- 师兄的 `admin上传版/正式/P01-P36` 基本符合 `admin材料库上传手册.md`：每家公司有 `case.json`、`participant/shared`、`participant/diligence`、`participant/manager`、`research`。
+- 新包没有 `测试轮/` 目录，因此测试轮继续沿用旧 `00_start_materials/原始材料/测试轮/P01`。
+- 当前后端默认扫描 `00_start_materials/原始材料/正式` 与 `00_start_materials/原始材料/测试轮`，不是自动扫描 `admin上传版`。已把师兄正式材料同步到本地实际扫描目录，并上传到服务器实际扫描目录。
+- 生产环境补充 `CASE_LIBRARY_ROOT=/app/00_start_materials/原始材料`，避免容器内默认路径错到 `/app/apps/server/00_start_materials/原始材料`。
+
+**本地验证**：
+- Docker Desktop 启动后，本地 PostgreSQL 正常。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- `corepack pnpm --dir apps/server exec prisma migrate deploy` 通过。
+- 本地导入新版副线题库后 active 题库为 900 条 V1.0，旧 5 条样例题已停用。
+- 本地导入材料库共 37 个公司：正式 36 个 + 测试轮 1 个。
+- 去掉 `next/font/google`，前端构建不再依赖 Google Fonts 外网请求，改用系统字体栈。
+
+**线上部署与验证**：
+- 部署前创建服务器备份：`/opt/multi-cooperation-backups/20260608_131257_before_final_materials`。
+- 通过云控制台上传约 93MB 材料包；SSH 直传大文件仍不稳定，已清理本地 C 盘临时包、服务器 `/tmp` 残留包和分片。
+- 线上生产部署通过，server/web build 均通过，health OK。
+- 线上副线题库验证：
+  - active 总数：900。
+  - V1.0 修订版：900。
+  - 新版字段完整数：900。
+  - 普通中性池：360；合作叙事池：540。
+  - workSegment 1/2/3 各 300。
+- 线上公司材料库验证：
+  - 总导入：37。
+  - 正式：36。
+  - 测试轮：1。
+  - 抽样 P01/P36 均为正式公司，材料数 12，participant 11，尽调员 5，投资经理 5，research 1。
+  - 测试轮 P01 保留旧材料，材料数 10。
+
+**运维补充**：
+- Clash 规则分流后 SSH 延迟恢复正常：Codex 走代理，SSH 22 端口直连，中国 IP 直连。
+- `sync-from-github.sh` 在当前服务器上遇到 GitHub 凭据问题：`could not read Username for 'https://github.com'`；后续若继续用 GitHub pull 部署，需要公开仓库或配置 deploy key / token。
+- 当前服务器保留两版备份：`20260607_123801` 与 `20260608_131257_before_final_materials`。建议确认本轮最终材料稳定后再删旧的 20260607 备份。
