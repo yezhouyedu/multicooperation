@@ -616,22 +616,23 @@ export class AdminService {
       const participantRoleByPath = new Map(
         definition.participantMaterials.map((item) => [item.relativePath, item.participantRole] as const),
       );
-      const materials: StoredMaterialItem[] = allMaterials.map((file, index) =>
-        createStoredMaterialItem({
+      const materials: StoredMaterialItem[] = allMaterials.map((file, index) => {
+        const isParticipantMaterial = participantPaths.has(file.relativePath);
+        return createStoredMaterialItem({
           companyId,
           originalFilename: file.displayName,
           displayName: file.displayName,
           sourcePath: file.fullPath,
           sortOrder: index,
           metadata: {
-            audience: participantPaths.has(file.relativePath) ? 'participant' : 'research',
-            participantRole: participantRoleByPath.get(file.relativePath) ?? 'shared',
+            audience: isParticipantMaterial ? 'participant' : 'research',
+            participantRole: isParticipantMaterial ? participantRoleByPath.get(file.relativePath) ?? 'shared' : null,
             importRelativePath: file.relativePath,
             importFolderName: definition.folderName,
             importedFromLibrary: true,
           },
-        }),
-      );
+        });
+      });
 
       const sourceMaterial =
         materials.find((item) => item.metadata.importRelativePath === definition.autoFillSourceRelativePath) ?? null;
