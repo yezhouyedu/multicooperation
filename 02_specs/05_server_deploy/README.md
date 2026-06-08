@@ -15,6 +15,8 @@
   - 记录 P0/P1/P2 上线阶段、协作方式、SSH 私钥位置约定、正式实验前运维边界。P0 已完成。
 - `部署运行手册.md`
   - 记录 Docker compose 启停、生产环境变量、日志查看、裸 IP 验证和后续域名 HTTPS 收口。
+- `../../00_start_materials/线上部署/服务器关键知识须知.md`
+  - 记录当前服务器目录树、Docker volume、备份目录和危险操作提醒。该文件位于资料区，不进入 GitHub，但适合会前/运维查阅。
 
 ## 当前原则
 
@@ -22,3 +24,5 @@
 - SSH 私钥不进仓库、不进 Markdown、不放 `02_specs/`。
 - 长耗时部署任务优先写成可观察脚本或分步骤命令，让操作者能看到进度。
 - 生产部署前必须先在本地跑过生产式验证。
+- 代码住在 `/opt/multi-cooperation`；PostgreSQL 数据住在 Docker volume `multi-cooperation_postgres_data`；材料运行时副本、AI 图片附件、变量导出包住在 Docker volume `multi-cooperation_server_storage`，容器内路径为 `/app/storage`。
+- 生产环境不要执行 `docker compose down -v`、`docker volume rm ...` 或手动删除 `/var/lib/docker/volumes/...`。

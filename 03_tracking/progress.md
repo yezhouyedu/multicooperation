@@ -1601,3 +1601,16 @@
 - 运行时材料、AI 图片附件、变量导出包位于 Docker volume `multi-cooperation_server_storage`，容器内路径为 `/app/storage`。
 - PostgreSQL 数据位于 Docker volume `multi-cooperation_postgres_data`。
 - 本轮临时上传包和迁移临时目录已清理；保留服务器备份 `20260607_123801`、`20260608_131257_before_final_materials`、`20260608_165507_storage_root_patch_files`。
+
+### 2026-06-08 服务器关键知识文档同步
+
+**背景**：用户需要把 Docker、volume、服务器目录树、线上状态和备份信息整理成会前/运维可读文档，并按 neat-freak 收尾要求同步正式部署 specs，避免关键事实只留在口头记录或被 git 忽略的资料区。
+
+**文档变更**：
+- 新增 `00_start_materials/线上部署/服务器关键知识须知.md`：记录 `/opt/multi-cooperation` 目录树、Docker 三容器、两个 volume、源材料库与运行时 storage 的区别、当前线上公司池/题库状态、备份目录和危险命令。
+- 更新 `02_specs/05_server_deploy/README.md`：补充服务器关键知识文档入口，并写明代码目录、PostgreSQL volume、server storage volume 的边界。
+- 更新 `02_specs/05_server_deploy/部署运行手册.md`：把数据持久化章节改为最新口径，明确 `multi-cooperation_postgres_data` 与 `multi-cooperation_server_storage` 的用途。
+- 更新 `02_specs/05_server_deploy/命令运行清单.md`：新增查看 volume、storage 路径和可写性的命令，并再次标注不要执行 `docker compose down -v` 或删除生产 volume。
+
+**注意**：
+- `00_start_materials/` 当前被 `.gitignore` 忽略，因此 `服务器关键知识须知.md` 是本地会议/资料文档；进入 GitHub 的正式口径已同步到 `02_specs/05_server_deploy/`。
