@@ -14,11 +14,11 @@ import {
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { resolve } from 'path';
 import { AdminService } from './admin.service';
 import { ExportService } from '../recording/export.service';
+import { storagePath } from '../storage-paths';
 
-const TEMP_UPLOAD_DIR = resolve(process.cwd(), 'storage', 'tmp');
+const TEMP_UPLOAD_DIR = storagePath('tmp');
 
 @Controller('admin')
 export class AdminController {

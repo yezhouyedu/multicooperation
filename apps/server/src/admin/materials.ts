@@ -10,6 +10,7 @@ import {
 } from 'fs';
 import { randomUUID } from 'crypto';
 import { extname, join, relative, resolve } from 'path';
+import { storagePath } from '../storage-paths';
 
 export type MaterialKind = 'txt' | 'docx' | 'pdf' | 'xlsx';
 export type RenderMode = 'text' | 'docx-preview' | 'pdf' | 'spreadsheet';
@@ -83,7 +84,7 @@ type CaseManifest = {
   sortOrder?: number;
 };
 
-export const MATERIALS_STORAGE_ROOT = resolve(process.cwd(), 'storage', 'materials');
+export const MATERIALS_STORAGE_ROOT = storagePath('materials');
 // CASE_LIBRARY_ROOT: 生产环境通过环境变量覆盖，本地开发时自动定位到项目根目录下的 00_start_materials
 export const CASE_LIBRARY_ROOT = process.env.CASE_LIBRARY_ROOT
   || resolve(process.cwd(), '00_start_materials', '原始材料');

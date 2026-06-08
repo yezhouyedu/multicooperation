@@ -12,10 +12,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { resolve } from 'path';
 import { SideTaskAdminService } from './sidetask-admin.service';
+import { storagePath } from '../storage-paths';
 
-const TEMP_UPLOAD_DIR = resolve(process.cwd(), 'storage', 'tmp');
+const TEMP_UPLOAD_DIR = storagePath('tmp');
 
 @Controller('admin/sidetask')
 export class SideTaskAdminController {

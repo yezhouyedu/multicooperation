@@ -18,13 +18,14 @@ import { ConfigService } from '@nestjs/config';
 import express, { json } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+import { storagePath, storageRoot } from './storage-paths';
 
 async function bootstrap() {
-  const uploadsRoot = resolve(process.cwd(), 'storage');
-  mkdirSync(resolve(uploadsRoot, 'materials'), { recursive: true });
-  mkdirSync(resolve(uploadsRoot, 'tmp'), { recursive: true });
-  mkdirSync(resolve(uploadsRoot, 'exports'), { recursive: true });
-  mkdirSync(resolve(uploadsRoot, 'attachments'), { recursive: true });
+  const uploadsRoot = storageRoot();
+  mkdirSync(storagePath('materials'), { recursive: true });
+  mkdirSync(storagePath('tmp'), { recursive: true });
+  mkdirSync(storagePath('exports'), { recursive: true });
+  mkdirSync(storagePath('attachments'), { recursive: true });
 
   const app = await NestFactory.create(AppModule, {
     cors: true,

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createReadStream, createWriteStream } from 'fs';
 import { cp, mkdir, readdir, readFile, stat, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'path';
+import { storageRoot } from '../storage-paths';
 
 type ZipEntry = {
   relativePath: string;
@@ -18,7 +19,7 @@ export class StorageService {
   readonly attachmentsRoot: string;
 
   constructor(configService: ConfigService) {
-    this.root = resolve(process.cwd(), configService.get<string>('EXPORT_STORAGE_ROOT') ?? 'storage');
+    this.root = resolve(configService.get<string>('STORAGE_ROOT') || storageRoot());
     this.exportsRoot = resolve(this.root, 'exports');
     this.attachmentsRoot = resolve(this.root, 'attachments');
   }

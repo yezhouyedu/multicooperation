@@ -17,6 +17,7 @@ import {
   reorderMaterials,
   scanCaseLibrary,
 } from './materials';
+import { storagePath } from '../storage-paths';
 
 type CompanyWithMaterials = {
   id: string;
@@ -812,7 +813,7 @@ export class AdminService {
 
   private tryParseResearchProfile(companyId: string, material: StoredMaterialItem) {
     if (material.kind !== 'txt') return null;
-    const filePath = join(process.cwd(), 'storage', 'materials', companyId, material.storageKey);
+    const filePath = storagePath('materials', companyId, material.storageKey);
     const raw = readUtf8File(filePath);
     return parseResearchProfileFromText(raw);
   }

@@ -1575,3 +1575,29 @@
 - Clash 规则分流后 SSH 延迟恢复正常：Codex 走代理，SSH 22 端口直连，中国 IP 直连。
 - `sync-from-github.sh` 在当前服务器上遇到 GitHub 凭据问题：`could not read Username for 'https://github.com'`；后续若继续用 GitHub pull 部署，需要公开仓库或配置 deploy key / token。
 - 当前服务器保留两版备份：`20260607_123801` 与 `20260608_131257_before_final_materials`。建议确认本轮最终材料稳定后再删旧的 20260607 备份。
+
+### 2026-06-08 线上服务器存储持久化路径收口
+
+**背景**：整理服务器文件夹时发现一个上线风险：`compose.production.yml` 已把 Docker volume 挂载到 `/app/storage`，但后端部分运行时文件仍按 `process.cwd()/storage` 解析。在生产容器中 `process.cwd()` 为 `/app/apps/server`，因此材料、导出包、图片附件可能落到容器可写层 `/app/apps/server/storage`，重建容器时存在丢失风险。
+
+**修复**：
+- 新增统一存储路径入口 `apps/server/src/storage-paths.ts`。
+- 后端材料库、临时上传、静态材料服务、AI 图片附件、变量导出统一读取 `STORAGE_ROOT`。
+- 生产 compose 增加 `STORAGE_ROOT=/app/storage`，`.env.production.example` 同步补齐说明。
+- 已把线上旧容器内 `/app/apps/server/storage` 的约 100MB 数据迁移到 Docker volume `multi-cooperation_server_storage`。
+
+**线上部署与验证**：
+- 以小补丁包方式上传并重新执行 `sudo bash scripts/deploy/deploy-prod.sh`，server/web 构建与启动通过。
+- 线上 `STORAGE_ROOT=/app/storage` 生效，`/app/storage` 约 100MB，`exports` 与 `attachments` 目录可写。
+- `http://127.0.0.1:3001/health` 返回 200，`http://127.0.0.1:3000/login` 返回 200。
+- 抽查 P01 材料静态 URL 返回 200。
+- 重新执行线上材料库导入后，材料仍写入持久化 volume。
+- 数据库中早期残留 `company-p01-baseline` 被 1 条旧任务引用，因此未删除，改为 `usage=legacy`，避免进入正式公司池。
+- 当前线上公司池：正式 36 家、测试轮 1 家、legacy 1 家；P01/P36 单家公司均为参与者侧 11 份、研究员 1 份，尽调员可见 6 份，投资经理可见 6 份。
+- 当前线上副线 active 题库：900 条，均为 V1.0 修订版，新字段完整 900 条。
+
+**运维说明**：
+- 项目源材料位于 `/opt/multi-cooperation/00_start_materials/原始材料`，用于 admin 导入扫描。
+- 运行时材料、AI 图片附件、变量导出包位于 Docker volume `multi-cooperation_server_storage`，容器内路径为 `/app/storage`。
+- PostgreSQL 数据位于 Docker volume `multi-cooperation_postgres_data`。
+- 本轮临时上传包和迁移临时目录已清理；保留服务器备份 `20260607_123801`、`20260608_131257_before_final_materials`、`20260608_165507_storage_root_patch_files`。
