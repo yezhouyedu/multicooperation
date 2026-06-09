@@ -5,7 +5,7 @@
 项目根目录：
 `E:\Own_program\multi cooperation`
 
-当前日期口径：请以 `2026-06-06` 之后的项目文档为准。旧聊天记录、旧方案、废案和 `04_archive/` 里的内容不能覆盖最新代码与最新 specs。
+当前日期口径：请以 `2026-06-08` 之后的项目文档和代码为准。旧聊天记录、旧方案、废案和 `04_archive/` 里的内容不能覆盖最新代码与最新 specs。
 
 ---
 
@@ -30,6 +30,10 @@
 - `02_specs/04_pre_deploy/数据库文件夹手册.md` 是当前变量导出包阅读真相源。
 - `02_specs/04_pre_deploy/变量记录与服务器导出方案.md` 是变量记录设计真相源。
 - `02_specs/03_execution/实验123计划.md` 是实验 1/2/3 模式切换真相源。
+- `02_specs/05_server_deploy/README.md` 是服务器上线文档入口。
+- `02_specs/05_server_deploy/命令运行清单.md` 是当前运维命令真相源。
+- `02_specs/05_server_deploy/部署运行手册.md` 是 Docker / volume / 部署运行真相源。
+- `00_start_materials/线上部署/服务器关键知识须知.md` 是本地会议/运维速查文档；注意 `00_start_materials/` 被 git 忽略，正式可提交口径仍以 `02_specs/05_server_deploy/` 为准。
 
 如果要理解环境，也顺手读：
 
@@ -44,7 +48,7 @@
 
 当前阶段是：
 
-**长期实现 + 本地实测 + 上线前收口。**
+**长期实现 + 本地实测 + 裸 IP 已部署 + 上线前收口。**
 
 已经稳定落地的大模块包括：
 
@@ -56,6 +60,7 @@
 6. 题库与材料系统
 7. AI 上下文系统
 8. 变量记录与服务器导出系统
+9. 服务器裸 IP 部署与 Docker volume 持久化系统
 
 ---
 
@@ -84,8 +89,14 @@
 - AI 区已经支持 Markdown、流式输出、图片上传/粘贴、追问条。
 - AI 区标题栏会显示基础版 / 升级版 badge。
 - 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`。
+- 最终版公司材料库已经上线：正式公司 36 家，测试轮 1 家；正式公司每家公司总记录 12 份，其中参与者侧 11 份、研究员 1 份，单角色实际可见 6 份。
+- 最终版副线题库已经上线：active 900 条，V1.0 修订版，新字段完整。
 - admin 已支持实验 1/2/3 互斥模式卡片。
 - 变量保存模块第一期已经实现：事件、内容、AI 聊天、副线、图片附件、服务器导出 zip、自检表。
+- 线上裸 IP P0 已跑通并经过 APP_FLOW smoke：登录、配对、指导语、测试题、测试轮、正式 ready、正式段、AI、副线、变量导出均已验证过。
+- 线上服务器使用 Docker Compose：`postgres`、`server`、`web` 三个容器。
+- 线上真实持久化数据不只在项目目录里：PostgreSQL 数据在 Docker volume `multi-cooperation_postgres_data`；材料运行时副本、AI 图片附件、变量导出包在 Docker volume `multi-cooperation_server_storage`，容器内路径 `/app/storage`。
+- 不要执行 `docker compose down -v`、`docker volume rm ...` 或手动删除 `/var/lib/docker/volumes/...`。
 
 ---
 
@@ -251,6 +262,50 @@ corepack pnpm --filter web build
 ```
 
 本项目默认使用 `corepack pnpm`，不要在子包里用 `npm install`。
+
+---
+
+## 7.1 服务器与上线环境
+
+当前服务器：
+
+- IP：`49.233.203.108`
+- SSH 用户：`ubuntu`
+- 服务器项目目录：`/opt/multi-cooperation`
+- web：`http://49.233.203.108:3000`
+- server health：`http://49.233.203.108:3001/health`
+- admin：`http://49.233.203.108:3000/admin`
+
+SSH 私钥位置：
+
+`E:\Own_program\multi_cooperation_secrets\ssh\first_try.pem`
+
+注意：
+
+- SSH 私钥不进仓库、不进 Markdown、不放 `02_specs/`。
+- 真实线上环境变量在服务器 `/opt/multi-cooperation/.env.production`，不进 git。
+- 生产环境变量模板是本地 `.env.production.example`。
+
+当前推荐部署路线：
+
+1. 本地改代码。
+2. 本地验证：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
+3. 本地 commit 并 push GitHub。
+4. 服务器运行：
+
+```bash
+cd /opt/multi-cooperation
+sudo bash scripts/deploy/sync-from-github.sh
+sudo bash scripts/deploy/deploy-prod.sh
+docker compose --env-file .env.production -f compose.production.yml ps
+curl http://127.0.0.1:3001/health
+```
+
+已知注意点：
+
+- 当前服务器执行 `sync-from-github.sh` 可能因 GitHub 私有仓库凭据报 `could not read Username for 'https://github.com'`；如遇到，需要配置 deploy key / token，或临时走小补丁 SSH 上传。
+- 大材料包 SSH 直传曾不稳定；材料文件较大时可考虑云控制台文件管理上传。
+- Clash 规则中 Codex 可走代理，但 SSH 22 端口建议直连中国服务器。
 
 ---
 
