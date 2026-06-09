@@ -306,6 +306,7 @@ curl http://127.0.0.1:3001/health
 - 当前服务器执行 `sync-from-github.sh` 可能因 GitHub 私有仓库凭据报 `could not read Username for 'https://github.com'`；如遇到，需要配置 deploy key / token，或临时走小补丁 SSH 上传。
 - 大材料包 SSH 直传曾不稳定；材料文件较大时可考虑云控制台文件管理上传。
 - Clash / 代理规则建议：Codex.exe 可以走美国代理；SSH 连接中国服务器时，`DST-PORT 22` 应走 `DIRECT`；中国 IP 可走 `GEOIP CN DIRECT`。此前美国代理转发 SSH 到中国服务器会导致上传/解压/登录明显变慢或不稳定，规则分流后 SSH 延迟恢复正常。
+- 如果 PowerShell 当前会话设置过 `$env:HTTP_PROXY` / `$env:HTTPS_PROXY`，跑 SSH / scp / rsync 前建议临时清空代理环境变量，例如：`$env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; ssh -i "E:\Own_program\multi_cooperation_secrets\ssh\first_try.pem" ubuntu@49.233.203.108`。如需恢复代理，再重新设置为 `http://127.0.0.1:7897`。
 
 ---
 
