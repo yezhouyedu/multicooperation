@@ -173,6 +173,14 @@ export class AdminController {
     return this.adminService.clearSessions();
   }
 
+  @Post('sessions/delete-batch')
+  deleteSessions(@Body() body: { codes?: string[]; ids?: string[] }) {
+    return this.adminService.deleteSessions({
+      codes: body.codes ?? [],
+      ids: body.ids ?? [],
+    });
+  }
+
   @Get('sessions')
   getSessions() {
     return this.adminService.getSessions();
@@ -220,6 +228,8 @@ export class AdminController {
     advancedModel?: string;
     advancedApiKey?: string;
     advancedContextLimit?: number;
+    basicDisplayName?: string;
+    advancedDisplayName?: string;
     systemPromptMain?: string;
     systemPromptSide?: string;
   }) {

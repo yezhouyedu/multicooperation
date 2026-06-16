@@ -8,7 +8,7 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
-import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
+import { useSessionRuntime, useTaskDraft, type CompanyData, type MaterialItem } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -45,12 +45,12 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
 
   return {
     metrics: {
-      latestRevenue: metrics.latestRevenue ?? '',
-      latestGrossMargin: metrics.latestGrossMargin ?? '',
-      latestNetProfit: metrics.latestNetProfit ?? '',
-      latestTotalAssets: metrics.latestTotalAssets ?? '',
-      latestTotalLiabilities: metrics.latestTotalLiabilities ?? '',
-      latestOperatingCashflow: metrics.latestOperatingCashflow ?? '',
+      totalAssetsOrYear: metrics.totalAssetsOrYear ?? metrics.latestTotalAssets ?? '',
+      revenueOrSampleCount: metrics.revenueOrSampleCount ?? metrics.latestRevenue ?? '',
+      subsidiaryOrPolicyCount: metrics.subsidiaryOrPolicyCount ?? '',
+      foundingYearOrApplicationCount: metrics.foundingYearOrApplicationCount ?? '',
+      employeesOrCoverageCount: metrics.employeesOrCoverageCount ?? '',
+      shareCapitalOrPeerSampleCount: metrics.shareCapitalOrPeerSampleCount ?? '',
     },
     materialClues,
     noteTypes: Array.isArray(data.noteTypes) ? data.noteTypes.map(String) : [],
@@ -59,12 +59,12 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
 }
 
 const metricLabels: { key: keyof NormalizedADraft['metrics']; label: string }[] = [
-  { key: 'latestRevenue', label: '营业收入' },
-  { key: 'latestGrossMargin', label: '毛利率' },
-  { key: 'latestNetProfit', label: '净利润' },
-  { key: 'latestTotalAssets', label: '总资产' },
-  { key: 'latestTotalLiabilities', label: '总负债' },
-  { key: 'latestOperatingCashflow', label: '经营现金流' },
+  { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
+  { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
+  { key: 'subsidiaryOrPolicyCount', label: '子公司数量 / 政策文件数量' },
+  { key: 'foundingYearOrApplicationCount', label: '成立年份 / 下游应用类别数量' },
+  { key: 'employeesOrCoverageCount', label: '员工人数 / 覆盖区域数量' },
+  { key: 'shareCapitalOrPeerSampleCount', label: '总股本数 / 可比公司样本数量' },
 ];
 
 export default function WorkspaceBPage() {
@@ -79,7 +79,7 @@ export default function WorkspaceBPage() {
     'main',
   );
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'main');
-  const [activeSidebarKey, setActiveSidebarKey] = useState('overview');
+  const [activeSidebarKey, setActiveSidebarKey] = useState<string | undefined>(undefined);
 
   const redirectPath =
     !loading && !bootstrap
@@ -107,8 +107,12 @@ export default function WorkspaceBPage() {
   }, [redirectPath, router]);
 
   useEffect(() => {
-    setActiveSidebarKey('overview');
-  }, [currentTaskId]);
+    const firstMaterialId = runtime?.currentTask?.company?.materials?.find((item) => {
+      const role = item.metadata?.participantRole;
+      return role === undefined || role === null || role === 'shared' || role === 'B';
+    })?.id;
+    setActiveSidebarKey(firstMaterialId);
+  }, [currentTaskId, runtime?.currentTask?.company?.materials]);
 
   async function openDiligenceInfo() {
     if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
@@ -117,6 +121,14 @@ export default function WorkspaceBPage() {
     });
     setActiveSidebarKey('diligence-info');
     await refreshDiligenceDraft();
+    await refresh();
+  }
+
+  async function openAMaterials() {
+    if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
+    await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/view-a-materials`, {
+      method: 'POST',
+    });
     await refresh();
   }
 
@@ -156,18 +168,37 @@ export default function WorkspaceBPage() {
     }).catch(() => {});
   }, [bootstrap, runtime]);
 
-  if (redirectPath) return null;
-
+  const sharedAndBMaterials = useMemo(
+    () =>
+      (company?.materials ?? []).filter((item) => {
+        const role = item.metadata?.participantRole;
+        return role === undefined || role === null || role === 'shared' || role === 'B';
+      }),
+    [company?.materials],
+  );
+  const aMaterials = useMemo(
+    () => (company?.materials ?? []).filter((item) => item.metadata?.participantRole === 'A'),
+    [company?.materials],
+  );
+  const companyForBMaterials = useMemo<CompanyData | null>(
+    () => (company ? { ...company, materials: sharedAndBMaterials } : null),
+    [company, sharedAndBMaterials],
+  );
+  const lockedAMaterialIds = useMemo(
+    () => (!runtime?.bHasViewedAMaterials ? aMaterials.map((item) => item.id) : []),
+    [aMaterials, runtime?.bHasViewedAMaterials],
+  );
+  const isPractice = runtime?.phase === 'practice';
   const aiBadge = runtime ? (
     <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-      {runtime.aiLevel === 'ADVANCED' ? '升级版' : '基础版'}
+      {runtime.aiLevel === 'ADVANCED' ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro' : runtime.aiDisplayNames?.basic ?? 'aiseek'}
     </span>
   ) : null;
   const aAiLevelLabel =
     runtime?.currentTask?.aAiLevelAtWindow === 'ADVANCED'
-      ? '升级版'
+      ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro'
       : runtime?.currentTask?.aAiLevelAtWindow === 'BASIC'
-        ? '基础版'
+        ? runtime.aiDisplayNames?.basic ?? 'aiseek'
         : '未记录';
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
@@ -180,7 +211,7 @@ export default function WorkspaceBPage() {
       <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息已送达</div>
       <div className="mb-5 max-w-md leading-7">你现在可以查看尽调员提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
       <div className="mb-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-[#1e80ff]">
-        尽调员处理这家公司时使用的 AI：{aAiLevelLabel}
+        上游使用的AI为 {aAiLevelLabel}
       </div>
       <button
         type="button"
@@ -193,7 +224,7 @@ export default function WorkspaceBPage() {
   ) : (
     <div className="space-y-4 text-xs leading-6 text-[#4e5969]">
       <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 font-medium text-[#1e80ff]">
-        尽调员处理这家公司时使用的 AI：{aAiLevelLabel}
+        上游使用的AI为 {aAiLevelLabel}
       </div>
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
         <div className="mb-2 font-medium text-[#1d2129]">基础数值摘录</div>
@@ -244,13 +275,15 @@ export default function WorkspaceBPage() {
     </div>
   );
 
+  if (redirectPath) return null;
+
   return (
     <main className="fixed inset-0 overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <SessionTopbar
           roleLabel="投资经理"
           currentLabel={company?.name ?? '当前项目'}
-          stageLabel="当前阶段剩余时间"
+          stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
         />
         {bootstrap && runtime ? (
@@ -277,7 +310,15 @@ export default function WorkspaceBPage() {
               sidebar={
                 <CompanyMaterialPanel
                   ref={materialPanelRef}
-                  company={company}
+                  company={companyForBMaterials ?? company}
+                  appendMaterials={aMaterials as MaterialItem[]}
+                  lockedMaterialIds={lockedAMaterialIds}
+                  lockedMaterialMessage={
+                    runtime.aInfoUnlocked
+                      ? '点击任意一个 A 原始材料的解锁按钮后，本公司的全部 A 原始材料都会解锁并记录首次查看时间。'
+                      : 'A 提交并到达 5 分钟窗口后，A 原始材料才可解锁。'
+                  }
+                  onUnlockMaterialGroup={() => void openAMaterials()}
                   activeItemKey={activeSidebarKey}
                   onActiveItemChange={setActiveSidebarKey}
                   prependItems={[
@@ -344,6 +385,7 @@ export default function WorkspaceBPage() {
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
+                      disabledReason={runtime.phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
                       onScreenshot={() => materialPanelRef.current?.startCapture()}
                     />
                   </ScopedZoomSurface>
@@ -352,7 +394,7 @@ export default function WorkspaceBPage() {
                 )
               }
               taskTitle="投资判断表"
-              aiTitle="主线 AI"
+              aiTitle="AI助手"
               aiBadge={aiBadge}
             />
           )}

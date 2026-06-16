@@ -15,6 +15,7 @@ export default function ReadyClientPage() {
   const searchParams = useSearchParams();
   const { bootstrap, runtime, loading } = useSessionRuntime();
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const target = searchParams.get('target') === 'formal' ? 'formal' : 'practice';
 
   useEffect(() => {
@@ -61,13 +62,20 @@ export default function ReadyClientPage() {
   async function handleReady() {
     if (!bootstrap) return;
     setSubmitting(true);
+    setError('');
     try {
       const endpoint = target === 'practice' ? 'ready-practice' : 'ready-formal';
-      await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/${endpoint}`, {
+      const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ participantId: bootstrap.participantId }),
       });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+        throw new Error(payload?.message ?? payload?.error ?? `请求失败：${response.status}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '提交准备状态失败');
     } finally {
       setSubmitting(false);
     }
@@ -112,6 +120,11 @@ export default function ReadyClientPage() {
           </div>
 
           <div className="mt-6">
+            {error ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-left text-xs leading-5 text-red-600">
+                {error}
+              </div>
+            ) : null}
             {selfReady ? (
               <div className="text-sm text-[#86909c]">你已完成准备。页面会自动刷新，并在双方都就绪后自动跳转。</div>
             ) : (

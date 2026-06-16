@@ -722,8 +722,15 @@ export class AdminService {
   async clearSessions() {
     await this.prisma.taskProgress.deleteMany({});
     await this.prisma.taskSnapshot.deleteMany({});
-    await this.prisma.taskAssignment.deleteMany({});
     await this.prisma.questionnaireResponse.deleteMany({});
+    await this.prisma.sideTaskExposureLog.deleteMany({});
+    await this.prisma.sideTaskPlan.deleteMany({});
+    await this.prisma.sideTaskSessionConfig.deleteMany({});
+    await this.prisma.aiMessageLog.deleteMany({});
+    await this.prisma.experimentEvent.deleteMany({});
+    await this.prisma.randomizationAudit.deleteMany({});
+    await this.prisma.sessionSegmentState.deleteMany({});
+    await this.prisma.taskAssignment.deleteMany({});
     await this.prisma.pairing.deleteMany({});
     await this.prisma.session.deleteMany({});
     await this.prisma.participant.updateMany({ data: { role: null } });
@@ -731,6 +738,55 @@ export class AdminService {
       ok: true,
       message: '已清空全部实验运行数据，并重置参与者临时角色字段',
     };
+  }
+
+  async deleteSessions(input: { codes?: string[]; ids?: string[] }) {
+    const codes = (input.codes ?? []).map((code) => code.trim().toUpperCase()).filter(Boolean);
+    const ids = (input.ids ?? []).map((id) => id.trim()).filter(Boolean);
+    if (codes.length === 0 && ids.length === 0) {
+      return { ok: true, deleted: 0 };
+    }
+
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        OR: [
+          codes.length ? { code: { in: codes } } : undefined,
+          ids.length ? { id: { in: ids } } : undefined,
+        ].filter(Boolean) as Prisma.SessionWhereInput[],
+      },
+      include: { pairings: true },
+    });
+    const sessionIds = sessions.map((session) => session.id);
+    const participantIds = Array.from(new Set(
+      sessions.flatMap((session) =>
+        session.pairings.flatMap((pairing) => [pairing.participantAId, pairing.participantBId]).filter(Boolean),
+      ),
+    )) as string[];
+
+    if (sessionIds.length === 0) {
+      return { ok: true, deleted: 0 };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.taskProgress.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.taskSnapshot.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.questionnaireResponse.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.sideTaskExposureLog.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.sideTaskPlan.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.sideTaskSessionConfig.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.aiMessageLog.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.experimentEvent.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.randomizationAudit.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.sessionSegmentState.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.taskAssignment.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.pairing.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.session.deleteMany({ where: { id: { in: sessionIds } } });
+      if (participantIds.length > 0) {
+        await tx.participant.updateMany({ where: { id: { in: participantIds } }, data: { role: null } });
+      }
+    });
+
+    return { ok: true, deleted: sessionIds.length, releasedParticipantIds: participantIds };
   }
 
   async getSessions() {
@@ -1052,6 +1108,8 @@ export class AdminService {
         advancedModel: settings.advancedModel,
         advancedApiKey: settings.advancedApiKey ? '••••' + settings.advancedApiKey.slice(-4) : '',
         advancedContextLimit: settings.advancedContextLimit,
+        basicDisplayName: settings.basicDisplayName || 'aiseek',
+        advancedDisplayName: settings.advancedDisplayName || 'aiseek pro',
         systemPromptMain: settings.systemPromptMain || '',
         systemPromptSide: settings.systemPromptSide || '',
       },
@@ -1067,6 +1125,8 @@ export class AdminService {
     advancedModel?: string;
     advancedApiKey?: string;
     advancedContextLimit?: number;
+    basicDisplayName?: string;
+    advancedDisplayName?: string;
     systemPromptMain?: string;
     systemPromptSide?: string;
   }) {
@@ -1078,6 +1138,8 @@ export class AdminService {
     if (input.advancedBaseUrl !== undefined) data.advancedBaseUrl = input.advancedBaseUrl;
     if (input.advancedModel !== undefined) data.advancedModel = input.advancedModel;
     if (input.advancedContextLimit !== undefined) data.advancedContextLimit = Math.max(1, Number(input.advancedContextLimit) || 20);
+    if (input.basicDisplayName !== undefined) data.basicDisplayName = input.basicDisplayName.trim() || 'aiseek';
+    if (input.advancedDisplayName !== undefined) data.advancedDisplayName = input.advancedDisplayName.trim() || 'aiseek pro';
 
     // API Key: only update if provided and not the masked placeholder
     if (input.basicApiKey !== undefined && !input.basicApiKey.startsWith('••••')) {

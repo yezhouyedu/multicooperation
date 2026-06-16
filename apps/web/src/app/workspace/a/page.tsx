@@ -78,11 +78,16 @@ export default function WorkspaceAPage() {
   if (redirectPath) return null;
 
   const company = runtime?.currentTask?.company;
+  const aiDisplayName =
+    runtime?.aiLevel === 'ADVANCED'
+      ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro'
+      : runtime?.aiDisplayNames?.basic ?? 'aiseek';
   const aiBadge = runtime ? (
     <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-      {runtime.aiLevel === 'ADVANCED' ? '升级版' : '基础版'}
+      {aiDisplayName}
     </span>
   ) : null;
+  const isPractice = runtime?.phase === 'practice';
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
@@ -90,9 +95,9 @@ export default function WorkspaceAPage() {
         <SessionTopbar
           roleLabel="尽调员"
           currentLabel={company?.name ?? '当前项目'}
-          stageLabel="当前阶段剩余时间"
+          stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
-          taskCountdownLabel={taskCountdownLabel}
+          taskCountdownLabel={isPractice ? undefined : taskCountdownLabel}
         />
         {bootstrap && runtime ? (
           <SideTaskStrip
@@ -159,6 +164,7 @@ export default function WorkspaceAPage() {
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
+                      disabledReason={runtime.phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
                       onScreenshot={() => materialPanelRef.current?.startCapture()}
                     />
                   </ScopedZoomSurface>
@@ -167,7 +173,7 @@ export default function WorkspaceAPage() {
                 )
               }
               taskTitle="尽调表"
-              aiTitle="主线 AI"
+              aiTitle="AI助手"
               aiBadge={aiBadge}
             />
           )}

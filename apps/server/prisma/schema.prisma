@@ -153,6 +153,7 @@ model TaskAssignment {
   aSubmittedAt     DateTime?
   aUnlockedForBAt  DateTime?
   bViewedAInfoAt   DateTime?
+  bViewedAMaterialsAt DateTime?
   bCanSubmitAt     DateTime?
   bCompletedAt     DateTime?
   bSequenceIndex   Int?
@@ -182,7 +183,7 @@ model ExperimentConfig {
   activeExperimentMode         String                @default("manual")
   experimentModeSettings       Json?
   instructionBlocks            Json?
-  practiceDurationMinutes      Int                   @default(10)
+  practiceDurationMinutes      Int                   @default(5)
   workDurationMinutes          Int                   @default(20)
   breakDurationMinutes         Int                   @default(5)
   segmentOneAiLevel            AiLevel               @default(BASIC)
@@ -284,6 +285,8 @@ model AiSettings {
   advancedModel       String   @default("deepseek-chat")
   advancedApiKey      String   @default("")
   advancedContextLimit Int     @default(20)
+  basicDisplayName   String   @default("aiseek")
+  advancedDisplayName String  @default("aiseek pro")
   systemPromptMain    String   @default("")
   systemPromptSide    String   @default("")
   createdAt           DateTime @default(now())

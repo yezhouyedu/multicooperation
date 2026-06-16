@@ -610,6 +610,32 @@ function MaterialContent({ material }: { material: MaterialItem }) {
   return <SpreadsheetMaterialViewer material={material} />;
 }
 
+function LockedMaterialContent({
+  title,
+  message,
+  onUnlock,
+}: {
+  title: string;
+  message?: string;
+  onUnlock?: () => void;
+}) {
+  return (
+    <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
+      <div className="mb-2 text-base font-bold text-[#1d2129]">{title}</div>
+      <div className="mb-5 max-w-md leading-7">{message ?? '该材料尚未解锁。'}</div>
+      {onUnlock ? (
+        <button
+          type="button"
+          onClick={onUnlock}
+          className="rounded-lg bg-[#1e80ff] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-600"
+        >
+          解锁并查看
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function OverviewCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[#e5e6eb] bg-white p-4">
@@ -674,11 +700,24 @@ export const CompanyMaterialPanel = forwardRef<
   {
     company: CompanyData;
     prependItems?: PrependItem[];
+    appendMaterials?: MaterialItem[];
     activeItemKey?: string;
     onActiveItemChange?: (key: string) => void;
+    lockedMaterialIds?: string[];
+    lockedMaterialMessage?: string;
+    onUnlockMaterialGroup?: () => void;
   }
 >(
-  function CompanyMaterialPanel({ company, prependItems = [], activeItemKey, onActiveItemChange }, ref) {
+  function CompanyMaterialPanel({
+    company,
+    prependItems = [],
+    appendMaterials = [],
+    activeItemKey,
+    onActiveItemChange,
+    lockedMaterialIds = [],
+    lockedMaterialMessage,
+    onUnlockMaterialGroup,
+  }, ref) {
     const captureRootRef = useRef<HTMLDivElement>(null);
     const captureSessionRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
     const [captureMode, setCaptureMode] = useState(false);
@@ -841,19 +880,35 @@ export const CompanyMaterialPanel = forwardRef<
 
     const items = useMemo(
       () => [
-        {
-          key: 'overview',
-          label: '公司概览',
-          content: <CompanyOverview company={company} />,
-        },
-        ...prependItems,
         ...(company.materials ?? []).map((material) => ({
           key: material.id,
           label: material.displayName,
-          content: <MaterialContent material={material} />,
+          content: lockedMaterialIds.includes(material.id) ? (
+            <LockedMaterialContent
+              title="材料尚未解锁"
+              message={lockedMaterialMessage}
+              onUnlock={onUnlockMaterialGroup}
+            />
+          ) : (
+            <MaterialContent material={material} />
+          ),
+        })),
+        ...prependItems,
+        ...appendMaterials.map((material) => ({
+          key: material.id,
+          label: material.displayName,
+          content: lockedMaterialIds.includes(material.id) ? (
+            <LockedMaterialContent
+              title="材料尚未解锁"
+              message={lockedMaterialMessage}
+              onUnlock={onUnlockMaterialGroup}
+            />
+          ) : (
+            <MaterialContent material={material} />
+          ),
         })),
       ],
-      [company, prependItems],
+      [appendMaterials, company, lockedMaterialIds, lockedMaterialMessage, onUnlockMaterialGroup, prependItems],
     );
 
     return (

@@ -1669,3 +1669,52 @@
 - 记录 progress.md（本轮）
 - Git 提交
 - 线上服务器部署验证
+
+### 2026-06-16 本地修复：测试轮计时、AI 显示配置、B 解锁 A 原始材料、Admin Session 管理
+
+**背景**：与师兄测试后发现测试轮计时、AI 显示、B 材料解锁、异常 session 处理、A 端尽调表 v3 和变量导出字段需要在上线前收口。本轮按用户要求只做本地修复、本地运行验证、Git 记录和 GitHub 推送；线上服务器部署另开一轮处理，避免 SSH / 代理 / 远程转义继续拖慢主线。
+
+**后端改动**：
+- 新增 Prisma migration `20260616090000_ai_display_names_and_b_material_unlock`：
+  - 为 `AiSettings` 补齐 `systemPromptMain` / `systemPromptSide` 正式 migration。
+  - 新增 `basicDisplayName` / `advancedDisplayName`，默认 `aiseek` / `aiseek pro`。
+  - 新增 `TaskAssignment.bViewedAMaterialsAt`。
+  - 将默认测试轮时长从 10 分钟调整为 5 分钟。
+- 测试轮改为“测试题通过 -> 进入教学态 workspace 但不启动倒计时 -> 双方教学完成后启动正式 5 分钟测试轮”。
+- 测试轮到时自动提交 A、自动完成 B，结束后进入 `FORMAL_READY`，不再直接进入正式工作段。
+- 修复 `aRemainingSeconds || 300` 导致 0 秒恢复成 300 秒的问题；跨工作段结束时先处理已到点的 A 自动提交 / 解锁，再冻结和推进。
+- B 新增 `POST /experiment/session/:code/tasks/:taskId/view-a-materials`，独立记录 `b_viewed_a_materials`。
+- B runtime 返回 A 侧材料，但由前端按锁定态展示；B 查看 A 尽调表和解锁 A 原始材料互相独立。
+- Admin 新增 `POST /admin/sessions/delete-batch`，可删除指定 session 并释放相关 participant 临时 role，不删除被试名单。
+- 全量清空实验数据补齐 AI、副线、审计、随机化等运行表清理。
+- 登录重连口径调整：已存在的 WAITING / MATCHED / IN_PROGRESS / COMPLETED session 都会重连旧 session，防止同一被试重复生成多个 session。
+
+**前端改动**：
+- 测试轮 A/B 顶栏统一显示“测试轮剩余时间”；测试轮 AI 主线 / 副线输入、图片、发送、重试、追问禁用，并提示 `AI 功能将在正式任务开始后启用。`
+- AI 面板标题统一为 `AI助手`；badge 使用 admin 配置的显示名，不再显示“基础版 / 升级版”。
+- B 端“上游使用的 AI”话术使用配置显示名。
+- 材料区删除旧 `公司概览` tab。
+- B 材料区顺序调整为 shared + B 自有材料、A 尽调表、A 自有材料；A 自有材料未解锁时显示锁定态，点击任意一个解锁入口后解锁全部 A 自有材料并记录变量。
+- A 端尽调表切到 v3：公司信息只保留公司简称；A.1 改为 6 行复合指标自由摘录；去掉来源材料编号列；旧 v2 草稿读取保留兼容。
+- Admin Session 概览增加勾选、全选、选中导出、选中删除、单个删除；`清空实验数据` 必须输入 `我确认删除数据`。
+- `ready-formal` / ready 操作失败时前端显示后端错误原因。
+- B 反馈页新增跨休息恢复标记；如果 B 段末在反馈页且该公司未完成，休息结束后回到反馈页，不跳过反馈。
+
+**变量记录与导出**：
+- `company_metadata.json.timing` 新增 `bViewedAMaterialsAt`。
+- `variables.json.mainline` 新增 `viewedAMaterialsCount`。
+- `events/events.jsonl` 导出 `b_viewed_a_materials`。
+- `answer_content.json` 支持 A 表 v3 字段，同时继续保留 `rawDraft`。
+- 更新 `02_specs/04_pre_deploy/数据库文件夹手册.md`，并新增 `02_specs/04_pre_deploy/数据库文件夹手册_20260616_本地修复说明.md`。
+
+**本地验证**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- 本地启动脚本在 sandbox 内会因 `Get-CimInstance` / Corepack 缓存权限失败；提升执行 `powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1` 后启动成功。
+- `http://localhost:3001/health` 返回 200。
+- `http://localhost:3000/admin` 返回 200。
+
+**未做 / 后续**：
+- 本轮未做线上服务器部署与线上 smoke；按用户要求另开一轮处理。
+- 本轮没有跑完整双被试浏览器流程 smoke；已完成构建和基础本地运行连通性验证。

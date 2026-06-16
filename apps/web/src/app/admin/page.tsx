@@ -139,6 +139,7 @@ async function fetchJsonWithRetry<T>(url: string, init?: RequestInit, attempts =
 function SessionsTab() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selectedCode, setSelectedCode] = useState('');
+  const [checkedCodes, setCheckedCodes] = useState<string[]>([]);
   const [progresses, setProgresses] = useState<{ id: string; stage: string; participant: { role: string | null } }[]>([]);
   const [status, setStatus] = useState('');
 
@@ -172,13 +173,17 @@ function SessionsTab() {
     }
   }
 
-  async function exportData() {
-    setStatus('正在生成服务器导出包...');
+  async function exportData(sessionCodes: string[] = []) {
+    if (arguments.length > 0 && sessionCodes.length === 0) {
+      setStatus('请先勾选要导出的 Session');
+      return;
+    }
+    setStatus(sessionCodes.length > 0 ? '正在生成选中 Session 导出包...' : '正在生成服务器导出包...');
     try {
       const response = await fetch(`${serverBaseUrl}/admin/export-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ includeIncompleteSessions: true }),
+        body: JSON.stringify({ includeIncompleteSessions: true, sessionCodes }),
       });
       if (!response.ok) throw new Error('export job failed');
       const data = await response.json() as { job?: { id: string; status: string } };
@@ -211,12 +216,17 @@ function SessionsTab() {
   }
 
   async function clearSessions() {
-    if (!window.confirm('确认清空全部实验数据吗？此操作不会删除准入手机号。')) return;
+    const confirmation = window.prompt('删除实验数据是高危行为，请在下方输入：“我确认删除数据”才可以进行删除。');
+    if (confirmation !== '我确认删除数据') {
+      setStatus('已取消：确认文本不匹配');
+      return;
+    }
     setStatus('清空中...');
     try {
       const response = await fetch(`${serverBaseUrl}/admin/clear-sessions`, { method: 'POST' });
       if (!response.ok) throw new Error('clear failed');
       setSelectedCode('');
+      setCheckedCodes([]);
       setProgresses([]);
       await loadSessions();
       setStatus('已清空');
@@ -225,11 +235,39 @@ function SessionsTab() {
     }
   }
 
+  async function deleteSessionCodes(codes: string[]) {
+    const normalized = Array.from(new Set(codes.map((code) => code.trim().toUpperCase()).filter(Boolean)));
+    if (normalized.length === 0) {
+      setStatus('请先勾选要删除的 Session');
+      return;
+    }
+    if (!window.confirm(`确认删除 ${normalized.length} 个选中 Session 吗？被试名单不会删除。`)) return;
+    setStatus('正在删除选中 Session...');
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/sessions/delete-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes: normalized }),
+      });
+      if (!response.ok) throw new Error('delete failed');
+      setCheckedCodes((prev) => prev.filter((code) => !normalized.includes(code)));
+      if (selectedCode && normalized.includes(selectedCode)) {
+        setSelectedCode('');
+        setProgresses([]);
+      }
+      await loadSessions();
+      setStatus('已删除选中 Session');
+    } catch {
+      setStatus('删除失败');
+    }
+  }
+
   useEffect(() => {
     void loadSessions();
   }, []);
 
   const selected = sessions.find((item) => item.code === selectedCode);
+  const allChecked = sessions.length > 0 && checkedCodes.length === sessions.length;
 
   return (
     <div className="space-y-5">
@@ -240,33 +278,66 @@ function SessionsTab() {
             {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}
             <button type="button" onClick={() => void loadSessions()} className="text-xs text-[#1e80ff] hover:underline">刷新</button>
             <button type="button" onClick={() => void exportData()} className="rounded-lg border border-[#1e80ff] px-3 py-1.5 text-xs font-semibold text-[#1e80ff] hover:bg-blue-50">导出全部数据</button>
+            <button type="button" onClick={() => void exportData(checkedCodes)} className="rounded-lg border border-[#1e80ff] px-3 py-1.5 text-xs font-semibold text-[#1e80ff] hover:bg-blue-50">导出选中</button>
+            <button type="button" onClick={() => void deleteSessionCodes(checkedCodes)} className="rounded-lg border border-[#ffccc7] px-3 py-1.5 text-xs font-semibold text-[#cf1322] hover:bg-red-50">删除选中</button>
             <button type="button" onClick={() => void clearSessions()} className="rounded-lg border border-[#ffccc7] px-3 py-1.5 text-xs font-semibold text-[#cf1322] hover:bg-red-50">清空实验数据</button>
           </div>
         </div>
+        <label className="mb-2 flex items-center gap-2 text-xs text-[#4e5969]">
+          <input
+            type="checkbox"
+            checked={allChecked}
+            onChange={(event) => setCheckedCodes(event.target.checked ? sessions.map((session) => session.code) : [])}
+          />
+          全选当前 Session
+        </label>
         <div className="space-y-2">
           {sessions.map((session) => {
             const pairing = session.pairings[0];
+            const checked = checkedCodes.includes(session.code);
             return (
-              <button
+              <div
                 key={session.id}
-                type="button"
-                onClick={() => {
-                  setSelectedCode(session.code);
-                  void loadProgress(session.code);
-                }}
                 className={`w-full rounded-lg border px-4 py-3 text-left text-sm transition ${
                   selectedCode === session.code ? 'border-[#1e80ff] bg-blue-50' : 'border-[#e5e6eb] hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-mono font-bold text-[#1e80ff]">{session.code}</span>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) =>
+                      setCheckedCodes((prev) =>
+                        event.target.checked
+                          ? Array.from(new Set([...prev, session.code]))
+                          : prev.filter((code) => code !== session.code),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCode(session.code);
+                      void loadProgress(session.code);
+                    }}
+                    className="font-mono font-bold text-[#1e80ff] hover:underline"
+                  >
+                    {session.code}
+                  </button>
                   <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-[#4e5969]">{session.status}</span>
                   <span className="text-xs text-[#86909c]">
                     尽调员: {pairing?.participantA?.phone ?? '-'} / 投资经理: {pairing?.participantB?.phone ?? '-'}
                   </span>
                   <span className="ml-auto text-xs text-[#86909c]">段索引: {session.currentSegmentIndex ?? 0}</span>
+                  <button
+                    type="button"
+                    onClick={() => void deleteSessionCodes([session.code])}
+                    className="rounded border border-[#ffccc7] px-2 py-1 text-xs font-semibold text-[#cf1322] hover:bg-red-50"
+                  >
+                    删除
+                  </button>
                 </div>
-              </button>
+              </div>
             );
           })}
           {sessions.length === 0 ? <div className="text-sm text-[#86909c]">暂无 Session</div> : null}

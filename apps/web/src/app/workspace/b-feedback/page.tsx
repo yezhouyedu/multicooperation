@@ -14,6 +14,11 @@ export default function WorkspaceBFeedbackPage() {
   const currentTaskId = runtime?.currentTask?.id;
   const { draft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'feedback');
 
+  useEffect(() => {
+    if (!bootstrap || !currentTaskId || runtime?.currentTask?.bCompletedAt) return;
+    sessionStorage.setItem(`b_feedback_resume:${bootstrap.sessionCode}`, currentTaskId);
+  }, [bootstrap, currentTaskId, runtime?.currentTask?.bCompletedAt]);
+
   const redirectPath =
     !loading && !bootstrap
       ? '/login'
@@ -38,6 +43,7 @@ export default function WorkspaceBFeedbackPage() {
     await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/b-complete`, {
       method: 'POST',
     }).catch(() => {});
+    sessionStorage.removeItem(`b_feedback_resume:${bootstrap.sessionCode}`);
     router.push('/workspace/b');
   }
 

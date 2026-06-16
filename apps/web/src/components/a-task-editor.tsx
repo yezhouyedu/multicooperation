@@ -5,12 +5,12 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type MetricKey =
-  | 'latestRevenue'
-  | 'latestGrossMargin'
-  | 'latestNetProfit'
-  | 'latestTotalAssets'
-  | 'latestTotalLiabilities'
-  | 'latestOperatingCashflow';
+  | 'totalAssetsOrYear'
+  | 'revenueOrSampleCount'
+  | 'subsidiaryOrPolicyCount'
+  | 'foundingYearOrApplicationCount'
+  | 'employeesOrCoverageCount'
+  | 'shareCapitalOrPeerSampleCount';
 
 type MaterialClueRow = {
   materialName: string;
@@ -38,13 +38,13 @@ type Props = {
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 const MAX_EVIDENCE_LENGTH = 30;
 
-const metricDefinitions: { key: MetricKey; label: string; sourceMaterialNo: string }[] = [
-  { key: 'latestRevenue', label: '营业收入（最近一期）', sourceMaterialNo: '2' },
-  { key: 'latestGrossMargin', label: '毛利率（最近一期）', sourceMaterialNo: '2' },
-  { key: 'latestNetProfit', label: '净利润（最近一期）', sourceMaterialNo: '2' },
-  { key: 'latestTotalAssets', label: '总资产（最近一期）', sourceMaterialNo: '2' },
-  { key: 'latestTotalLiabilities', label: '总负债（最近一期）', sourceMaterialNo: '2' },
-  { key: 'latestOperatingCashflow', label: '经营现金流（最近一期）', sourceMaterialNo: '2' },
+const metricDefinitions: { key: MetricKey; label: string }[] = [
+  { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
+  { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
+  { key: 'subsidiaryOrPolicyCount', label: '子公司数量 / 政策文件数量' },
+  { key: 'foundingYearOrApplicationCount', label: '成立年份 / 下游应用类别数量' },
+  { key: 'employeesOrCoverageCount', label: '员工人数 / 覆盖区域数量' },
+  { key: 'shareCapitalOrPeerSampleCount', label: '总股本数 / 可比公司样本数量' },
 ];
 
 const noteTypeOptions = ['跨材料关联提示', '可信度说明', '核验建议', '模糊线索/需谨慎判断', '留空'] as const;
@@ -66,17 +66,18 @@ function buildDefaultRows(company?: CompanyData | null): MaterialClueRow[] {
 
 function normalizeData(value: unknown, company?: CompanyData | null) {
   const data = (value && typeof value === 'object' ? value : {}) as AEditorData;
+  const metrics = (data.metrics && typeof data.metrics === 'object' ? data.metrics : {}) as Record<string, string | undefined>;
   const defaultRows = buildDefaultRows(company);
   const sourceRows = Array.isArray(data.materialClues) ? data.materialClues : [];
 
   return {
     metrics: {
-      latestRevenue: data.metrics?.latestRevenue ?? '',
-      latestGrossMargin: data.metrics?.latestGrossMargin ?? '',
-      latestNetProfit: data.metrics?.latestNetProfit ?? '',
-      latestTotalAssets: data.metrics?.latestTotalAssets ?? '',
-      latestTotalLiabilities: data.metrics?.latestTotalLiabilities ?? '',
-      latestOperatingCashflow: data.metrics?.latestOperatingCashflow ?? '',
+      totalAssetsOrYear: metrics.totalAssetsOrYear ?? metrics.latestTotalAssets ?? '',
+      revenueOrSampleCount: metrics.revenueOrSampleCount ?? metrics.latestRevenue ?? '',
+      subsidiaryOrPolicyCount: metrics.subsidiaryOrPolicyCount ?? '',
+      foundingYearOrApplicationCount: metrics.foundingYearOrApplicationCount ?? '',
+      employeesOrCoverageCount: metrics.employeesOrCoverageCount ?? '',
+      shareCapitalOrPeerSampleCount: metrics.shareCapitalOrPeerSampleCount ?? '',
     } satisfies Record<MetricKey, string>,
     materialClues: defaultRows.map((row, index) => ({
       materialName: sourceRows[index]?.materialName || row.materialName,
@@ -219,10 +220,7 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
   }
 
   const profile = company?.researchProfile;
-  const companyCode = profile?.companyCode || company?.roundLabel || company?.name || '';
-  const industry = profile?.industry || company?.sector || '';
   const alias = profile?.alias || company?.name || '';
-  const summary = profile?.businessSummary || company?.summary || '';
 
   return (
     <div className="mx-auto max-w-[1080px] px-6 py-6 text-[#1d2129]">
@@ -252,20 +250,8 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                   <Th>填写内容</Th>
                 </tr>
                 <tr>
-                  <Td>公司编号</Td>
-                  <Td>{companyCode}</Td>
-                </tr>
-                <tr>
-                  <Td>行业</Td>
-                  <Td>{industry || '待补充'}</Td>
-                </tr>
-                <tr>
-                  <Td>公司简称/匿名代号</Td>
+                  <Td>公司简称</Td>
                   <Td>{alias}</Td>
-                </tr>
-                <tr>
-                  <Td>业务简介</Td>
-                  <Td>{summary || '待补充'}</Td>
                 </tr>
               </tbody>
             </DocTable>
@@ -283,7 +269,6 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                 <tr>
                   <Th className="w-[280px]">指标</Th>
                   <Th>内容</Th>
-                  <Th className="w-[140px]">来源材料编号</Th>
                 </tr>
                 {metricDefinitions.map((metric) => (
                   <tr key={metric.key}>
@@ -297,7 +282,6 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
                         className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
                       />
                     </Td>
-                    <Td>{metric.sourceMaterialNo}</Td>
                   </tr>
                 ))}
               </tbody>

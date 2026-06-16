@@ -51,6 +51,7 @@ export type RuntimeTask = {
   aSubmittedAt: string | null;
   aUnlockedForBAt: string | null;
   bViewedAInfoAt: string | null;
+  bViewedAMaterialsAt: string | null;
   bCompletedAt: string | null;
   aAiLevelAtWindow: 'BASIC' | 'ADVANCED' | null;
   bPreAAiLevel: 'BASIC' | 'ADVANCED' | null;
@@ -74,6 +75,7 @@ export type RuntimeState = {
   taskRemainingSeconds: number | null;
   aInfoUnlocked: boolean;
   bHasViewedAInfo: boolean;
+  bHasViewedAMaterials: boolean;
   bCanSubmit: boolean;
   isIdle: boolean;
   isFrozen: boolean;
@@ -95,6 +97,10 @@ export type RuntimeState = {
     activeModeText: string;
   };
   aiLevel: 'BASIC' | 'ADVANCED';
+  aiDisplayNames: {
+    basic: string;
+    advanced: string;
+  };
   aiUpgradeNotice: { type: 'break' | 'workspace'; message: string } | null;
   feedbackNotificationDurationSec: number;
   sideTaskQueue: Array<{

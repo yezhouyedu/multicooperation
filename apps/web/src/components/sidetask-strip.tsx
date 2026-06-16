@@ -452,13 +452,14 @@ export function SideTaskStrip({
                       phase={phase}
                       segmentIndex={segmentIndex}
                       aiLevel={aiLevel}
+                      disabledReason={phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
                     />
                   ) : (
                     <div className="p-4 text-sm text-[#86909c]">缺少参与者信息</div>
                   )
                 }
                 taskTitle="副线作答"
-                aiTitle="副线 AI"
+                aiTitle="AI助手"
               />
             </div>
           </div>

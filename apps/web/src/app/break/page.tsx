@@ -13,12 +13,16 @@ export default function BreakPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const feedbackResumeTaskId =
+    typeof window !== 'undefined' && bootstrap ? sessionStorage.getItem(`b_feedback_resume:${bootstrap.sessionCode}`) : null;
 
   const redirectPath = !loading && !bootstrap
     ? '/login'
     : !loading && runtime?.phase === 'formal_work'
       ? runtime?.assignedRole === 'B'
-        ? '/workspace/b'
+        ? feedbackResumeTaskId && feedbackResumeTaskId === runtime.currentTask?.id && !runtime.currentTask?.bCompletedAt
+          ? '/workspace/b-feedback'
+          : '/workspace/b'
         : '/workspace/a'
       : !loading && runtime?.phase === 'end'
         ? '/workspace/end'

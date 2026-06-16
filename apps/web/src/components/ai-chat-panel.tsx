@@ -31,6 +31,7 @@ type Props = {
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   aiLevel?: 'BASIC' | 'ADVANCED';
+  disabledReason?: string;
   onScreenshot?: () => void;
 };
 
@@ -215,6 +216,7 @@ export function AiChatPanel({
   phase = 'formal',
   segmentIndex = 0,
   aiLevel = 'BASIC',
+  disabledReason,
   onScreenshot,
 }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -231,6 +233,7 @@ export function AiChatPanel({
   const messageListRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const imageEnabled = aiLevel === 'ADVANCED';
+  const isDisabled = Boolean(disabledReason);
   const abortRef = useRef<AbortController | null>(null);
 
   const accentClass = useMemo(
@@ -293,7 +296,7 @@ export function AiChatPanel({
   }
 
   async function handleFiles(files: FileList | File[] | null) {
-    if (!imageEnabled || !files?.length) return;
+    if (isDisabled || !imageEnabled || !files?.length) return;
     const picked = Array.from(files).slice(0, 3 - attachments.length);
     const results = await Promise.all(
       picked.map(async (file) => {
@@ -346,6 +349,7 @@ export function AiChatPanel({
   }
 
   async function submitMessage(nextText?: string, nextAttachments?: string[]) {
+    if (isDisabled) return;
     const trimmed = (nextText ?? input).trim();
     const draftAttachments = nextAttachments ?? attachments;
     if (!trimmed && draftAttachments.length === 0) return;
@@ -421,6 +425,7 @@ export function AiChatPanel({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (isDisabled) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void submitMessage();
@@ -428,6 +433,7 @@ export function AiChatPanel({
   }
 
   function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (isDisabled) return;
     if (!imageEnabled) return;
     const items = event.clipboardData?.items;
     if (!items) return;
@@ -452,6 +458,7 @@ export function AiChatPanel({
   }
 
   function startFollowUp(message: Message) {
+    if (isDisabled) return;
     setFollowUpTarget({
       messageId: message.id,
       preview: buildPreview(message.text),
@@ -531,9 +538,9 @@ export function AiChatPanel({
                       visible={!isStreaming}
                       onCopy={message.text ? () => void copyMessage(message.text, message.id) : undefined}
                       onRetry={
-                        previousUser ? () => void submitMessage(previousUser.text, previousUser.attachments) : undefined
+                        previousUser && !isDisabled ? () => void submitMessage(previousUser.text, previousUser.attachments) : undefined
                       }
-                      onFollowUp={message.text ? () => startFollowUp(message) : undefined}
+                      onFollowUp={message.text && !isDisabled ? () => startFollowUp(message) : undefined}
                     />
                   ) : null}
 
@@ -560,6 +567,12 @@ export function AiChatPanel({
                 重试
               </button>
             ) : null}
+          </div>
+        ) : null}
+
+        {disabledReason ? (
+          <div className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#4e5969]">
+            {disabledReason}
           </div>
         ) : null}
 
@@ -608,8 +621,9 @@ export function AiChatPanel({
           {imageEnabled && onScreenshot ? (
             <button
               type="button"
-              onClick={onScreenshot}
-              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition hover:bg-purple-50 hover:text-purple-500"
+              onClick={isDisabled ? undefined : onScreenshot}
+              disabled={isDisabled}
+              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition hover:bg-purple-50 hover:text-purple-500 disabled:cursor-not-allowed disabled:opacity-45"
               title="点击使用截图功能"
             >
               <Camera size={18} />
@@ -624,6 +638,7 @@ export function AiChatPanel({
                 type="file"
                 accept="image/*"
                 multiple
+                disabled={isDisabled}
                 className="hidden"
                 onChange={(event) => void handleFiles(event.target.files)}
               />
@@ -643,15 +658,17 @@ export function AiChatPanel({
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={onKeyDown}
               onPaste={onPaste}
+              disabled={isDisabled}
               data-tutorial-anchor="ai-input"
               placeholder={
-                followUpTarget
+                disabledReason ??
+                (followUpTarget
                   ? '继续写你的追问，发送时不会复制整段原回答...'
                   : imageEnabled
                     ? '输入问题，或上传/粘贴图片让 AI 辅助分析...'
-                    : '输入问题，让 AI 帮你整理判断...'
+                    : '输入问题，让 AI 帮你整理判断...')
               }
-              className="no-scrollbar h-9 w-full resize-none bg-transparent p-2 text-sm leading-6 outline-none"
+              className="no-scrollbar h-9 w-full resize-none bg-transparent p-2 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-[#86909c]"
             />
           </div>
           {sending ? (
@@ -666,7 +683,7 @@ export function AiChatPanel({
           <button
             type="button"
             onClick={() => void submitMessage()}
-            disabled={sending}
+            disabled={sending || isDisabled}
             className={`flex h-10 min-w-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50 ${accentClass.button}`}
           >
             发送

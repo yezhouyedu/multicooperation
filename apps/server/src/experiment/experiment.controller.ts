@@ -133,6 +133,11 @@ export class ExperimentController {
     return this.experimentService.viewAInfo(code.toUpperCase(), taskId);
   }
 
+  @Post('session/:code/tasks/:taskId/view-a-materials')
+  viewAMaterials(@Param('code') code: string, @Param('taskId') taskId: string) {
+    return this.experimentService.viewAMaterials(code.toUpperCase(), taskId);
+  }
+
   @Post('session/:code/tasks/:taskId/a-submit')
   aSubmitTask(@Param('code') code: string, @Param('taskId') taskId: string) {
     return this.experimentService.aSubmitTask(code.toUpperCase(), taskId);

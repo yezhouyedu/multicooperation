@@ -58,6 +58,7 @@ export class AuthService {
                 SessionStatus.WAITING,
                 SessionStatus.MATCHED,
                 SessionStatus.IN_PROGRESS,
+                SessionStatus.COMPLETED,
               ],
             },
             pairings: {

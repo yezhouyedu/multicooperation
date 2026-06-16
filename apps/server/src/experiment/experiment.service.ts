@@ -293,7 +293,7 @@ export class ExperimentService {
       });
       if (currentSession?.runtimePhase !== RuntimePhase.PRACTICE_QUIZ) return;
 
-      await this.startPracticePhase(tx, session.id, synced.config, new Date());
+      await this.startPracticeTutorialPhase(tx, session.id, synced.config, new Date());
     });
 
     await this.audit.recordMany([
@@ -318,6 +318,9 @@ export class ExperimentService {
     ]);
 
     this.emitRuntimeInvalidated(sessionCode);
+    if (passed) {
+      await this.tryStartPracticeAfterGate(sessionCode);
+    }
     return { ok: true, correctCount, passCount, passed };
   }
 
@@ -330,7 +333,18 @@ export class ExperimentService {
   async completePractice(sessionCode: string) {
     const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
-    await this.startFormalWorkSegment(session.id, 1);
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: {
+        runtimePhase: RuntimePhase.FORMAL_READY,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: 1,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: null,
+        currentSegmentEnds: null,
+        practiceCompletedAt: new Date(),
+      },
+    });
     this.emitRuntimeInvalidated(sessionCode);
     return { ok: true };
   }
@@ -409,6 +423,7 @@ export class ExperimentService {
         ? await this.prisma.company.findUnique({ where: { id: 'company-p01-baseline' } })
         : null;
     const syncState = await this.getSyncState(session, assignedRole);
+    const aiSettings = await this.prisma.aiSettings.findUnique({ where: { id: 'default' } });
     const practiceQuizItems = this.normalizeQuestionnaireItems(
       config.practiceQuizTemplate?.items ?? config.activeQuestionnaireTemplate?.items,
     );
@@ -451,6 +466,7 @@ export class ExperimentService {
             aSubmittedAt: roleTask.aSubmittedAt,
             aUnlockedForBAt: roleTask.aUnlockedForBAt,
             bViewedAInfoAt: roleTask.bViewedAInfoAt,
+            bViewedAMaterialsAt: roleTask.bViewedAMaterialsAt,
             bCompletedAt: roleTask.bCompletedAt,
             aAiLevelAtWindow: roleTask.aAiLevelAtWindow,
             bPreAAiLevel: roleTask.bPreAAiLevel,
@@ -462,6 +478,7 @@ export class ExperimentService {
         assignedRole === ParticipantRole.A && roleTask ? this.getRemainingSeconds(roleTask.aDeadlineAt) : null,
       aInfoUnlocked: Boolean(roleTask?.aUnlockedForBAt),
       bHasViewedAInfo: Boolean(roleTask?.bViewedAInfoAt),
+      bHasViewedAMaterials: Boolean(roleTask?.bViewedAMaterialsAt),
       bCanSubmit: Boolean(roleTask?.aUnlockedForBAt) && !roleTask?.bCompletedAt,
       isIdle: !roleTask,
       isFrozen: Boolean(roleTask?.frozenAt),
@@ -471,6 +488,10 @@ export class ExperimentService {
       experimentSnapshot: session.experimentSnapshot,
       instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+      aiDisplayNames: {
+        basic: aiSettings?.basicDisplayName || 'aiseek',
+        advanced: aiSettings?.advancedDisplayName || 'aiseek pro',
+      },
       aiUpgradeNotice: this.buildAiUpgradeNotice(config, session),
       feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
       ...(await this.getSideTaskRuntime(session, config, participantId)),
@@ -562,6 +583,10 @@ export class ExperimentService {
       type: input.stage,
       data: eventPayload,
     });
+
+    if (input.stage === 'practice_tutorial_completed') {
+      await this.tryStartPracticeAfterGate(input.sessionCode);
+    }
 
     return {
       ok: true,
@@ -811,6 +836,35 @@ export class ExperimentService {
     return { ok: true, task: updated };
   }
 
+  async viewAMaterials(sessionCode: string, taskId: string) {
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+
+    const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
+    if (!task) throw new NotFoundException('Task not found');
+    if (!task.aUnlockedForBAt) throw new BadRequestException('A 材料尚未解锁');
+
+    const now = new Date();
+    const updated = await this.prisma.taskAssignment.update({
+      where: { id: task.id },
+      data: {
+        bViewedAMaterialsAt: task.bViewedAMaterialsAt ?? now,
+      },
+    });
+
+    if (!task.bViewedAMaterialsAt) {
+      await this.recordProgress({
+        sessionCode,
+        role: ParticipantRole.B,
+        stage: 'b_viewed_a_materials',
+        payload: { taskId },
+      });
+    }
+    this.emitRuntimeInvalidated(sessionCode);
+
+    return { ok: true, task: updated };
+  }
+
   async getQuestionnaire(sessionCode: string) {
     const synced = await this.syncRuntime(sessionCode);
     if (synced.session.runtimePhase !== RuntimePhase.FORMAL_BREAK) {
@@ -1050,6 +1104,40 @@ export class ExperimentService {
         });
       }
 
+      if (task.phase === ExperimentPhase.PRACTICE) {
+        const completedAt = new Date();
+        await tx.sessionSegmentState.updateMany({
+          where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+          data: { completedAt },
+        });
+        await tx.sideTaskPlan.updateMany({
+          where: { sessionId: session.id, segmentIndex: 0, isArchivedAtSegmentEnd: false },
+          data: { isArchivedAtSegmentEnd: true },
+        });
+        await tx.experimentEvent.create({
+          data: {
+            sessionId: session.id,
+            eventType: 'practice_completed',
+            phase: ExperimentPhase.PRACTICE,
+            segmentIndex: 0,
+            serverTime: completedAt,
+            payload: { nextPhase: 'FORMAL_READY', reason: 'b_completed_practice' } as Prisma.InputJsonValue,
+          },
+        });
+        await tx.session.update({
+          where: { id: session.id },
+          data: {
+            runtimePhase: RuntimePhase.FORMAL_READY,
+            currentPhase: ExperimentPhase.FORMAL,
+            currentSegmentIndex: 1,
+            currentSegmentType: SegmentType.WORK,
+            currentSegmentStarts: null,
+            currentSegmentEnds: null,
+            practiceCompletedAt: completedAt,
+          },
+        });
+      }
+
       const remaining = task.phase === ExperimentPhase.FORMAL
         ? await tx.taskAssignment.count({
             where: { sessionId: session.id, phase: ExperimentPhase.FORMAL, bCompletedAt: null },
@@ -1244,10 +1332,34 @@ export class ExperimentService {
 
       if (session.runtimePhase === RuntimePhase.FORMAL_WORK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
         const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
-        if (currentATask && currentATask.aStartedAt && !currentATask.aSubmittedAt) {
+        if (currentATask?.aDeadlineAt && currentATask.aDeadlineAt <= now) {
+          const snapshotAt = currentATask.aDeadlineAt;
+          await tx.taskAssignment.update({
+            where: { id: currentATask.id },
+            data: {
+              aSubmittedAt: snapshotAt,
+              aUnlockedForBAt: snapshotAt,
+              bCanSubmitAt: snapshotAt,
+              bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+              crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
+              aRemainingSeconds: 0,
+            },
+          });
+          const participantAId = session.pairings[0]?.participantAId;
+          if (participantAId) {
+            await tx.taskProgress.create({
+              data: {
+                sessionId: session.id,
+                participantId: participantAId,
+                stage: 'a_task_auto_submitted',
+                payload: { taskId: currentATask.id, sortOrder: currentATask.sortOrder, reason: 'deadline_before_segment_end' },
+              },
+            });
+          }
+        } else if (currentATask && currentATask.aStartedAt && !currentATask.aSubmittedAt) {
           const resumedAt = currentATask.resumedAt ?? currentATask.aStartedAt;
           const elapsedSeconds = Math.max(0, Math.floor((now.getTime() - resumedAt.getTime()) / 1000));
-          const remaining = Math.max(0, (currentATask.aRemainingSeconds || 300) - elapsedSeconds);
+          const remaining = Math.max(0, (currentATask.aRemainingSeconds ?? 300) - elapsedSeconds);
           await tx.taskAssignment.update({
             where: { id: currentATask.id },
             data: {
@@ -1263,6 +1375,10 @@ export class ExperimentService {
 
       if (session.runtimePhase === RuntimePhase.PRACTICE && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
         await this.advanceAfterPractice(tx, session, now);
+        return;
+      }
+
+      if (session.runtimePhase === RuntimePhase.PRACTICE && !session.currentSegmentStarts) {
         return;
       }
 
@@ -1765,6 +1881,81 @@ export class ExperimentService {
       selfReady: readyRoles.includes(assignedRole),
       waitingForPeer: readyRoles.length < 2,
     };
+  }
+
+  private async tryStartPracticeAfterGate(sessionCode: string) {
+    const config = await this.ensureConfig();
+    let started = false;
+
+    await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { code: sessionCode },
+        include: { pairings: true },
+      });
+      if (!session || session.runtimePhase !== RuntimePhase.PRACTICE || session.currentSegmentStarts) return;
+
+      const pairing = session.pairings[0];
+      if (!pairing?.participantAId || !pairing.participantBId) return;
+
+      const quizRows = await tx.questionnaireResponse.findMany({
+        where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+        orderBy: { submittedAt: 'desc' },
+        select: { participantId: true, answers: true },
+      });
+      const quizPassed = new Map<string, boolean>();
+      for (const row of quizRows) {
+        if (quizPassed.has(row.participantId)) continue;
+        quizPassed.set(row.participantId, Boolean((row.answers as Record<string, unknown> | null)?.passed));
+      }
+
+      const tutorialRows = await tx.taskProgress.findMany({
+        where: { sessionId: session.id, stage: 'practice_tutorial_completed' },
+        select: { participantId: true },
+      });
+      const tutorialDone = new Set(tutorialRows.map((row) => row.participantId));
+      const bothReady =
+        quizPassed.get(pairing.participantAId) === true &&
+        quizPassed.get(pairing.participantBId) === true &&
+        tutorialDone.has(pairing.participantAId) &&
+        tutorialDone.has(pairing.participantBId);
+      if (!bothReady) return;
+
+      await this.startPracticePhase(tx, session.id, config, new Date());
+      started = true;
+    });
+
+    if (started) this.emitRuntimeInvalidated(sessionCode);
+  }
+
+  private async startPracticeTutorialPhase(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    await tx.session.update({
+      where: { id: sessionId },
+      data: {
+        status: SessionStatus.IN_PROGRESS,
+        runtimePhase: RuntimePhase.PRACTICE,
+        currentPhase: ExperimentPhase.PRACTICE,
+        currentSegmentIndex: 0,
+        currentSegmentType: SegmentType.PRACTICE,
+        currentSegmentStarts: null,
+        currentSegmentEnds: null,
+      },
+    });
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId,
+        eventType: 'practice_tutorial_phase_started',
+        phase: ExperimentPhase.PRACTICE,
+        segmentIndex: 0,
+        payload: { timerStarted: false } as Prisma.InputJsonValue,
+      },
+    });
+    await this.ensurePracticeSideTaskPlans(tx, sessionId);
+    await this.scheduleSideTaskPlans(tx, sessionId, 0, config, now);
   }
 
   private async startPracticePhase(
@@ -2314,7 +2505,7 @@ export class ExperimentService {
     now: Date,
     aiLevel: AiLevel,
   ) {
-    const remaining = task.aRemainingSeconds || 300;
+    const remaining = task.aRemainingSeconds ?? 300;
     const deadline = new Date(
       Math.min(now.getTime() + remaining * 1000, segmentEndsAt?.getTime() ?? now.getTime() + remaining * 1000),
     );
@@ -2686,6 +2877,7 @@ export class ExperimentService {
   ) {
     const participantRole = item.metadata?.participantRole;
     if (!assignedRole) return true;
+    if (assignedRole === ParticipantRole.B && participantRole === ParticipantRole.A) return true;
     if (participantRole === undefined || participantRole === null || participantRole === 'shared') return true;
     return participantRole === assignedRole;
   }
@@ -2827,7 +3019,7 @@ export class ExperimentService {
             aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
             aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
           } as Prisma.InputJsonValue,
-          practiceDurationMinutes: 10,
+          practiceDurationMinutes: 5,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
           segmentOneAiLevel: AiLevel.BASIC,

@@ -18,10 +18,12 @@ const DEFAULT_SYSTEM_PROMPT = [
 type AiSettings = {
   basicBaseUrl: string;
   basicModel: string;
+  basicDisplayName: string;
   basicApiKey: string;
   basicContextLimit: number;
   advancedBaseUrl: string;
   advancedModel: string;
+  advancedDisplayName: string;
   advancedApiKey: string;
   advancedContextLimit: number;
   systemPromptMain: string;
@@ -32,10 +34,12 @@ export function AdminAiSettingsPanel() {
   const [settings, setSettings] = useState<AiSettings>({
     basicBaseUrl: 'https://api.deepseek.com',
     basicModel: 'deepseek-chat',
+    basicDisplayName: 'aiseek',
     basicApiKey: '',
     basicContextLimit: 20,
     advancedBaseUrl: 'https://api.deepseek.com',
     advancedModel: 'deepseek-chat',
+    advancedDisplayName: 'aiseek pro',
     advancedApiKey: '',
     advancedContextLimit: 20,
     systemPromptMain: '',
@@ -117,6 +121,15 @@ export function AdminAiSettingsPanel() {
             />
           </label>
           <label className="block">
+            <span className="mb-1 block text-xs text-[#86909c]">前台显示名</span>
+            <input
+              type="text"
+              value={settings.basicDisplayName}
+              onChange={(e) => setSettings((s) => ({ ...s, basicDisplayName: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff] focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <label className="block">
             <span className="mb-1 block text-xs text-[#86909c]">API Key</span>
             <div className="relative">
               <input
@@ -167,6 +180,15 @@ export function AdminAiSettingsPanel() {
               type="text"
               value={settings.advancedModel}
               onChange={(e) => setSettings((s) => ({ ...s, advancedModel: e.target.value }))}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff] focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs text-[#86909c]">前台显示名</span>
+            <input
+              type="text"
+              value={settings.advancedDisplayName}
+              onChange={(e) => setSettings((s) => ({ ...s, advancedDisplayName: e.target.value }))}
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff] focus:ring-2 focus:ring-blue-100"
             />
           </label>
