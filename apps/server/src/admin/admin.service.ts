@@ -106,6 +106,25 @@ export class AdminService {
     return { ok: true, participants: list };
   }
 
+  async deleteParticipant(id: string) {
+    const participant = await this.prisma.participant.findUnique({ where: { id } });
+    if (!participant) {
+      throw new NotFoundException('Participant not found');
+    }
+    await this.prisma.participant.delete({ where: { id } });
+    return { ok: true, deleted: 1 };
+  }
+
+  async deleteParticipants(ids: string[]) {
+    if (!ids || ids.length === 0) {
+      return { ok: true, deleted: 0 };
+    }
+    const result = await this.prisma.participant.deleteMany({
+      where: { id: { in: ids } },
+    });
+    return { ok: true, deleted: result.count };
+  }
+
   async getExperimentConfig() {
     const config = await this.ensureExperimentConfig();
     return {
@@ -1033,6 +1052,8 @@ export class AdminService {
         advancedModel: settings.advancedModel,
         advancedApiKey: settings.advancedApiKey ? '••••' + settings.advancedApiKey.slice(-4) : '',
         advancedContextLimit: settings.advancedContextLimit,
+        systemPromptMain: settings.systemPromptMain || '',
+        systemPromptSide: settings.systemPromptSide || '',
       },
     };
   }
@@ -1046,6 +1067,8 @@ export class AdminService {
     advancedModel?: string;
     advancedApiKey?: string;
     advancedContextLimit?: number;
+    systemPromptMain?: string;
+    systemPromptSide?: string;
   }) {
     const existing = await this.prisma.aiSettings.findUnique({ where: { id: 'default' } });
     const data: Record<string, unknown> = {};
@@ -1063,6 +1086,10 @@ export class AdminService {
     if (input.advancedApiKey !== undefined && !input.advancedApiKey.startsWith('••••')) {
       data.advancedApiKey = input.advancedApiKey;
     }
+
+    // System prompts: save as-is
+    if (input.systemPromptMain !== undefined) data.systemPromptMain = input.systemPromptMain;
+    if (input.systemPromptSide !== undefined) data.systemPromptSide = input.systemPromptSide;
 
     const settings = existing
       ? await this.prisma.aiSettings.update({ where: { id: 'default' }, data })

@@ -315,6 +315,7 @@ function ParticipantsTab() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [newPhone, setNewPhone] = useState('');
   const [status, setStatus] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   async function load() {
     setStatus('名单加载中...');
@@ -345,6 +346,83 @@ function ParticipantsTab() {
     setStatus(`已保存 ${entries.length} 条`);
     await load();
   }
+
+  async function deleteSingle(id: string, phone: string) {
+    if (!confirm(`确定要删除被试 ${phone} 吗？`)) return;
+    setStatus('删除中...');
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/participants/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('delete failed');
+      setStatus('已删除');
+      await load();
+    } catch {
+      setStatus('删除失败');
+    }
+  }
+
+  async function deleteBatch(ids: string[]) {
+    if (ids.length === 0) return;
+    if (!confirm(`确定要删除选中的 ${ids.length} 位被试吗？`)) return;
+    setStatus('批量删除中...');
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/participants/delete-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!response.ok) throw new Error('batch delete failed');
+      setStatus(`已删除 ${ids.length} 位被试`);
+      setSelectedIds(new Set());
+      await load();
+    } catch {
+      setStatus('批量删除失败');
+    }
+  }
+
+  async function deleteAll() {
+    if (participants.length === 0) return;
+    if (!confirm(`确定要删除全部 ${participants.length} 位被试吗？此操作不可恢复！`)) return;
+    if (!confirm('再次确认：真的要删除全部被试吗？')) return;
+    setStatus('全部删除中...');
+    try {
+      const allIds = participants.map((p) => p.id);
+      const response = await fetch(`${serverBaseUrl}/admin/participants/delete-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: allIds }),
+      });
+      if (!response.ok) throw new Error('delete all failed');
+      setStatus('已删除全部被试');
+      setSelectedIds(new Set());
+      await load();
+    } catch {
+      setStatus('全部删除失败');
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === participants.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(participants.map((p) => p.id)));
+    }
+  }
+
+  const allSelected = participants.length > 0 && selectedIds.size === participants.length;
 
   return (
     <div className="space-y-5">
@@ -396,14 +474,62 @@ function ParticipantsTab() {
       </div>
 
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
-        <div className="mb-3 font-bold text-[#1d2129]">当前名单</div>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="font-bold text-[#1d2129]">当前名单</div>
+          <div className="flex gap-2">
+            {selectedIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => void deleteBatch(Array.from(selectedIds))}
+                className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
+              >
+                删除选中 ({selectedIds.size})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void deleteAll()}
+              disabled={participants.length === 0}
+              className="rounded-lg border border-red-400 bg-red-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              全部删除
+            </button>
+          </div>
+        </div>
         <div className="space-y-2">
+          {participants.length > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border border-[#e5e6eb] bg-gray-50 px-4 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={() => toggleSelectAll()}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <span className="flex-1 text-xs font-medium text-[#86909c]">全选</span>
+            </div>
+          )}
           {participants.map((participant) => (
             <div key={participant.id} className="flex items-center gap-3 rounded-lg border border-[#e5e6eb] px-4 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={selectedIds.has(participant.id)}
+                onChange={() => toggleSelect(participant.id)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
               <span className="flex-1 font-medium text-[#1d2129]">{participant.phone}</span>
               <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-[#1e80ff]">准入令牌</span>
+              <button
+                type="button"
+                onClick={() => void deleteSingle(participant.id, participant.phone ?? '')}
+                className="ml-2 rounded border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
+              >
+                删除
+              </button>
             </div>
           ))}
+          {participants.length === 0 && (
+            <div className="py-4 text-center text-sm text-[#86909c]">暂无被试</div>
+          )}
         </div>
       </div>
     </div>

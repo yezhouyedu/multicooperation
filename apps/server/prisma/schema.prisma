@@ -284,6 +284,8 @@ model AiSettings {
   advancedModel       String   @default("deepseek-chat")
   advancedApiKey      String   @default("")
   advancedContextLimit Int     @default(20)
+  systemPromptMain    String   @default("")
+  systemPromptSide    String   @default("")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

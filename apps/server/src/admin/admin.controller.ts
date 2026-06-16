@@ -37,6 +37,16 @@ export class AdminController {
     return this.adminService.upsertParticipants(body.entries ?? []);
   }
 
+  @Delete('participants/:id')
+  deleteParticipant(@Param('id') id: string) {
+    return this.adminService.deleteParticipant(id);
+  }
+
+  @Post('participants/delete-batch')
+  deleteParticipants(@Body() body: { ids: string[] }) {
+    return this.adminService.deleteParticipants(body.ids ?? []);
+  }
+
   @Get('experiment-config')
   getExperimentConfig() {
     return this.adminService.getExperimentConfig();
@@ -210,6 +220,8 @@ export class AdminController {
     advancedModel?: string;
     advancedApiKey?: string;
     advancedContextLimit?: number;
+    systemPromptMain?: string;
+    systemPromptSide?: string;
   }) {
     return this.adminService.saveAiSettings(body);
   }

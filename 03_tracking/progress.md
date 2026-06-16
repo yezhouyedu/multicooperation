@@ -1614,3 +1614,58 @@
 
 **注意**：
 - `00_start_materials/` 当前被 `.gitignore` 忽略，因此 `服务器关键知识须知.md` 是本地会议/资料文档；进入 GitHub 的正式口径已同步到 `02_specs/05_server_deploy/`。
+
+### 2026-06-08 Admin 被试名单删除 + AI 参数自动加载 + 系统提示词可调节
+
+**背景**：与师兄开完会后，需要对 admin 后台进行三项改进：
+1. 被试名单 tab 只允许添加太蠢，需要加入删除功能（单个、批量、全部删除）
+2. AI 参数 tab 每次新打开网页都要点击加载，需要自动加载；同时将系统提示词做成可调节参数
+3. 截图功能在线上无法复制到剪切板（已确认是裸 IP HTTP 部署导致的浏览器安全限制，待 HTTPS 部署后自动解决，本次不改）
+
+**本轮实现**：
+
+#### 任务1：Admin 被试名单删除功能
+
+**后端改动**：
+- `apps/server/src/admin/admin.service.ts`：新增 `deleteParticipant(id)` 和 `deleteParticipants(ids)` 方法
+- `apps/server/src/admin/admin.controller.ts`：新增 `DELETE /admin/participants/:id` 和 `POST /admin/participants/delete-batch` 端点
+
+**前端改动**：
+- `apps/web/src/app/admin/page.tsx`（ParticipantsTab 组件）：
+  - 新增 `selectedIds` state 管理选中的被试 ID 列表
+  - 每行被试右侧新增红色"删除"按钮，点击弹出确认框后调用 `DELETE /admin/participants/:id`
+  - 表头新增"全选"checkbox
+  - 每行左侧新增单选 checkbox
+  - 新增"批量删除"按钮（有选中项时显示），点击弹出确认框后调用 `POST /admin/participants/delete-batch`
+  - 新增"全部删除"按钮（独立红色按钮），点击弹出二次确认框后调用 `POST /admin/participants/delete-batch` 传入全部 ID
+
+#### 任务2：AI 参数自动加载 + 系统提示词可调节
+
+**数据库改动**：
+- `apps/server/prisma/schema.prisma`：AiSettings 模型新增 `systemPromptMain` 和 `systemPromptSide` 字段（默认空字符串，代码层面 fallback 到内置默认值）
+- 执行 `prisma generate` 生成新的 Prisma Client
+
+**后端改动**：
+- `apps/server/src/admin/admin.service.ts`：
+  - `getAiSettings()` 返回值新增 `systemPromptMain` 和 `systemPromptSide`
+  - `saveAiSettings()` 支持保存这两个字段
+- `apps/server/src/ai/ai.service.ts`：
+  - `buildSystemPrompt()` 改为 `async`，从数据库读取系统提示词
+  - 如果数据库中的值为空，使用内置默认值作为 fallback
+
+**前端改动**：
+- `apps/web/src/components/admin-ai-settings-panel.tsx`：
+  - `useEffect` 自动调用 `loadSettings()`，移除手动"加载 AI 参数"按钮
+  - 新增"系统提示词"区块，分两个 textarea：主线系统提示词和副线系统提示词
+  - 每个 textarea 下方用灰色小字显示当前默认值（当值为空时）
+  - 新增"恢复默认值"按钮，清空数据库中的值以使用内置默认值
+  - 保存时一起提交到后端
+
+**构建验证**：
+- `corepack pnpm --filter server build` 通过
+- `corepack pnpm --filter web build` 通过（22 个页面全部生成）
+
+**待办**：
+- 记录 progress.md（本轮）
+- Git 提交
+- 线上服务器部署验证
