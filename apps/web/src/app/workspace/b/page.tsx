@@ -318,7 +318,7 @@ export default function WorkspaceBPage() {
                       ? '点击任意一个 A 原始材料的解锁按钮后，本公司的全部 A 原始材料都会解锁并记录首次查看时间。'
                       : 'A 提交并到达 5 分钟窗口后，A 原始材料才可解锁。'
                   }
-                  onUnlockMaterialGroup={() => void openAMaterials()}
+                  onUnlockMaterialGroup={runtime.aInfoUnlocked ? () => void openAMaterials() : undefined}
                   activeItemKey={activeSidebarKey}
                   onActiveItemChange={setActiveSidebarKey}
                   prependItems={[
