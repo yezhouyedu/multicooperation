@@ -26,12 +26,18 @@ export function MaterialTabs({
   const active = activeKey ?? internalActive;
   const current = items.find((item) => item.key === active) ?? items[0];
 
-  function activateTab(key: string) {
+  function activateTab(key: string, options?: { userInitiated?: boolean }) {
     if (activeKey === undefined) {
       setInternalActive(key);
     }
     onActiveChange?.(key);
-    window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'material_tab', key } }));
+    if (options?.userInitiated) {
+      window.dispatchEvent(
+        new CustomEvent('practice-tutorial-event', {
+          detail: { type: 'material_tab', key, userInitiated: true },
+        }),
+      );
+    }
   }
 
   function syncScrollState() {
@@ -86,7 +92,7 @@ export function MaterialTabs({
                 key={item.key}
                 type="button"
                 onClick={() => {
-                  activateTab(item.key);
+                  activateTab(item.key, { userInitiated: true });
                   item.onSelect?.();
                 }}
                 className={`h-11 flex-none whitespace-nowrap rounded-lg px-4 text-sm transition ${

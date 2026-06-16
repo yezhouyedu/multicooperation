@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
@@ -174,6 +174,24 @@ export function PracticeTutorialOverlay({
   const nextStep = steps.find((step) => !localCompleted.includes(step.key)) ?? null;
   const isOverviewPhase = showOverview && localCompleted.length === 0;
 
+  const markStepDone = useCallback(
+    async (stepKey: string) => {
+      if (localCompleted.includes(stepKey)) return;
+      setLocalCompleted((prev) => [...prev, stepKey]);
+      await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role,
+          stage: 'practice_tutorial_step_completed',
+          payload: { stepKey },
+        }),
+      }).catch(() => {});
+      window.dispatchEvent(new CustomEvent('practice-tutorial-local-complete', { detail: { stepKey } }));
+    },
+    [localCompleted, role, sessionCode],
+  );
+
   useEffect(() => {
     if (isOverviewPhase) {
       setHighlightRect(null);
@@ -201,26 +219,13 @@ export function PracticeTutorialOverlay({
   }, [isOverviewPhase, nextStep]);
 
   useEffect(() => {
-    async function markStepDone(stepKey: string) {
-      if (localCompleted.includes(stepKey)) return;
-      setLocalCompleted((prev) => [...prev, stepKey]);
-      await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          role,
-          stage: 'practice_tutorial_step_completed',
-          payload: { stepKey },
-        }),
-      }).catch(() => {});
-      window.dispatchEvent(new CustomEvent('practice-tutorial-local-complete', { detail: { stepKey } }));
-    }
-
     async function onTutorialEvent(event: Event) {
-      const detail = (event as CustomEvent<{ type?: string }>).detail;
+      const detail = (event as CustomEvent<{ type?: string; userInitiated?: boolean }>).detail;
       if (!detail?.type || detail.type === 'practice_tutorial_step_completed') return;
       const currentStep = steps.find((step) => !localCompleted.includes(step.key));
       if (!currentStep || currentStep.eventType !== detail.type) return;
+      if (currentStep.requireAction === false) return;
+      if (!detail.userInitiated) return;
       await markStepDone(currentStep.key);
     }
 
@@ -228,7 +233,7 @@ export function PracticeTutorialOverlay({
     return () => {
       window.removeEventListener('practice-tutorial-event', onTutorialEvent as EventListener);
     };
-  }, [localCompleted, role, sessionCode, steps]);
+  }, [localCompleted, markStepDone, steps]);
 
   useEffect(() => {
     if (!completionRecorded && steps.length > 0 && localCompleted.length === steps.length) {
@@ -372,11 +377,7 @@ export function PracticeTutorialOverlay({
             <div className="mt-4">
               <button
                 type="button"
-                onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent('practice-tutorial-event', { detail: { type: nextStep!.eventType } }),
-                  );
-                }}
+                onClick={() => void markStepDone(nextStep!.key)}
                 className="rounded-xl bg-[#1e80ff] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1168e3] active:scale-[0.98]"
               >
                 我了解了

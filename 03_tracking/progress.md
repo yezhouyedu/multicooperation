@@ -1758,3 +1758,19 @@
 **注意**：
 - 本轮没有执行 `docker compose down -v`、没有删除任何 Docker volume、没有清空线上实验数据。
 - 未做完整线上双被试人工流程 smoke；目前完成的是部署脚本内置 health/web 检查、外部 IP 访问检查、容器状态检查和 migration 应用检查。
+
+### 2026-06-17 修复测试轮教学自动跳步
+
+**背景**：用户反馈测试轮教学页面存在未操作也自动进入下一步的问题；按原设计，教学步骤应当要么由浮层按钮确认，要么由被试点击指定区域后解锁，不能被程序状态同步误触发。
+
+**原因定位**：
+- `MaterialTabs` 在当前 tab 不存在时会自动切回第一个 tab，之前复用了同一个 `activateTab()`，导致程序性切换也会发出 `material_tab` 教学完成事件。
+- `PracticeTutorialOverlay` 之前只按事件类型推进步骤，没有区分“用户主动操作”和“程序自动事件”；确认类步骤也通过全局事件完成，容易被同名事件误触发。
+
+**本轮修复**：
+- 教学浮层新增严格校验：需要真实操作的步骤只接受 `userInitiated: true` 的事件；确认类步骤不再响应外部全局事件，只由浮层内“我了解了”按钮完成。
+- `MaterialTabs` 只有用户点击材料 tab 时才发送 `material_tab` 教学事件；程序性 fallback 切换 tab 不再推进教学。
+- `SideTaskStrip` 的打开副线面板、点击副线答案事件补充 `userInitiated: true`，保留真实操作解锁逻辑。
+
+**验证**：
+- `corepack pnpm --filter web build` 通过。

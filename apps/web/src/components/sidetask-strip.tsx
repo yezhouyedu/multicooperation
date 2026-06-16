@@ -231,7 +231,11 @@ export function SideTaskStrip({
   async function answerSideTask(planId: string, answer: string) {
     // Optimistic update
     setOptimisticAnswers((prev) => ({ ...prev, [planId]: answer }));
-    window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'sidetask_answer', planId } }));
+    window.dispatchEvent(
+      new CustomEvent('practice-tutorial-event', {
+        detail: { type: 'sidetask_answer', planId, userInitiated: true },
+      }),
+    );
 
     // Auto-advance to next unanswered
     const currentIdx = pendingItems.findIndex((i) => i.planId === planId);
@@ -252,7 +256,9 @@ export function SideTaskStrip({
 
   function openPanel() {
     setExpanded(true);
-    window.dispatchEvent(new CustomEvent('practice-tutorial-event', { detail: { type: 'sidetask_open' } }));
+    window.dispatchEvent(
+      new CustomEvent('practice-tutorial-event', { detail: { type: 'sidetask_open', userInitiated: true } }),
+    );
     // Report opened exposure
     if (participantId) {
       // Report all currently visible items as opened
