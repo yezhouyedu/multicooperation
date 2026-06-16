@@ -1718,3 +1718,43 @@
 **未做 / 后续**：
 - 本轮未做线上服务器部署与线上 smoke；按用户要求另开一轮处理。
 - 本轮没有跑完整双被试浏览器流程 smoke；已完成构建和基础本地运行连通性验证。
+
+### 2026-06-16 线上同步：本地修复部署到裸 IP 服务器
+
+**背景**：用户要求复查 2026-06-16 本地修复覆盖范围，并将前面全部任务同步到服务器实现。上一条记录中线上部署明确列为未做，本轮补齐服务器部署和线上基础 smoke。
+
+**复查结论**：
+- 原任务列表中的测试轮计时、测试轮 AI 禁用、AI 显示名配置、AI 标题统一、删除公司概览、清空实验数据强确认、A 表 v3、ready-formal 错误展示、重复 session 稳健性、Session 勾选删除/导出、B 反馈跨段恢复、跨工作段 A 解锁 bug、B 解锁 A 原始材料、变量记录与导出字段均已在上一轮代码中实现。
+- 本轮复查发现一个小 UX 问题：B 端 A 原始材料尚未到解锁条件时也显示“解锁并查看”按钮。已修复为：未到条件只显示锁定说明，A 信息解锁后才显示解锁按钮。
+
+**本地补充验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- 本地 Git 新增提交 `b2c2b56 修正B端A材料未解锁提示`，并已 push 到 GitHub `main`。
+
+**线上部署**：
+- 服务器：`ubuntu@49.233.203.108`
+- 目录：`/opt/multi-cooperation`
+- 部署方式：GitHub 同步 + 生产 Docker 重新构建。
+- 已执行：
+  - `sudo bash scripts/deploy/sync-from-github.sh`
+  - `sudo bash scripts/deploy/deploy-prod.sh`
+- `sync-from-github.sh` 成功从 GitHub 拉取最新代码。
+- `deploy-prod.sh` 成功构建 `multi-cooperation-server` / `multi-cooperation-web` 镜像，重建 `server` / `web` 容器，并保持 `postgres` 持久化 volume 运行。
+
+**线上验证**：
+- `http://49.233.203.108:3001/health` 返回 200。
+- `http://49.233.203.108:3000/admin` 返回 200。
+- `docker compose --env-file .env.production -f compose.production.yml ps` 显示：
+  - `multi_cooperation_postgres_prod`：Up / healthy。
+  - `multi_cooperation_server_prod`：Up / healthy。
+  - `multi_cooperation_web_prod`：Up。
+- `_prisma_migrations` 最新记录包含 `20260616090000_ai_display_names_and_b_material_unlock`，说明新增 AI 显示名和 B 解锁 A 原始材料字段 migration 已在线上应用。
+- 后端日志确认新增路由已映射，包括：
+  - `/experiment/session/:code/tasks/:taskId/view-a-materials`
+  - `/admin/sessions/delete-batch`
+  - `/admin/ai-settings`
+
+**注意**：
+- 本轮没有执行 `docker compose down -v`、没有删除任何 Docker volume、没有清空线上实验数据。
+- 未做完整线上双被试人工流程 smoke；目前完成的是部署脚本内置 health/web 检查、外部 IP 访问检查、容器状态检查和 migration 应用检查。
