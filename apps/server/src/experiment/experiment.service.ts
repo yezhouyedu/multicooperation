@@ -27,6 +27,12 @@ import {
   FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
   formalQuestionnaireTemplateJson,
 } from '../questionnaire/three-chapter-v1-1';
+import {
+  PRE_SEGMENT_INSTRUCTION_TEXTS,
+  fallbackInstructionPlan,
+  parseInstructionPlan,
+  workSegmentFromRuntimeSegment,
+} from './pre-segment-instructions';
 
 type EnterExperimentInput = {
   nickname?: string;
@@ -79,6 +85,7 @@ type RuntimeExperimentSnapshot = {
   sideDispatchMode?: string;
   narrativeGroup?: string;
   themeOrder?: string[];
+  instructionPlan?: Record<string, unknown>;
   fixedVariables?: Record<string, string>;
 };
 
@@ -360,6 +367,154 @@ export class ExperimentService {
     return result;
   }
 
+  async openPreSegmentInstruction(sessionCode: string, participantId: string) {
+    const synced = await this.syncRuntime(sessionCode);
+    const session = synced.session;
+    if (session.runtimePhase !== RuntimePhase.PRE_SEGMENT_INSTRUCTION) {
+      throw new BadRequestException('Current session phase does not support pre-segment instruction');
+    }
+    const pairing = session.pairings[0];
+    if (!pairing) throw new BadRequestException('Session pairing record is missing');
+    const role = this.resolveParticipantRole(pairing, participantId);
+    const workSegment = workSegmentFromRuntimeSegment(session.currentSegmentIndex);
+    const now = new Date();
+    const instruction = this.resolvePreSegmentInstruction(session);
+    const payload = {
+      workSegment,
+      segmentIndex: session.currentSegmentIndex,
+      instructionType: instruction.instructionType,
+      instructionTextId: instruction.instructionTextId,
+      instructionFamily: instruction.instructionFamily,
+      instructionVersion: instruction.plan.version,
+      pageOpenTime: now.toISOString(),
+      continueEnabledTime: new Date(now.getTime() + instruction.durationSeconds * 1000).toISOString(),
+    } as Prisma.InputJsonObject;
+
+    await this.prisma.$transaction(async (tx) => {
+      const existingRows = await tx.taskProgress.findMany({
+        where: { sessionId: session.id, participantId, stage: 'pre_segment_instruction_opened' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const existing = existingRows.find((row) => this.progressWorkSegment(row.payload) === workSegment);
+      if (existing) return;
+      await tx.taskProgress.create({ data: { sessionId: session.id, participantId, stage: 'pre_segment_instruction_opened', payload } });
+      await tx.experimentEvent.create({
+        data: {
+          sessionId: session.id,
+          participantId,
+          role,
+          eventType: 'pre_segment_instruction_opened',
+          phase: ExperimentPhase.FORMAL,
+          segmentIndex: session.currentSegmentIndex,
+          serverTime: now,
+          payload,
+        },
+      });
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return { ok: true };
+  }
+
+  async completePreSegmentInstruction(sessionCode: string, participantId: string) {
+    const config = await this.ensureConfig();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { code: sessionCode },
+        include: {
+          pairings: { include: { participantA: true, participantB: true } },
+          tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
+          questionnaireAnswers: true,
+        },
+      });
+      if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+      if (session.runtimePhase !== RuntimePhase.PRE_SEGMENT_INSTRUCTION) {
+        throw new BadRequestException('Current session phase does not support pre-segment instruction');
+      }
+      const pairing = session.pairings[0];
+      if (!pairing) throw new BadRequestException('Session pairing record is missing');
+      if (participantId !== pairing.participantAId && participantId !== pairing.participantBId) {
+        throw new BadRequestException('Participant does not belong to this session');
+      }
+
+      const role = participantId === pairing.participantAId ? ParticipantRole.A : ParticipantRole.B;
+      const workSegment = workSegmentFromRuntimeSegment(session.currentSegmentIndex);
+      const instruction = this.resolvePreSegmentInstruction(session);
+      const openedRows = await tx.taskProgress.findMany({
+        where: { sessionId: session.id, participantId, stage: 'pre_segment_instruction_opened' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const opened = openedRows.find((row) => this.progressWorkSegment(row.payload) === workSegment);
+      if (!opened) throw new BadRequestException('Instruction page has not been opened');
+
+      const openedAt = this.progressDate(opened.payload, 'pageOpenTime') ?? opened.createdAt;
+      const enabledAt = new Date(openedAt.getTime() + instruction.durationSeconds * 1000);
+      const now = new Date();
+      if (now < enabledAt) {
+        throw new BadRequestException('Instruction reading time has not elapsed');
+      }
+
+      const completedRows = await tx.taskProgress.findMany({
+        where: { sessionId: session.id, stage: 'pre_segment_instruction_completed' },
+        orderBy: { createdAt: 'asc' },
+      });
+      const selfCompleted = completedRows.some(
+        (row) => row.participantId === participantId && this.progressWorkSegment(row.payload) === workSegment,
+      );
+      if (!selfCompleted) {
+        const payload = {
+          workSegment,
+          segmentIndex: session.currentSegmentIndex,
+          instructionType: instruction.instructionType,
+          instructionTextId: instruction.instructionTextId,
+          instructionFamily: instruction.instructionFamily,
+          instructionVersion: instruction.plan.version,
+          pageOpenTime: openedAt.toISOString(),
+          continueEnabledTime: enabledAt.toISOString(),
+          continueClickTime: now.toISOString(),
+          viewDurationSeconds: Math.max(0, Math.round((now.getTime() - openedAt.getTime()) / 1000)),
+        } as Prisma.InputJsonObject;
+        await tx.taskProgress.create({ data: { sessionId: session.id, participantId, stage: 'pre_segment_instruction_completed', payload } });
+        await tx.experimentEvent.create({
+          data: {
+            sessionId: session.id,
+            participantId,
+            role,
+            eventType: 'pre_segment_instruction_completed',
+            phase: ExperimentPhase.FORMAL,
+            segmentIndex: session.currentSegmentIndex,
+            serverTime: now,
+            payload,
+          },
+        });
+      }
+
+      const refreshedCompleted = await tx.taskProgress.findMany({
+        where: { sessionId: session.id, stage: 'pre_segment_instruction_completed' },
+        select: { participantId: true, payload: true },
+      });
+      const completedIds = new Set(
+        refreshedCompleted
+          .filter((row) => this.progressWorkSegment(row.payload) === workSegment)
+          .map((row) => row.participantId),
+      );
+      const bothCompleted =
+        Boolean(pairing.participantAId && completedIds.has(pairing.participantAId)) &&
+        Boolean(pairing.participantBId && completedIds.has(pairing.participantBId));
+      if (!bothCompleted) return { ok: true, started: false, waiting: true };
+
+      await this.startFormalWorkSegmentTx(tx, session.id, session.currentSegmentIndex, config, now, workSegment === 1);
+      const aNextTask = session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
+      if (aNextTask) {
+        await this.restoreTaskDraftsFromLatestFreeze(tx, session.id, aNextTask.id, session.currentSegmentIndex);
+      }
+      return { ok: true, started: true, waiting: false };
+    });
+
+    this.emitRuntimeInvalidated(sessionCode);
+    return result;
+  }
+
   async getSessionState(sessionCode: string) {
     const synced = await this.syncRuntime(sessionCode);
     const session = synced.session;
@@ -499,6 +654,9 @@ export class ExperimentService {
       },
       aiUpgradeNotice: this.buildAiUpgradeNotice(config, session),
       feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
+      preSegmentInstruction: participantId
+        ? await this.getPreSegmentInstructionRuntime(session, participantId)
+        : null,
       ...(await this.getSideTaskRuntime(session, config, participantId)),
       syncState,
       questionnaireTemplate: activeQuestionnaire?.questionnaire ?? null,
@@ -1316,7 +1474,7 @@ export class ExperimentService {
           },
         });
       } else {
-        await this.startFormalWorkSegmentTx(tx, session.id, 1, config, now);
+        await this.startPreSegmentInstructionTx(tx, session.id, 1, now, true);
       }
 
       return { ok: true, started: true, waiting: false };
@@ -1889,7 +2047,7 @@ export class ExperimentService {
       return;
     }
 
-    await this.startFormalWorkSegmentTx(tx, session.id, nextWorkIndex, config, now, false);
+    await this.startPreSegmentInstructionTx(tx, session.id, nextWorkIndex, now, false);
 
     // A 和 B 可能在不同公司，分别恢复各自的草稿
     const aNextTask = session.tasks.find(
@@ -1915,6 +2073,54 @@ export class ExperimentService {
     });
   }
 
+  private async startPreSegmentInstructionTx(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    segmentIndex: number,
+    now: Date,
+    completePractice: boolean,
+  ) {
+    const session = await tx.session.findUnique({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException(`Session ${sessionId} not found`);
+    const instruction = this.resolvePreSegmentInstruction({ ...session, currentSegmentIndex: segmentIndex } as RuntimeSession);
+    await tx.session.update({
+      where: { id: sessionId },
+      data: {
+        status: SessionStatus.IN_PROGRESS,
+        runtimePhase: RuntimePhase.PRE_SEGMENT_INSTRUCTION,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: segmentIndex,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: null,
+        currentSegmentEnds: null,
+        ...(completePractice ? { practiceCompletedAt: now } : {}),
+      },
+    });
+    if (completePractice) {
+      await tx.sessionSegmentState.updateMany({
+        where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
+        data: { completedAt: now },
+      });
+    }
+    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
+      data: {
+        sessionId,
+        eventType: 'pre_segment_instruction_started',
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex,
+        serverTime: now,
+        payload: {
+          workSegment: instruction.workSegment,
+          instructionType: instruction.instructionType,
+          instructionTextId: instruction.instructionTextId,
+          instructionFamily: instruction.instructionFamily,
+          instructionVersion: instruction.plan.version,
+          durationSeconds: instruction.durationSeconds,
+        } as Prisma.InputJsonValue,
+      },
+    });
+  }
+
   private resolveParticipantRole(pairing: Pairing, participantId?: string) {
     if (participantId && pairing.participantAId === participantId) return ParticipantRole.A;
     if (participantId && pairing.participantBId === participantId) return ParticipantRole.B;
@@ -1933,6 +2139,8 @@ export class ExperimentService {
         return 'practice';
       case RuntimePhase.FORMAL_READY:
         return 'formal_ready';
+      case RuntimePhase.PRE_SEGMENT_INSTRUCTION:
+        return 'pre_segment_instruction';
       case RuntimePhase.FORMAL_WORK:
         return 'formal_work';
       case RuntimePhase.FORMAL_BREAK:
@@ -1941,6 +2149,89 @@ export class ExperimentService {
       default:
         return 'end';
     }
+  }
+
+  private resolvePreSegmentInstruction(session: Pick<Session, 'currentSegmentIndex' | 'experimentSnapshot'>) {
+    const plan = parseInstructionPlan(session.experimentSnapshot) ?? fallbackInstructionPlan();
+    const workSegment = workSegmentFromRuntimeSegment(session.currentSegmentIndex);
+    const segmentKey = String(workSegment);
+    const instructionType = plan.instructionTypes[segmentKey] ?? fallbackInstructionPlan().instructionTypes[segmentKey] ?? 'neutral_1';
+    const text = PRE_SEGMENT_INSTRUCTION_TEXTS[instructionType] ?? PRE_SEGMENT_INSTRUCTION_TEXTS.neutral_1;
+    return {
+      plan,
+      workSegment,
+      instructionType,
+      instructionTextId: plan.instructionTextIds[segmentKey] ?? text.id,
+      instructionFamily: plan.instructionFamilies[segmentKey] ?? text.family,
+      body: text.body,
+      durationSeconds: plan.durationSeconds || 15,
+    };
+  }
+
+  private progressWorkSegment(payload: unknown) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const raw = (payload as Record<string, unknown>).workSegment;
+    const value = typeof raw === 'number' ? raw : Number(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  private progressDate(payload: unknown, key: string) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const raw = (payload as Record<string, unknown>)[key];
+    if (typeof raw !== 'string') return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private async getPreSegmentInstructionRuntime(session: RuntimeSession, participantId: string) {
+    if (session.runtimePhase !== RuntimePhase.PRE_SEGMENT_INSTRUCTION) return null;
+    const instruction = this.resolvePreSegmentInstruction(session);
+    const progressRows = await this.prisma.taskProgress.findMany({
+      where: {
+        sessionId: session.id,
+        stage: { in: ['pre_segment_instruction_opened', 'pre_segment_instruction_completed'] },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const opened = progressRows.find(
+      (row) =>
+        row.participantId === participantId &&
+        row.stage === 'pre_segment_instruction_opened' &&
+        this.progressWorkSegment(row.payload) === instruction.workSegment,
+    );
+    const openedAt = opened ? this.progressDate(opened.payload, 'pageOpenTime') ?? opened.createdAt : null;
+    const continueEnabledAt = openedAt ? new Date(openedAt.getTime() + instruction.durationSeconds * 1000) : null;
+    const completedIds = new Set(
+      progressRows
+        .filter(
+          (row) =>
+            row.stage === 'pre_segment_instruction_completed' &&
+            this.progressWorkSegment(row.payload) === instruction.workSegment,
+        )
+        .map((row) => row.participantId),
+    );
+    const selfCompleted = completedIds.has(participantId);
+    const pairing = session.pairings[0] ?? null;
+    const participantIds = [pairing?.participantAId, pairing?.participantBId].filter(Boolean) as string[];
+    const completedCount = participantIds.filter((id) => completedIds.has(id)).length;
+    const now = Date.now();
+    return {
+      workSegment: instruction.workSegment,
+      segmentIndex: session.currentSegmentIndex,
+      title: '阅读材料',
+      instructionType: instruction.instructionType,
+      instructionTextId: instruction.instructionTextId,
+      instructionFamily: instruction.instructionFamily,
+      body: instruction.body,
+      durationSeconds: instruction.durationSeconds,
+      openedAt: openedAt?.toISOString() ?? null,
+      continueEnabledAt: continueEnabledAt?.toISOString() ?? null,
+      remainingSeconds: continueEnabledAt ? Math.max(0, Math.ceil((continueEnabledAt.getTime() - now) / 1000)) : instruction.durationSeconds,
+      selfCompleted,
+      completedCount,
+      participantCount: participantIds.length,
+      waitingForPeer: selfCompleted && completedCount < participantIds.length,
+    };
   }
 
   private async getSyncState(session: RuntimeSession, assignedRole: ParticipantRole) {

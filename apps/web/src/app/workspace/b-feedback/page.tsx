@@ -26,6 +26,8 @@ export default function WorkspaceBFeedbackPage() {
         ? '/workspace/a'
         : !loading && runtime?.phase === 'end'
           ? '/workspace/end'
+          : !loading && runtime?.phase === 'pre_segment_instruction'
+            ? '/pre-segment-instruction'
           : !loading && runtime?.phase === 'formal_break'
             ? '/break'
             : !loading && (!runtime?.currentTask || !runtime.bCanSubmit)

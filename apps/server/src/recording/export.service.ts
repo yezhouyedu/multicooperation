@@ -339,6 +339,7 @@ export class ExportService {
       await this.storage.writeJson(join(dir, 'segment_metadata.json'), {
         workSegment,
         segmentIndex,
+        preSegmentInstruction: this.instructionForSegment(session, workSegment),
         startedAt: state?.startedAt?.toISOString() ?? null,
         plannedEndsAt: state?.endsAt?.toISOString() ?? null,
         endedAt: state?.completedAt?.toISOString() ?? null,
@@ -587,6 +588,7 @@ export class ExportService {
         method: audit?.bAssignmentMethod ?? 'pool_based_random_v1',
         log: audit?.bAssignmentLog ?? [],
       },
+      instructionPlan: experiment.instructionPlan ?? null,
       experiment,
     };
   }
@@ -693,6 +695,7 @@ export class ExportService {
         meanTimeToViewASeconds: role === ParticipantRole.B ? this.meanTimeToViewA(participantTasks) : null,
         meanBSubmitDelaySeconds: role === ParticipantRole.B ? this.meanBSubmitDelay(participantTasks) : null,
       },
+      instructions: this.buildInstructionVariables(session, participantId),
       ai: {
         mainAiRequestCount: aiRows.filter((message) => message.contextType === 'main' && message.messageRole === 'user').length,
         sideAiRequestCount: aiRows.filter((message) => message.contextType === 'side' && message.messageRole === 'user').length,
@@ -1061,6 +1064,69 @@ export class ExportService {
 
   private snapshotValue(session: SessionExportRecord, key: string) {
     return this.parseObject(session.experimentSnapshot)[key] ?? this.parseObject(session.randomizationAudit?.experimentRandomization)[key] ?? null;
+  }
+
+  private instructionPlan(session: SessionExportRecord) {
+    return this.snapshotValue(session, 'instructionPlan') as Record<string, any> | null;
+  }
+
+  private instructionForSegment(session: SessionExportRecord, workSegment: number) {
+    const plan = this.instructionPlan(session);
+    if (!plan) return null;
+    const key = String(workSegment);
+    const instructionType = this.parseObject(plan.instructionTypes)[key] ?? null;
+    const instructionTextId = this.parseObject(plan.instructionTextIds)[key] ?? null;
+    const instructionFamily = this.parseObject(plan.instructionFamilies)[key] ?? null;
+    return {
+      instructionType,
+      instructionTextId,
+      instructionFamily,
+      instructionVersion: plan.version ?? null,
+      durationSeconds: plan.durationSeconds ?? null,
+      orderType: plan.orderType ?? null,
+      orderValue: plan.orderValue ?? null,
+    };
+  }
+
+  private buildInstructionVariables(session: SessionExportRecord, participantId: string) {
+    const completedRows = session.progresses.filter(
+      (row) => row.participantId === participantId && row.stage === 'pre_segment_instruction_completed',
+    );
+    const openedRows = session.progresses.filter(
+      (row) => row.participantId === participantId && row.stage === 'pre_segment_instruction_opened',
+    );
+    const bySegment = [1, 2, 3].map((workSegment) => {
+      const completed = completedRows.find((row) => this.progressWorkSegment(row.payload) === workSegment);
+      const opened = openedRows.find((row) => this.progressWorkSegment(row.payload) === workSegment);
+      const completedPayload = this.parseObject(completed?.payload);
+      const openedPayload = this.parseObject(opened?.payload);
+      const plan = this.instructionForSegment(session, workSegment);
+      return {
+        workSegment,
+        instructionType: completedPayload.instructionType ?? openedPayload.instructionType ?? plan?.instructionType ?? null,
+        instructionTextId: completedPayload.instructionTextId ?? openedPayload.instructionTextId ?? plan?.instructionTextId ?? null,
+        instructionFamily: completedPayload.instructionFamily ?? openedPayload.instructionFamily ?? plan?.instructionFamily ?? null,
+        openedAt: openedPayload.pageOpenTime ?? null,
+        completedAt: completedPayload.continueClickTime ?? null,
+        viewDurationSeconds: completedPayload.viewDurationSeconds ?? null,
+        completed: Boolean(completed),
+      };
+    });
+    const durations = bySegment
+      .map((item) => (typeof item.viewDurationSeconds === 'number' ? item.viewDurationSeconds : null))
+      .filter((value): value is number => value !== null);
+    return {
+      plan: this.instructionPlan(session),
+      completedCount: bySegment.filter((item) => item.completed).length,
+      totalViewDurationSeconds: durations.reduce((sum, value) => sum + value, 0),
+      bySegment,
+    };
+  }
+
+  private progressWorkSegment(payload: unknown) {
+    const data = this.parseObject(payload);
+    const value = Number(data.workSegment);
+    return Number.isFinite(value) ? value : null;
   }
 
   private segmentAiLevel(session: SessionExportRecord, workSegment: number) {

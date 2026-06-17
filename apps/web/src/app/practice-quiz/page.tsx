@@ -38,6 +38,10 @@ export default function PracticeQuizPage() {
     }
     if (runtime.phase === 'formal_work') {
       router.replace(runtime.assignedRole === 'B' ? '/workspace/b' : '/workspace/a');
+      return;
+    }
+    if (runtime.phase === 'pre_segment_instruction') {
+      router.replace('/pre-segment-instruction');
     }
   }, [bootstrap, loading, refresh, router, runtime]);
 

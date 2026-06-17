@@ -18,6 +18,8 @@ export default function BreakPage() {
 
   const redirectPath = !loading && !bootstrap
     ? '/login'
+    : !loading && runtime?.phase === 'pre_segment_instruction'
+      ? '/pre-segment-instruction'
     : !loading && runtime?.phase === 'formal_work'
       ? runtime?.assignedRole === 'B'
         ? feedbackResumeTaskId && feedbackResumeTaskId === runtime.currentTask?.id && !runtime.currentTask?.bCompletedAt

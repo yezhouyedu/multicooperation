@@ -38,6 +38,8 @@ export default function WorkspaceAPage() {
               ? '/ready?target=formal'
             : !loading && runtime?.phase === 'formal_ready'
               ? '/ready?target=formal'
+              : !loading && runtime?.phase === 'pre_segment_instruction'
+                ? '/pre-segment-instruction'
               : !loading && runtime?.phase === 'formal_break'
                 ? '/break'
                 : !loading && runtime?.phase === 'end'

@@ -50,6 +50,21 @@
 
 **长期实现 + 本地实测 + 裸 IP 已部署 + 上线前收口。**
 
+2026-06-17 最新增补口径：
+
+- 正式入口已经从裸 IP 继续推进到 HTTPS 域名：`https://aiseek.tech`，`/api/*` 通过 Nginx 反代到 server，`/admin` 通过 web 访问。
+- 生产 Docker Compose 当前包含 `postgres`、`server`、`web`、`nginx` 四类服务；Nginx 证书文件在服务器 `/etc/multi-cooperation/certs`，证书私钥不进 git。
+- 服务器部署优先使用本地 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 打包当前 git HEAD 上传，再在服务器运行 `scripts/deploy/deploy-prod.sh`；不要依赖服务器直接从 GitHub 私仓拉取。
+- HTTPS 完整 smoke 没全部通过前，腾讯云安全组暂时保留公网 3000 / 3001 作为回退；完整 HTTPS smoke 通过后再关闭 3000 / 3001，只留 80 / 443 / 22。
+- 正式问卷已经接入：段 1/2/3 后常规问卷 + 最终长问卷；招募问卷不进系统；旧“休息问卷模板”口径已废弃。
+- 正式工作段前新增段前指导语页：formal ready 后先进入段 1 前阅读材料，段 1/2 后问卷和休息结束后进入段 2/3 前阅读材料；强制观看 15 秒，双方完成后才启动对应工作段。
+- 段前指导语文本来自 `00_start_materials/第六次开会/段前指导语文本与第三章叙事随机机制说明_V0.2.md`；正式 specs 见 `02_specs/03_execution/段前指导语方案.md`。
+- 指导语计划保存到 `experimentSnapshot.instructionPlan`，个人观看行为保存到 `TaskProgress` 与 `ExperimentEvent`；导出见 `randomization.json.instructionPlan`、`variables.json.instructions` 和 `segment_metadata.json.preSegmentInstruction`。
+- 新对话开始时除核心文档外，涉及流程/部署/变量/问卷时还要优先看：
+  - `02_specs/03_execution/问卷流程方案.md`
+  - `02_specs/03_execution/段前指导语方案.md`
+  - `02_specs/05_server_deploy/HTTPS部署/HTTPS域名接入方案.md`
+
 已经稳定落地的大模块包括：
 
 1. 参与者实验主流程

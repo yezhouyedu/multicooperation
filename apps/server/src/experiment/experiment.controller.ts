@@ -61,6 +61,16 @@ export class ExperimentController {
     return this.experimentService.readyFormal(code.toUpperCase(), body.participantId);
   }
 
+  @Post('session/:code/pre-segment-instruction/open')
+  openPreSegmentInstruction(@Param('code') code: string, @Body() body: { participantId: string }) {
+    return this.experimentService.openPreSegmentInstruction(code.toUpperCase(), body.participantId);
+  }
+
+  @Post('session/:code/pre-segment-instruction/complete')
+  completePreSegmentInstruction(@Param('code') code: string, @Body() body: { participantId: string }) {
+    return this.experimentService.completePreSegmentInstruction(code.toUpperCase(), body.participantId);
+  }
+
   @Get('session/:code')
   getSessionState(@Param('code') code: string) {
     return this.experimentService.getSessionState(code.toUpperCase());

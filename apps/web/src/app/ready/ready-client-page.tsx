@@ -42,6 +42,10 @@ export default function ReadyClientPage() {
       router.replace(runtime.assignedRole === 'B' ? '/workspace/b' : '/workspace/a');
       return;
     }
+    if (runtime.phase === 'pre_segment_instruction') {
+      router.replace('/pre-segment-instruction');
+      return;
+    }
     if (runtime.phase === 'formal_break') {
       router.replace('/break');
       return;

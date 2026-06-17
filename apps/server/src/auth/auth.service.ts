@@ -17,6 +17,35 @@ type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrativ
 type DispatchMode = 'continuous' | 'batch';
 type NarrativeGroup = 'neutral_info' | 'coop_narrative';
 
+const NEUTRAL_INSTRUCTION_TYPES = ['neutral_1', 'neutral_2', 'neutral_3'] as const;
+const COOP_INSTRUCTION_TYPES = ['complementarity', 'verification_trace', 'shared_responsibility'] as const;
+type InstructionType =
+  | (typeof NEUTRAL_INSTRUCTION_TYPES)[number]
+  | (typeof COOP_INSTRUCTION_TYPES)[number];
+type InstructionPlanSnapshot = {
+  version: 'pre_segment_instruction_v1';
+  durationSeconds: number;
+  orderType: 'fixed_neutral_order' | 'neutral_order' | 'theme_order';
+  orderValue: string;
+  instructionTypes: Record<'1' | '2' | '3', InstructionType>;
+  instructionTextIds: Record<'1' | '2' | '3', string>;
+  instructionFamilies: Record<'1' | '2' | '3', 'neutral' | 'coop'>;
+};
+const FIXED_NEUTRAL_ORDER = ['neutral_1', 'neutral_2', 'neutral_3'] as InstructionType[];
+const INSTRUCTION_TEXT_IDS: Record<InstructionType, string> = {
+  neutral_1: 'INSTR_NEUTRAL_1_V1',
+  neutral_2: 'INSTR_NEUTRAL_2_V1',
+  neutral_3: 'INSTR_NEUTRAL_3_V1',
+  complementarity: 'INSTR_COMPLEMENTARITY_V1',
+  verification_trace: 'INSTR_VERIFICATION_TRACE_V1',
+  shared_responsibility: 'INSTR_SHARED_RESPONSIBILITY_V1',
+};
+const THEME_TO_INSTRUCTION: Record<string, InstructionType> = {
+  '浜掕ˉ鍒嗗伐': 'complementarity',
+  '楠岃瘉鐣欑棔': 'verification_trace',
+  '鍏卞悓璐ｄ换': 'shared_responsibility',
+};
+
 type ExperimentSnapshot = {
   experimentMode: ExperimentMode;
   upgradeCohort: 'early_upgrade' | 'late_upgrade' | null;
@@ -24,12 +53,14 @@ type ExperimentSnapshot = {
   sideDispatchMode: DispatchMode;
   narrativeGroup: NarrativeGroup;
   themeOrder: string[];
+  instructionPlan: InstructionPlanSnapshot;
   fixedVariables: Record<string, string>;
   seeds: {
     upgradeCohortSeed?: string;
     sideDispatchSeed?: string;
     narrativeSeed?: string;
     themeOrderSeed?: string;
+    instructionOrderSeed?: string;
     newsOrderSeed: string;
   };
 };
@@ -534,6 +565,7 @@ export class AuthService {
       seeds.themeOrderSeed = this.generateSeed();
       themeOrder = this.shuffleWithSeed(THEME_LABELS, seeds.themeOrderSeed);
     }
+    const instructionPlan = this.buildInstructionPlan(mode, narrativeGroup, themeOrder, seeds);
 
     return {
       experimentMode: mode,
@@ -542,9 +574,69 @@ export class AuthService {
       sideDispatchMode,
       narrativeGroup,
       themeOrder,
+      instructionPlan,
       fixedVariables,
       seeds,
     };
+  }
+
+  private buildInstructionPlan(
+    mode: ExperimentMode,
+    narrativeGroup: NarrativeGroup,
+    themeOrder: string[],
+    seeds: ExperimentSnapshot['seeds'],
+  ): InstructionPlanSnapshot {
+    let orderType: InstructionPlanSnapshot['orderType'] = 'fixed_neutral_order';
+    let order = FIXED_NEUTRAL_ORDER;
+
+    if (mode === 'coop_narrative' && narrativeGroup === 'coop_narrative') {
+      orderType = 'theme_order';
+      order = themeOrder.map((theme) => THEME_TO_INSTRUCTION[theme] ?? 'complementarity');
+    } else if (mode === 'coop_narrative' && narrativeGroup === 'neutral_info') {
+      orderType = 'neutral_order';
+      seeds.instructionOrderSeed = this.generateSeed();
+      order = this.shuffleWithSeed([...NEUTRAL_INSTRUCTION_TYPES], seeds.instructionOrderSeed);
+    }
+
+    const orderValue = order.map((type) => this.instructionOrderCode(type)).join('_');
+    const instructionTypes = {
+      1: order[0] ?? 'neutral_1',
+      2: order[1] ?? 'neutral_2',
+      3: order[2] ?? 'neutral_3',
+    } as Record<'1' | '2' | '3', InstructionType>;
+    return {
+      version: 'pre_segment_instruction_v1',
+      durationSeconds: 15,
+      orderType,
+      orderValue,
+      instructionTypes,
+      instructionTextIds: {
+        1: INSTRUCTION_TEXT_IDS[instructionTypes['1']],
+        2: INSTRUCTION_TEXT_IDS[instructionTypes['2']],
+        3: INSTRUCTION_TEXT_IDS[instructionTypes['3']],
+      },
+      instructionFamilies: {
+        1: this.instructionFamily(instructionTypes['1']),
+        2: this.instructionFamily(instructionTypes['2']),
+        3: this.instructionFamily(instructionTypes['3']),
+      },
+    };
+  }
+
+  private instructionOrderCode(type: InstructionType) {
+    const codes: Record<InstructionType, string> = {
+      neutral_1: 'N1',
+      neutral_2: 'N2',
+      neutral_3: 'N3',
+      complementarity: 'C',
+      verification_trace: 'V',
+      shared_responsibility: 'S',
+    };
+    return codes[type];
+  }
+
+  private instructionFamily(type: InstructionType) {
+    return type.startsWith('neutral') ? 'neutral' : 'coop';
   }
 
   private normalizeExperimentMode(value?: string): ExperimentMode {

@@ -95,7 +95,16 @@ export type QuestionnaireTemplate = {
 
 export type RuntimeState = {
   assignedRole: 'A' | 'B';
-  phase: 'instruction' | 'practice_quiz' | 'practice_ready' | 'practice' | 'formal_ready' | 'formal_work' | 'formal_break' | 'end';
+  phase:
+    | 'instruction'
+    | 'practice_quiz'
+    | 'practice_ready'
+    | 'practice'
+    | 'formal_ready'
+    | 'pre_segment_instruction'
+    | 'formal_work'
+    | 'formal_break'
+    | 'end';
   segmentIndex: number;
   segmentType: 'PRACTICE' | 'WORK' | 'BREAK' | null;
   segmentRemainingSeconds: number | null;
@@ -171,6 +180,23 @@ export type RuntimeState = {
     readyRoles: Array<'A' | 'B'>;
     readyCount: number;
     selfReady: boolean;
+    waitingForPeer: boolean;
+  } | null;
+  preSegmentInstruction: {
+    workSegment: number;
+    segmentIndex: number;
+    title: string;
+    instructionType: string;
+    instructionTextId: string;
+    instructionFamily: 'neutral' | 'coop';
+    body: string;
+    durationSeconds: number;
+    openedAt: string | null;
+    continueEnabledAt: string | null;
+    remainingSeconds: number;
+    selfCompleted: boolean;
+    completedCount: number;
+    participantCount: number;
     waitingForPeer: boolean;
   } | null;
   questionnaireTemplate: QuestionnaireTemplate | null;

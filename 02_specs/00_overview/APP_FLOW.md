@@ -455,3 +455,26 @@ stateDiagram-v2
     Break2 --> FormalWork3
     FormalWork3 --> End
 ```
+## 2026-06-17 增补：段前指导语阶段
+
+正式实验流程在三个工作段前增加 `PRE_SEGMENT_INSTRUCTION` runtime 阶段，前端对应 `/pre-segment-instruction`：
+
+```text
+测试轮完成
+→ formal ready
+→ 段 1 前阅读材料
+→ 工作段 1
+→ 段 1 后问卷
+→ 休息
+→ 段 2 前阅读材料
+→ 工作段 2
+→ 段 2 后问卷
+→ 休息
+→ 段 3 前阅读材料
+→ 工作段 3
+→ 段 3 后问卷
+→ 最终长问卷
+→ 完成页
+```
+
+阅读材料页强制观看 15 秒，双方都点击继续后才启动对应工作段。该阶段不计入正式工作段时间，也不进入主线 AI 或副线 AI 上下文。

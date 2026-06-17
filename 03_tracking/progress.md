@@ -1914,3 +1914,40 @@
 - 服务器 `.env.production` 需要设置 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api` 后重新构建 web。
 - 验证入口为 `https://aiseek.tech`、`https://aiseek.tech/api/health`、`http://aiseek.tech` 跳转、`https://www.aiseek.tech` 跳转。
 - HTTPS 稳定后，建议再把安全组中的公网 3000 / 3001 关闭，只保留 80 / 443 / 22。
+### 2026-06-17 段前指导语流程 + 导出字段 + HTTPS smoke 计划接入
+
+**背景**：师兄提供 `段前指导语文本与第三章叙事随机机制说明_V0.2.md`，要求在正式三段工作段前加入强制阅读材料页，并与实验 3 的合作叙事副线主题保持一致；同时保留既有问卷流程，段 3 后继续进入常规问卷和最终长问卷。
+
+**本轮实现**：
+- 新增 runtime 阶段 `PRE_SEGMENT_INSTRUCTION`，前端映射为 `pre_segment_instruction`。
+- 新增 `/pre-segment-instruction` 页面，标题为“阅读材料”，前台不显示处理组、控制组或后台类型名。
+- 页面强制阅读 15 秒：15 秒前按钮禁用并倒计时，15 秒后可点击；单方完成后等待另一位，双方完成后启动对应正式工作段。
+- 后端新增打开/完成接口，并校验当前阶段、participant 归属、已打开记录和至少 15 秒观看时间。
+- formal ready 后不再直接进入工作段 1，而是进入段 1 前指导语；休息结束后进入段 2/3 前指导语；段 3 后仍走段后问卷与最终长问卷。
+- session 创建时写入 `experimentSnapshot.instructionPlan`：
+  - manual、实验 1、实验 2 固定 `neutral_1 → neutral_2 → neutral_3`。
+  - 实验 3 控制组随机排列三条中性文本。
+  - 实验 3 合作组随机排列三条合作文本，并与当段副线主题一致。
+- 路由守卫覆盖 `/ready`、`/break`、`/instruction`、`/practice`、`/practice-quiz`、A/B 工作台和 B 反馈页，刷新恢复时统一回到阅读材料页。
+
+**变量记录与导出**：
+- `TaskProgress` 新增使用阶段：
+  - `pre_segment_instruction_opened`
+  - `pre_segment_instruction_completed`
+- `ExperimentEvent` 新增事件：
+  - `pre_segment_instruction_started`
+  - `pre_segment_instruction_opened`
+  - `pre_segment_instruction_completed`
+- `randomization.json` 增加 `instructionPlan`。
+- `variables.json` 增加 `instructions` 摘要。
+- `formal_segments/segment_X/segment_metadata.json` 增加 `preSegmentInstruction`。
+- `events/events.jsonl` 自动导出上述指导语事件。
+
+**文档更新**：
+- 新增 `02_specs/03_execution/段前指导语方案.md`。
+- 更新 `APP_FLOW.md`、`实验123计划.md`、`问卷流程方案.md`、`数据库文件夹手册.md`。
+
+**本地验证**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
