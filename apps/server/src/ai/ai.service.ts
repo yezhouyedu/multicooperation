@@ -106,6 +106,7 @@ export class AiService {
     const ctx = await this.resolveChatContext(input);
     const startedAt = Date.now();
     await this.persistUserMessage(ctx);
+    await this.recordAiWaitStarted(ctx);
 
     if (!ctx.endpoint || !ctx.apiKey) {
       const reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
@@ -191,6 +192,7 @@ export class AiService {
     const ctx = await this.resolveChatContext(input);
     const startedAt = Date.now();
     await this.persistUserMessage(ctx);
+    await this.recordAiWaitStarted(ctx);
     callbacks.onStart?.({ requestId: ctx.requestId });
 
     if (!ctx.endpoint || !ctx.apiKey) {
@@ -439,14 +441,59 @@ export class AiService {
     });
   }
 
-  private recordAiEvent(ctx: ResolvedChatContext, latencyMs: number, providerStatus: string, errorMessage?: string) {
-    return this.audit.record({
+  private async recordAiEvent(ctx: ResolvedChatContext, latencyMs: number, providerStatus: string, errorMessage?: string) {
+    const payload = {
+      requestId: ctx.requestId,
+      contextType: ctx.contextType,
+      aiLevel: ctx.requestedLevel,
+      modelVersion: ctx.model,
+      latencyMs,
+      providerStatus,
+      errorMessage: errorMessage ?? null,
+      attachmentCount: ctx.attachmentLog.length,
+    } as Prisma.InputJsonValue;
+    await this.audit.record({
       sessionId: ctx.sessionId,
       participantId: ctx.participantId,
       taskAssignmentId: ctx.taskAssignmentId,
       companyId: ctx.companyId,
       sideTaskPlanId: ctx.sideTaskPlanId,
       eventType: ctx.contextType === 'side' ? 'side_ai_request_completed' : 'main_ai_request_completed',
+      phase: ctx.phase,
+      segmentIndex: ctx.segmentIndex,
+      payload,
+    });
+    await this.recordAiWaitEnded(ctx, latencyMs, providerStatus, errorMessage);
+  }
+
+  private recordAiWaitStarted(ctx: ResolvedChatContext) {
+    return this.audit.record({
+      sessionId: ctx.sessionId,
+      participantId: ctx.participantId,
+      taskAssignmentId: ctx.taskAssignmentId,
+      companyId: ctx.companyId,
+      sideTaskPlanId: ctx.sideTaskPlanId,
+      eventType: 'ai_wait_started',
+      phase: ctx.phase,
+      segmentIndex: ctx.segmentIndex,
+      payload: {
+        requestId: ctx.requestId,
+        contextType: ctx.contextType,
+        aiLevel: ctx.requestedLevel,
+        modelVersion: ctx.model,
+        attachmentCount: ctx.attachmentLog.length,
+      } as Prisma.InputJsonValue,
+    });
+  }
+
+  private recordAiWaitEnded(ctx: ResolvedChatContext, latencyMs: number, providerStatus: string, errorMessage?: string) {
+    return this.audit.record({
+      sessionId: ctx.sessionId,
+      participantId: ctx.participantId,
+      taskAssignmentId: ctx.taskAssignmentId,
+      companyId: ctx.companyId,
+      sideTaskPlanId: ctx.sideTaskPlanId,
+      eventType: 'ai_wait_ended',
       phase: ctx.phase,
       segmentIndex: ctx.segmentIndex,
       payload: {
@@ -457,7 +504,6 @@ export class AiService {
         latencyMs,
         providerStatus,
         errorMessage: errorMessage ?? null,
-        attachmentCount: ctx.attachmentLog.length,
       } as Prisma.InputJsonValue,
     });
   }

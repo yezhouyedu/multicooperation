@@ -66,10 +66,14 @@ export default function WorkspaceBFeedbackPage() {
           {bootstrap && runtime?.currentTask?.company ? (
             <BFeedbackForm
               sessionCode={bootstrap.sessionCode}
+              participantId={bootstrap.participantId}
               taskId={runtime.currentTask.id}
+              companyId={runtime.currentTask.company.id}
               companyName={runtime.currentTask.company.name}
               companyNo={runtime.currentTask.sortOrder}
               initialData={draft}
+              phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
+              segmentIndex={runtime.segmentIndex}
               onSubmitted={() => void handleSubmitted()}
             />
           ) : null}

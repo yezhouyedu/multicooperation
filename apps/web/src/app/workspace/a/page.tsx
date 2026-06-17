@@ -157,10 +157,13 @@ export default function WorkspaceAPage() {
                     {bootstrap ? (
                       <ATaskEditor
                         sessionCode={bootstrap.sessionCode}
+                        participantId={bootstrap.participantId}
                         taskId={runtime.currentTask.id}
                         initialData={taskDraft}
                         company={company}
                         disabled={runtime.isFrozen || (runtime.phase === 'practice' && Boolean(runtime.currentTask.aSubmittedAt))}
+                        phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
+                        segmentIndex={runtime.segmentIndex}
                       />
                     ) : null}
                   </ScopedZoomSurface>

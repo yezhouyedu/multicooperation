@@ -385,10 +385,13 @@ export default function WorkspaceBPage() {
                     {bootstrap ? (
                       <BTaskEditor
                         sessionCode={bootstrap.sessionCode}
+                        participantId={bootstrap.participantId}
                         taskId={runtime.currentTask.id}
                         initialData={taskDraft}
                         company={company}
                         disabled={runtime.isFrozen}
+                        phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
+                        segmentIndex={runtime.segmentIndex}
                       />
                     ) : null}
                   </ScopedZoomSurface>

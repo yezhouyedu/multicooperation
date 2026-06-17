@@ -473,3 +473,53 @@ async function askAI(question: string) {
 - IndexedDB MDN：https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
 - "Local-first software" by Martin Kleppmann (Ink & Switch)
 - Yjs 文档：https://docs.yjs.dev/
+
+## 稳健性改进记录
+
+1. Admin 后台原来可能被任何知道地址的人打开
+   改进：改为后端强认证，不再依赖前端硬编码密码。
+   关键逻辑：新增 `/admin/auth/login`，密码来自 `ADMIN_PASSWORD`；登录后签发 HMAC token；所有 `/admin/*` API 必须带 `Authorization: Bearer <token>`。
+
+2. Admin 密码原来不好安全修改
+   改进：密码改为环境变量控制。
+   关键逻辑：本地改 server env 的 `ADMIN_PASSWORD`，线上改 `/opt/multi-cooperation/.env.production`，重启 server 后生效；默认 token secret 跟随密码，改密码后旧 token 失效。
+
+3. SSE 原来断开后只刷新一次，可能导致 A/B 状态不同步
+   改进：加入持续重连与轮询兜底。
+   关键逻辑：前端 SSE 断开后指数退避重连；断连期间每 5 秒轮询 runtime；恢复连接后停止轮询。
+
+4. SSE 原来没有事件回放，断线期间事件可能丢失
+   改进：服务端事件增加 `id/retry` 和短期缓存。
+   关键逻辑：客户端记录最后事件 ID；重连时携带 `Last-Event-ID` 或 `lastEventId`；服务端回放缓存中未收到的事件。runtime 快照仍是最终事实源。
+
+5. 草稿原来主要依赖服务端自动保存，断网或服务端短暂不可用时可能丢内容
+   改进：先写本地，再尝试写服务端。
+   关键逻辑：A 主表、B 主表、B feedback 编辑时先保存到 IndexedDB；服务端保存失败时进入本地 pending queue。
+
+6. 保存失败原来不会自动补传
+   改进：增加本地保存队列和网络恢复同步。
+   关键逻辑：队列按 `sessionCode/taskId/role/section` 合并，只保留最新草稿；网络恢复后自动 flush 到服务端。
+
+7. 重复点击或网络重试原来可能重复推进流程
+   改进：关键 POST 增加幂等保护。
+   关键逻辑：新增 `IdempotencyRecord`，用 `Idempotency-Key` 绑定 route/scope/response；重复请求返回第一次结果，不重复写状态。
+
+8. B 完成、A 提交、问卷提交等原来可能被重复调用造成副作用
+   改进：业务层也加防重判断。
+   关键逻辑：A 已提交则重复返回 duplicate；B 已完成则不再分配下一家公司；同 participant + segmentIndex 的问卷不重复提交。
+
+9. 用户原来不知道当前是在线、离线还是等待同步
+   改进：工作台顶栏显示连接与同步状态。
+   关键逻辑：显示 `online/offline/reconnecting/polling`，并显示本地待同步草稿数量。
+
+10. 浏览器误关或刷新原来可能造成未保存内容丢失
+    改进：未保存状态触发关闭提示。
+    关键逻辑：工作台收到 dirty 事件后注册 `beforeunload`；保存成功后恢复 clean 状态。
+
+11. 离线时用户原来可能继续点 AI 或最终提交并误以为成功
+    改进：离线时对不可离线完成的动作做显式提示。
+    关键逻辑：AI 面板离线时显示不可用原因；B feedback 最终提交在离线时阻止并提示恢复网络后提交。
+
+12. 线上 migration 原来遇到失败会阻断 server 启动
+    改进：记录并修复迁移恢复流程。
+    关键逻辑：migration 文件必须无 BOM；若生产 migration 失败，先用 `prisma migrate resolve --rolled-back <migration>` 恢复迁移状态，再重新 `migrate deploy`。

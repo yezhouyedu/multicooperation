@@ -3,6 +3,7 @@
 import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import type { CompanyData } from '@/lib/session-runtime';
+import { recordTimestampEvent } from '@/lib/timestamp-events';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -25,10 +26,13 @@ type BEditorData = {
 
 type Props = {
   sessionCode: string;
+  participantId?: string;
   taskId?: string;
   initialData?: unknown;
   company?: CompanyData | null;
   disabled?: boolean;
+  phase?: 'practice' | 'formal';
+  segmentIndex?: number;
 };
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
@@ -183,13 +187,24 @@ function InfoPointSection({
   );
 }
 
-export function BTaskEditor({ sessionCode, taskId, initialData, company, disabled = false }: Props) {
+export function BTaskEditor({
+  sessionCode,
+  participantId,
+  taskId,
+  initialData,
+  company,
+  disabled = false,
+  phase = 'formal',
+  segmentIndex = 0,
+}: Props) {
   const normalized = useMemo(() => normalizeData(initialData), [initialData]);
   const [form, setForm] = useState(normalized);
   const [status, setStatus] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [isAutosaving, setIsAutosaving] = useState(false);
   const lastTaskIdRef = useRef(taskId);
+  const pendingAnchorRef = useRef<string | null>(null);
+  const lastMainContextEventAtRef = useRef(0);
 
   useEffect(() => {
     const taskChanged = taskId !== lastTaskIdRef.current;
@@ -206,7 +221,47 @@ export function BTaskEditor({ sessionCode, taskId, initialData, company, disable
   function touch() {
     setIsDirty(true);
     window.dispatchEvent(new CustomEvent('workbench-draft-dirty'));
+    if (!taskId) return;
+    const now = Date.now();
+    if (now - lastMainContextEventAtRef.current > 2000) {
+      lastMainContextEventAtRef.current = now;
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role: 'B',
+        eventType: 'main_context_activity',
+        taskAssignmentId: taskId,
+        companyId: company?.id,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'edit' },
+      });
+    }
+    if (pendingAnchorRef.current) {
+      const anchorType = pendingAnchorRef.current;
+      pendingAnchorRef.current = null;
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role: 'B',
+        eventType: 'mainline_activity',
+        taskAssignmentId: taskId,
+        companyId: company?.id,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'edit', anchorType },
+      });
+    }
   }
+
+  useEffect(() => {
+    function handleAnchor(event: Event) {
+      const detail = (event as CustomEvent<{ anchorType?: string }>).detail;
+      pendingAnchorRef.current = detail?.anchorType ?? null;
+    }
+    window.addEventListener('timestamp-anchor', handleAnchor);
+    return () => window.removeEventListener('timestamp-anchor', handleAnchor);
+  }, []);
 
   function buildPayload() {
     return {

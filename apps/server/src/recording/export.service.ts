@@ -223,7 +223,9 @@ export class ExportService {
       qualityFlags: this.buildQualityFlags(session, participant.id),
     });
 
-    await this.storage.writeJson(join(participantDir, 'variables.json'), this.buildVariables(session, participant, role));
+    const timestamps = this.buildTimestamps(session, participant, role);
+    await this.storage.writeJson(join(participantDir, 'variables.json'), this.buildVariables(session, participant, role, timestamps));
+    await this.storage.writeJson(join(participantDir, 'timestamps.json'), timestamps);
     await this.writeQuestionnaires(participantDir, session, participant.id);
     await this.writePracticeRound(participantDir, session, participant.id, role);
     await this.writeFormalSegments(participantDir, session, participant.id, role);
@@ -664,7 +666,12 @@ export class ExportService {
     };
   }
 
-  private buildVariables(session: SessionExportRecord, participant: ParticipantExportRecord, role: ParticipantRole | null) {
+  private buildVariables(
+    session: SessionExportRecord,
+    participant: ParticipantExportRecord,
+    role: ParticipantRole | null,
+    timestamps?: ReturnType<ExportService['buildTimestamps']>,
+  ) {
     const participantId = participant.id;
     const sideRows = this.buildSideResponses(session, participantId);
     const aiRows = session.aiMessages.filter((message) => message.participantId === participantId);
@@ -696,6 +703,7 @@ export class ExportService {
         meanBSubmitDelaySeconds: role === ParticipantRole.B ? this.meanBSubmitDelay(participantTasks) : null,
       },
       instructions: this.buildInstructionVariables(session, participantId),
+      timing: timestamps?.derived ?? this.buildTimestamps(session, participant, role).derived,
       ai: {
         mainAiRequestCount: aiRows.filter((message) => message.contextType === 'main' && message.messageRole === 'user').length,
         sideAiRequestCount: aiRows.filter((message) => message.contextType === 'side' && message.messageRole === 'user').length,
@@ -803,6 +811,7 @@ export class ExportService {
       [
         'participant_metadata.json',
         'variables.json',
+        'timestamps.json',
         join('questionnaires', 'practice_quiz.json'),
         join('questionnaires', 'segment_1.json'),
         join('questionnaires', 'segment_2.json'),
@@ -934,6 +943,14 @@ export class ExportService {
         'participants/*/variables.json',
         participantRecords.every(({ dir }) => existsSync(join(dir, 'variables.json'))),
         'core treatment, mainline, AI, side-task, and questionnaire summaries are present',
+      ),
+      this.selfCheckRow(
+        'timestamp variables',
+        'ExperimentEvent, AiMessageLog, SideTaskExposureLog, SessionSegmentState, TaskAssignment',
+        'timestamp events, AI request, side task exposure, export generation',
+        'participants/*/timestamps.json, variables.json.timing',
+        participantRecords.every(({ dir }) => existsSync(join(dir, 'timestamps.json'))),
+        'participant-level timestamp timelines and derived timing summaries are present',
       ),
       {
         variable: 'paper scoring / gold facts / complex attention variables',
@@ -1188,6 +1205,13 @@ export class ExportService {
     return detail?.assignedAt ?? null;
   }
 
+  private bAssignedAtDate(session: SessionExportRecord, taskId: string) {
+    const assignedAt = this.bAssignedAt(session, taskId);
+    if (typeof assignedAt !== 'string') return null;
+    const parsed = new Date(assignedAt);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
   private visibleMaterials(materials: ReturnType<typeof normalizeMaterials>, role: ParticipantRole | null) {
     return materials.filter((item) => {
       const scope = this.materialScope(item);
@@ -1215,6 +1239,11 @@ export class ExportService {
   private payloadValue(value: Prisma.JsonValue | null | undefined, key: string) {
     const object = this.parseObject(value);
     return object[key] ?? null;
+  }
+
+  private payloadString(value: Prisma.JsonValue | null | undefined, key: string) {
+    const raw = this.payloadValue(value, key);
+    return typeof raw === 'string' ? raw : null;
   }
 
   private sideTaskGoldAnswerText(plan: SessionExportRecord['sideTaskPlans'][number]) {
@@ -1270,6 +1299,248 @@ export class ExportService {
 
   private firstEventTime(events: SessionExportRecord['experimentEvents'], eventType: string) {
     return events.find((event) => event.eventType === eventType)?.serverTime.toISOString() ?? null;
+  }
+
+  private overlapMany(start: number, end: number, intervals: Array<{ start: number; end: number }>) {
+    if (end <= start) return 0;
+    return intervals.reduce((sum, interval) => sum + Math.max(Math.min(end, interval.end) - Math.max(start, interval.start), 0), 0);
+  }
+
+  private findIntervalForTime<T extends { start: number; end: number }>(intervals: T[], time: number) {
+    return intervals.find((interval) => time >= interval.start && time <= interval.end) ?? null;
+  }
+
+  private timeWithin(time: number, start: number, end: number) {
+    return time >= start && time <= end;
+  }
+
+  private roundRatio(value: number) {
+    return Math.round(value * 10000) / 10000;
+  }
+
+  private meanNumber(values: number[]) {
+    return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+  }
+
+  private medianNumber(values: number[]) {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  }
+
+  private buildTimestamps(session: SessionExportRecord, participant: ParticipantExportRecord, role: ParticipantRole | null) {
+    const participantId = participant.id;
+    const events = session.experimentEvents
+      .filter((event) => event.participantId === participantId)
+      .sort((a, b) => a.serverTime.getTime() - b.serverTime.getTime());
+    const formalWorkSegments = [1, 3, 5].map((segmentIndex) => {
+      const state = session.segmentStates.find((item) => item.phase === ExperimentPhase.FORMAL && item.segmentIndex === segmentIndex);
+      const startedAt = state?.startedAt ?? null;
+      const endedAt = state?.completedAt ?? state?.endsAt ?? null;
+      return {
+        workSegment: this.workSegmentFromSegmentIndex(segmentIndex),
+        segmentIndex,
+        startedAt: startedAt?.toISOString() ?? null,
+        endedAt: endedAt?.toISOString() ?? null,
+        durationMs: startedAt && endedAt ? Math.max(endedAt.getTime() - startedAt.getTime(), 0) : null,
+      };
+    });
+    const workIntervals = formalWorkSegments
+      .filter((segment) => segment.startedAt && segment.endedAt)
+      .map((segment) => ({
+        start: new Date(segment.startedAt!).getTime(),
+        end: new Date(segment.endedAt!).getTime(),
+        segmentIndex: segment.segmentIndex,
+        workSegment: segment.workSegment,
+      }));
+    const eligibleWorkMs = workIntervals.reduce((sum, interval) => sum + Math.max(interval.end - interval.start, 0), 0);
+    const sideEvents = events.filter((event) => event.eventType === 'side_area_entered' || event.eventType === 'main_area_returned');
+    const sideSwitches: Array<Record<string, unknown>> = [];
+    const qualityFlags = new Set<string>();
+    const mainlineActivities = events
+      .filter((event) => event.eventType === 'mainline_activity' || event.eventType === 'main_context_activity')
+      .map((event) => ({
+        eventId: event.id,
+        at: event.serverTime.toISOString(),
+        companyId: event.companyId,
+        taskAssignmentId: event.taskAssignmentId,
+        workSegment: this.workSegmentFromSegmentIndex(event.segmentIndex),
+        segmentIndex: event.segmentIndex,
+        activityKind: this.payloadString(event.payload, 'activityKind') ?? 'unknown',
+        anchorType: this.payloadString(event.payload, 'anchorType'),
+        anchorEventId: this.payloadString(event.payload, 'anchorEventId'),
+      }));
+
+    for (const event of sideEvents) {
+      if (event.eventType !== 'side_area_entered') continue;
+      const returned = sideEvents.find((candidate) =>
+        candidate.eventType === 'main_area_returned' &&
+        candidate.serverTime > event.serverTime &&
+        (!event.taskAssignmentId || candidate.taskAssignmentId === event.taskAssignmentId),
+      );
+      if (!returned) qualityFlags.add('unclosed_side_interval');
+      const segmentInterval = this.findIntervalForTime(workIntervals, event.serverTime.getTime());
+      const endTime = returned?.serverTime.getTime() ?? segmentInterval?.end ?? event.serverTime.getTime();
+      const durationMs = this.overlapMany(event.serverTime.getTime(), endTime, workIntervals);
+      const restartActivity = returned
+        ? mainlineActivities.find((activity) =>
+            activity.anchorType === 'side_return' &&
+            (!activity.anchorEventId || activity.anchorEventId === returned.id) &&
+            new Date(activity.at).getTime() >= returned.serverTime.getTime(),
+          ) ?? mainlineActivities.find((activity) => new Date(activity.at).getTime() >= returned.serverTime.getTime())
+        : null;
+      sideSwitches.push({
+        switchId: event.id,
+        companyId: event.companyId,
+        taskAssignmentId: event.taskAssignmentId,
+        sideTaskPlanId: event.sideTaskPlanId,
+        workSegment: this.workSegmentFromSegmentIndex(event.segmentIndex),
+        segmentIndex: event.segmentIndex,
+        enteredAt: event.serverTime.toISOString(),
+        returnedAt: returned?.serverTime.toISOString() ?? null,
+        durationMs,
+        closedBy: returned ? this.payloadString(returned.payload, 'source') ?? 'return_event' : 'segment_or_export_cutoff',
+        restart: restartActivity && returned
+          ? {
+              firstMainActivityAt: restartActivity.at,
+              activityKind: restartActivity.activityKind,
+              delayMs: Math.max(new Date(restartActivity.at).getTime() - returned.serverTime.getTime(), 0),
+            }
+          : null,
+      });
+      if (returned && !restartActivity) qualityFlags.add('main_activity_missing_after_side_return');
+    }
+
+    const totalSideTimeMs = sideSwitches.reduce((sum, item) => sum + Number(item.durationMs ?? 0), 0);
+    const totalMainTimeMs = Math.max(eligibleWorkMs - totalSideTimeMs, 0);
+    const aiWaitWindows = this.buildAiWaitWindows(session, participantId, events, mainlineActivities, workIntervals, qualityFlags);
+    const restartDelays = sideSwitches
+      .map((item) => (item.restart as { delayMs?: number } | null)?.delayMs)
+      .filter((value): value is number => typeof value === 'number');
+    const aiReturnDelays = aiWaitWindows
+      .map((item) => item.returnDelayAfterAIResponseMs)
+      .filter((value): value is number => typeof value === 'number');
+    const companyTimelines = session.tasks
+      .filter((task) => this.taskTouchesParticipant(task, role))
+      .map((task) => {
+        const bAssignedAt = this.bAssignedAtDate(session, task.id) ?? this.bAssignedAtFromTask(task);
+        const enteredAt = role === ParticipantRole.A ? task.aStartedAt : bAssignedAt;
+        const exitedAt = role === ParticipantRole.A ? task.aSubmittedAt ?? task.frozenAt : task.bCompletedAt ?? task.frozenAt;
+        const companySideMs = enteredAt && exitedAt
+          ? sideSwitches
+              .filter((item) => item.taskAssignmentId === task.id || item.companyId === task.companyId)
+              .reduce((sum, item) => sum + Number(item.durationMs ?? 0), 0)
+          : 0;
+        const companyTotalMs = enteredAt && exitedAt ? Math.max(exitedAt.getTime() - enteredAt.getTime(), 0) : null;
+        return {
+          companyId: task.companyId,
+          companyCode: this.companyCode(task.company),
+          taskAssignmentId: task.id,
+          workSegment: this.workSegmentFromSegmentIndex(this.taskFirstSeenSegment(task, role)),
+          enteredAt: enteredAt?.toISOString() ?? null,
+          exitedAt: exitedAt?.toISOString() ?? null,
+          sideMs: companySideMs,
+          mainMs: companyTotalMs === null ? null : Math.max(companyTotalMs - companySideMs, 0),
+          switchVisitCount: sideSwitches.filter((item) => item.taskAssignmentId === task.id || item.companyId === task.companyId).length,
+          aiWaitCount: aiWaitWindows.filter((item) => item.taskAssignmentId === task.id || item.companyId === task.companyId).length,
+        };
+      });
+
+    if (workIntervals.length < 3) qualityFlags.add('missing_work_segment_boundary');
+    return {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      sessionCode: session.code,
+      participantId,
+      role,
+      displayRole: this.displayRole(role),
+      timezone: 'Asia/Shanghai',
+      sourceFiles: [
+        'events/events.jsonl',
+        'side_tasks/side_events.jsonl',
+        'formal_segments/*/companies/*/ai_chat.jsonl',
+        'formal_segments/*/companies/*/company_metadata.json',
+      ],
+      formalWorkSegments,
+      companyTimelines,
+      sideSwitches,
+      aiWaitWindows,
+      mainlineActivities,
+      derived: {
+        eligibleWorkMs,
+        totalMainTimeMs,
+        totalSideTimeMs,
+        mainTimeShare: eligibleWorkMs ? this.roundRatio(totalMainTimeMs / eligibleWorkMs) : null,
+        sideTimeShare: eligibleWorkMs ? this.roundRatio(totalSideTimeMs / eligibleWorkMs) : null,
+        switchCount: sideSwitches.length,
+        switchVisitCount: sideSwitches.length,
+        switchTransitionCount: sideSwitches.reduce((sum, item) => sum + (item.returnedAt ? 2 : 1), 0),
+        meanRestartDelayMs: this.meanNumber(restartDelays),
+        medianRestartDelayMs: this.medianNumber(restartDelays),
+        aiWaitCount: aiWaitWindows.length,
+        sideDuringAIWaitCount: aiWaitWindows.filter((item) => item.sideDuringAIWait).length,
+        mainDuringAIWaitCount: aiWaitWindows.filter((item) => item.mainDuringAIWait).length,
+        idleDuringAIWaitCount: aiWaitWindows.filter((item) => item.idleDuringAIWait).length,
+        meanReturnDelayAfterAIResponseMs: this.meanNumber(aiReturnDelays),
+        medianReturnDelayAfterAIResponseMs: this.medianNumber(aiReturnDelays),
+      },
+      qualityFlags: Array.from(qualityFlags).sort(),
+    };
+  }
+
+  private buildAiWaitWindows(
+    session: SessionExportRecord,
+    participantId: string,
+    events: SessionExportRecord['experimentEvents'],
+    mainlineActivities: Array<{ at: string; anchorType: string | null; activityKind: string; companyId: string | null; taskAssignmentId: string | null }>,
+    workIntervals: Array<{ start: number; end: number }>,
+    qualityFlags: Set<string>,
+  ) {
+    const aiRows = session.aiMessages.filter((message) => message.participantId === participantId);
+    const requestIds = Array.from(new Set(aiRows.map((message) => message.requestId)));
+    const sideActivities = events.filter((event) => event.eventType === 'side_activity' || event.eventType === 'side_area_entered');
+    const mainActivities = events.filter((event) => event.eventType === 'main_context_activity' || event.eventType === 'mainline_activity');
+    return requestIds.map((requestId) => {
+      const rows = aiRows.filter((message) => message.requestId === requestId);
+      const user = rows.find((message) => message.messageRole === 'user') ?? rows[0];
+      const assistant = rows.find((message) => message.messageRole === 'assistant');
+      const startedEvent = events.find((event) => event.eventType === 'ai_wait_started' && this.payloadString(event.payload, 'requestId') === requestId);
+      const endedEvent = events.find((event) => event.eventType === 'ai_wait_ended' && this.payloadString(event.payload, 'requestId') === requestId);
+      const startedAt = startedEvent?.serverTime ?? user?.createdAt ?? null;
+      const endedAt = endedEvent?.serverTime ?? assistant?.completedAt ?? assistant?.createdAt ?? null;
+      if (!endedAt) qualityFlags.add('missing_ai_wait_end');
+      if (startedAt && endedAt && endedAt.getTime() < startedAt.getTime()) qualityFlags.add('negative_or_zero_interval');
+      const startMs = startedAt?.getTime() ?? 0;
+      const endMs = endedAt?.getTime() ?? startMs;
+      const sideDuringAIWait = sideActivities.some((event) => this.timeWithin(event.serverTime.getTime(), startMs, endMs));
+      const mainDuringAIWait = mainActivities.some((event) => this.timeWithin(event.serverTime.getTime(), startMs, endMs));
+      const firstMainAfter = endedAt
+        ? mainlineActivities.find((activity) =>
+            activity.anchorType === 'ai_response_end' && new Date(activity.at).getTime() >= endedAt.getTime(),
+          ) ?? mainlineActivities.find((activity) => new Date(activity.at).getTime() >= endedAt.getTime())
+        : null;
+      if (endedAt && !firstMainAfter) qualityFlags.add('main_activity_missing_after_ai_response');
+      return {
+        requestId,
+        contextType: user?.contextType ?? assistant?.contextType ?? null,
+        companyId: user?.companyId ?? assistant?.companyId ?? null,
+        taskAssignmentId: user?.taskAssignmentId ?? assistant?.taskAssignmentId ?? null,
+        sideTaskPlanId: user?.sideTaskPlanId ?? assistant?.sideTaskPlanId ?? null,
+        workSegment: this.workSegmentFromSegmentIndex(user?.segmentIndex ?? assistant?.segmentIndex ?? null),
+        segmentIndex: user?.segmentIndex ?? assistant?.segmentIndex ?? null,
+        startedAt: startedAt?.toISOString() ?? null,
+        endedAt: endedAt?.toISOString() ?? null,
+        durationMs: startedAt && endedAt ? Math.max(endedAt.getTime() - startedAt.getTime(), 0) : null,
+        eligibleDurationMs: startedAt && endedAt ? this.overlapMany(startedAt.getTime(), endedAt.getTime(), workIntervals) : null,
+        endedBy: assistant?.providerStatus ?? this.payloadString(endedEvent?.payload, 'providerStatus') ?? null,
+        sideDuringAIWait,
+        mainDuringAIWait,
+        idleDuringAIWait: !sideDuringAIWait && !mainDuringAIWait,
+        returnDelayAfterAIResponseMs: endedAt && firstMainAfter ? Math.max(new Date(firstMainAfter.at).getTime() - endedAt.getTime(), 0) : null,
+        firstMainActivityAfterResponseAt: firstMainAfter?.at ?? null,
+      };
+    });
   }
 
   private buildQualityFlags(session: SessionExportRecord, participantId: string) {

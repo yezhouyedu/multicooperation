@@ -341,7 +341,13 @@ export function AiChatPanel({
             ),
           );
           setStreamingMessageId(null);
+          if (contextType === 'main') {
+            window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'ai_response_end' } }));
+          }
         } else if (chunk.type === 'error') {
+          if (contextType === 'main') {
+            window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'ai_response_end' } }));
+          }
           throw new Error(chunk.message);
         }
       }

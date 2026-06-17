@@ -2055,3 +2055,25 @@
 - ? bearer token ?? `https://aiseek.tech/api/admin/sessions` ??????? session count = 9?
 
 **??**??????? `docker compose down -v`????? volume????????????
+
+### 2026-06-17 时间戳变量保存与导出 P0/P1 实现
+
+**背景**：根据 `02_specs/04_pre_deploy/时间戳变量保存方案.md`，需要把主线/副线切换、AI 等待期、恢复时滞等复杂时间戳变量从设计落到真实记录与导出中，并核对导出包结构是否和 `数据库文件夹手册.md` 一致。
+
+**本轮实现**：
+- 后端新增 `POST /experiment/session/:code/timestamps/event`，专门记录时间戳事件到 `ExperimentEvent`，不污染 `TaskProgress`；事件类型使用 allowlist，并按 `participantId + eventType + clientEventId` 做应用层去重。
+- 前端副线条记录 `side_area_entered`、`main_area_returned`、`side_activity(open/answer)`；从副线返回后设置 `side_return` anchor。
+- A 主表、B 主表、B feedback 记录节流后的 `main_context_activity(edit/feedback_edit)`；若存在 `side_return` 或 `ai_response_end` anchor，则下一次主线编辑额外记录一次 `mainline_activity`，用于计算 C 和恢复时滞。
+- AI 服务端在请求开始/结束时写 `ai_wait_started` / `ai_wait_ended`，用 `requestId` 绑定；前端仅在主线 AI 流结束或错误时设置 `ai_response_end` anchor，不重复写 D/E。
+- 导出服务新增 participant 根目录 `timestamps.json`，包含正式工作段、公司时间线、副线切换、AI 等待窗、主线活动、派生变量和质量旗标。
+- `variables.json` 新增 `timing` 摘要，复用 `timestamps.json.derived`，包括 `mainTimeShare`、`sideTimeShare`、`switchCount`、`meanRestartDelayMs`、`meanReturnDelayAfterAIResponseMs`、`totalMainTimeMs`、`totalSideTimeMs`。
+- 动态自检把 `timestamps.json` 纳入 participant 必备文件，并新增 timestamp variables 检查项。
+
+**数据库与导出一致性审查**：
+- 未新增 Prisma model 或 migration；现有 `ExperimentEvent`、`AiMessageLog`、`SideTaskExposureLog`、`SessionSegmentState`、`TaskAssignment` 足够承载本轮时间戳模块。
+- `timestamps.json` 是导出后处理文件，不是数据库表。
+- `数据库文件夹手册.md` 已把 `timestamps.json`、`variables.json.timing`、正式问卷、段前指导语字段融入主结构；本轮补齐验收清单中 participant 根目录必须检查 `timestamps.json` 的口径。
+
+**本地验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。

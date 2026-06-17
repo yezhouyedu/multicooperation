@@ -15,6 +15,19 @@ type RecordProgressBody = {
   payload?: Prisma.InputJsonValue;
 };
 
+type RecordTimestampEventBody = {
+  participantId: string;
+  eventType: string;
+  clientTime?: string;
+  role?: ParticipantRole;
+  taskAssignmentId?: string;
+  companyId?: string;
+  sideTaskPlanId?: string;
+  phase?: 'PRACTICE' | 'FORMAL' | 'practice' | 'formal';
+  segmentIndex?: number;
+  payload?: Prisma.InputJsonValue;
+};
+
 @Controller('experiment')
 export class ExperimentController {
   constructor(
@@ -144,6 +157,11 @@ export class ExperimentController {
       stage: body.stage,
       payload: body.payload,
     }));
+  }
+
+  @Post('session/:code/timestamps/event')
+  recordTimestampEvent(@Param('code') code: string, @Body() body: RecordTimestampEventBody) {
+    return this.experimentService.recordTimestampEvent(code.toUpperCase(), body);
   }
 
   @Get('session/:code/progress')

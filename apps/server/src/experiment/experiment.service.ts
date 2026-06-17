@@ -46,6 +46,19 @@ type RecordProgressInput = {
   payload?: Prisma.InputJsonValue;
 };
 
+type RecordTimestampEventInput = {
+  participantId: string;
+  eventType: string;
+  clientTime?: string;
+  role?: ParticipantRole;
+  taskAssignmentId?: string;
+  companyId?: string;
+  sideTaskPlanId?: string;
+  phase?: 'PRACTICE' | 'FORMAL' | 'practice' | 'formal';
+  segmentIndex?: number;
+  payload?: Prisma.InputJsonValue;
+};
+
 type DraftSelector = {
   role: ParticipantRole;
   section?: 'main' | 'feedback';
@@ -104,6 +117,20 @@ const PRACTICE_TUTORIAL_STEPS = [
   'sidetask_open',
   'sidetask_answer',
 ] as const;
+
+const TIMESTAMP_EVENT_TYPES = new Set([
+  'work_segment_started',
+  'work_segment_ended',
+  'company_context_entered',
+  'company_context_exited',
+  'side_area_entered',
+  'main_area_returned',
+  'mainline_activity',
+  'main_context_activity',
+  'side_activity',
+  'ai_wait_started',
+  'ai_wait_ended',
+]);
 
 @Injectable()
 export class ExperimentService {
@@ -763,6 +790,71 @@ export class ExperimentService {
         createdAt: progress.createdAt,
       },
     };
+  }
+
+  async recordTimestampEvent(sessionCode: string, input: RecordTimestampEventInput) {
+    if (!TIMESTAMP_EVENT_TYPES.has(input.eventType)) {
+      throw new BadRequestException(`Unsupported timestamp event type: ${input.eventType}`);
+    }
+    const session = await this.prisma.session.findUnique({
+      where: { code: sessionCode },
+      include: {
+        pairings: true,
+        tasks: { select: { id: true, companyId: true, phase: true } },
+      },
+    });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    const participantInSession = session.pairings.some(
+      (pairing) => pairing.participantAId === input.participantId || pairing.participantBId === input.participantId,
+    );
+    if (!participantInSession) throw new BadRequestException('Participant does not belong to this session');
+
+    const payload =
+      input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+        ? { ...(input.payload as Record<string, unknown>) }
+        : {};
+    const clientEventId = typeof payload.clientEventId === 'string' ? payload.clientEventId : null;
+    if (clientEventId) {
+      const existing = await this.prisma.experimentEvent.findFirst({
+        where: {
+          sessionId: session.id,
+          participantId: input.participantId,
+          eventType: input.eventType,
+          payload: { path: ['clientEventId'], equals: clientEventId },
+        },
+      });
+      if (existing) {
+        return { ok: true, duplicate: true, eventId: existing.id };
+      }
+    }
+
+    const task = input.taskAssignmentId
+      ? session.tasks.find((item) => item.id === input.taskAssignmentId)
+      : null;
+    if (input.taskAssignmentId && !task) throw new BadRequestException('Task assignment does not belong to this session');
+
+    const phase = input.phase
+      ? `${input.phase}`.toUpperCase() === 'PRACTICE'
+        ? ExperimentPhase.PRACTICE
+        : ExperimentPhase.FORMAL
+      : task?.phase ?? session.currentPhase ?? null;
+    const event = await this.prisma.experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        participantId: input.participantId,
+        taskAssignmentId: input.taskAssignmentId ?? null,
+        companyId: input.companyId ?? task?.companyId ?? null,
+        sideTaskPlanId: input.sideTaskPlanId ?? null,
+        role: input.role ?? null,
+        eventType: input.eventType,
+        phase,
+        segmentIndex: input.segmentIndex ?? session.currentSegmentIndex,
+        clientTime: input.clientTime ? new Date(input.clientTime) : null,
+        payload: Object.keys(payload).length > 0 ? (payload as Prisma.InputJsonValue) : Prisma.JsonNull,
+      },
+    });
+
+    return { ok: true, eventId: event.id };
   }
 
   async getSessionProgress(sessionCode: string) {

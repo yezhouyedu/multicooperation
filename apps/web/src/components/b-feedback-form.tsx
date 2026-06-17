@@ -2,7 +2,8 @@
 
 import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
 import { idempotencyHeaders } from '@/lib/idempotency';
-import { useEffect, useMemo, useState } from 'react';
+import { recordTimestampEvent } from '@/lib/timestamp-events';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
@@ -16,10 +17,14 @@ type FeedbackDraft = {
 
 type Props = {
   sessionCode: string;
+  participantId?: string;
   taskId: string;
+  companyId?: string;
   companyName: string;
   companyNo: number;
   initialData?: unknown;
+  phase?: 'practice' | 'formal';
+  segmentIndex?: number;
   onSubmitted: () => void;
 };
 
@@ -38,7 +43,18 @@ function normalizeInitialData(value: unknown) {
   };
 }
 
-export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, initialData, onSubmitted }: Props) {
+export function BFeedbackForm({
+  sessionCode,
+  participantId,
+  taskId,
+  companyId,
+  companyName,
+  companyNo,
+  initialData,
+  phase = 'formal',
+  segmentIndex = 0,
+  onSubmitted,
+}: Props) {
   const normalized = useMemo(() => normalizeInitialData(initialData), [initialData]);
   const [q1, setQ1] = useState<'是' | '否' | ''>(normalized.q1);
   const [q2, setQ2] = useState<'是' | '否' | ''>(normalized.q2);
@@ -50,6 +66,8 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const pendingAnchorRef = useRef<string | null>(null);
+  const lastMainContextEventAtRef = useRef(0);
 
   useEffect(() => {
     if (!dirty) {
@@ -66,6 +84,50 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
   function payload() {
     return { q1, q2, q3, q4, q5 };
   }
+
+  function touch() {
+    setDirty(true);
+    window.dispatchEvent(new CustomEvent('workbench-draft-dirty'));
+    const now = Date.now();
+    if (now - lastMainContextEventAtRef.current > 2000) {
+      lastMainContextEventAtRef.current = now;
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role: 'B',
+        eventType: 'main_context_activity',
+        taskAssignmentId: taskId,
+        companyId,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'feedback_edit' },
+      });
+    }
+    if (pendingAnchorRef.current) {
+      const anchorType = pendingAnchorRef.current;
+      pendingAnchorRef.current = null;
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role: 'B',
+        eventType: 'mainline_activity',
+        taskAssignmentId: taskId,
+        companyId,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'feedback_edit', anchorType },
+      });
+    }
+  }
+
+  useEffect(() => {
+    function handleAnchor(event: Event) {
+      const detail = (event as CustomEvent<{ anchorType?: string }>).detail;
+      pendingAnchorRef.current = detail?.anchorType ?? null;
+    }
+    window.addEventListener('timestamp-anchor', handleAnchor);
+    return () => window.removeEventListener('timestamp-anchor', handleAnchor);
+  }, []);
 
   async function saveDraft(silent = false) {
     if (!sessionCode || !taskId) return;
@@ -195,10 +257,10 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
           name={name}
           value={value}
           checked={checked}
-          onChange={() => {
-            onChange(value);
-            setDirty(true);
-          }}
+        onChange={() => {
+          onChange(value);
+          touch();
+        }}
           className="h-4 w-4 accent-[#1e80ff]"
         />
         {value}

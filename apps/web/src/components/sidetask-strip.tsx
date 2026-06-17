@@ -4,6 +4,7 @@ import { AiChatPanel } from '@/components/ai-chat-panel';
 import { WorkbenchLayout } from '@/components/workbench-layout';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { RuntimeState } from '@/lib/session-runtime';
+import { recordTimestampEvent } from '@/lib/timestamp-events';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
@@ -256,6 +257,16 @@ export function SideTaskStrip({
     }
 
     try {
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role,
+        eventType: 'side_activity',
+        sideTaskPlanId: planId,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'answer', answer },
+      });
       await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/sidetask/${planId}/answer`, {
         method: 'POST',
         headers: idempotencyHeaders(`side-task-answer:${sessionCode}:${participantId}:${planId}`, {
@@ -275,6 +286,27 @@ export function SideTaskStrip({
     );
     // Report opened exposure
     if (participantId) {
+      const firstPlanId = pendingItems[0]?.planId ?? sideTaskQueue[0]?.planId ?? null;
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role,
+        eventType: 'side_area_entered',
+        sideTaskPlanId: firstPlanId,
+        phase,
+        segmentIndex,
+        payload: { source: 'side_task_panel_open' },
+      });
+      void recordTimestampEvent({
+        sessionCode,
+        participantId,
+        role,
+        eventType: 'side_activity',
+        sideTaskPlanId: firstPlanId,
+        phase,
+        segmentIndex,
+        payload: { activityKind: 'open' },
+      });
       // Report all currently visible items as opened
       for (const item of sideTaskQueue) {
         void fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/sidetask/${item.planId}/exposure`, {
@@ -447,6 +479,17 @@ export function SideTaskStrip({
               <button
                 type="button"
                 onClick={() => {
+                  void recordTimestampEvent({
+                    sessionCode,
+                    participantId,
+                    role,
+                    eventType: 'main_area_returned',
+                    sideTaskPlanId: selectedPlanId,
+                    phase,
+                    segmentIndex,
+                    payload: { source: 'return_button' },
+                  });
+                  window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'side_return' } }));
                   setExpanded(false);
                   setSelectedPlanId(null);
                 }}
