@@ -1,8 +1,10 @@
 'use client';
 
+import { adminFetch } from '@/lib/admin-auth';
 import { useEffect, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
+const fetch = adminFetch;
 
 type ItemStats = {
   byPool: Record<string, number>;

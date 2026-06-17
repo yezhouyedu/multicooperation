@@ -1,6 +1,7 @@
 'use client';
 
 import { useSessionRuntime } from '@/lib/session-runtime';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -29,7 +30,9 @@ export default function InstructionPage() {
 
     void fetch(`${serverBaseUrl}/experiment/session/${nextCode}/progress`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: idempotencyHeaders(`progress:${nextCode}:${nextRole}:instruction_viewed`, {
+        'Content-Type': 'application/json',
+      }),
       body: JSON.stringify({ role: nextRole, stage: 'instruction_viewed', payload: {} }),
     }).catch(() => {});
   }, [router]);
@@ -75,7 +78,9 @@ export default function InstructionPage() {
     try {
       const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/ready-practice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`ready-practice:${sessionCode}:${participantId}`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ participantId }),
       });
       if (!response.ok) {

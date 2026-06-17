@@ -1,6 +1,7 @@
 'use client';
 
 import { useSessionRuntime } from '@/lib/session-runtime';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -71,7 +72,9 @@ export default function ReadyClientPage() {
       const endpoint = target === 'practice' ? 'ready-practice' : 'ready-formal';
       const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`${endpoint}:${bootstrap.sessionCode}:${bootstrap.participantId}`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ participantId: bootstrap.participantId }),
       });
       if (!response.ok) {

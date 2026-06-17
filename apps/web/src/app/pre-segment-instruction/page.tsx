@@ -1,6 +1,7 @@
 'use client';
 
 import { useSessionRuntime } from '@/lib/session-runtime';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -54,7 +55,7 @@ export default function PreSegmentInstructionPage() {
     openedRef.current = key;
     fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/pre-segment-instruction/open`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: idempotencyHeaders(`pre-segment-open:${key}`, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ participantId: bootstrap.participantId }),
     })
       .then(() => refresh())
@@ -87,7 +88,10 @@ export default function PreSegmentInstructionPage() {
     try {
       const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/pre-segment-instruction/complete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(
+          `pre-segment-complete:${bootstrap.sessionCode}:${bootstrap.participantId}:${instruction.workSegment}`,
+          { 'Content-Type': 'application/json' },
+        ),
         body: JSON.stringify({ participantId: bootstrap.participantId }),
       });
       if (!response.ok) {

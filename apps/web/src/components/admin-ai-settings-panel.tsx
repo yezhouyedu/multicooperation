@@ -1,8 +1,10 @@
 'use client';
 
+import { adminFetch } from '@/lib/admin-auth';
 import { useEffect, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
+const fetch = adminFetch;
 
 const DEFAULT_SYSTEM_PROMPT = [
   '请默认使用 Markdown 输出，并遵守以下格式规则：',

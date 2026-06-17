@@ -1,5 +1,7 @@
 'use client';
 
+import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useEffect, useMemo, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
@@ -70,35 +72,30 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
     if (silent) {
       setSaving(true);
     } else {
-      setStatus('保存中...');
+      setStatus('saving...');
     }
 
+    const draftPayload = payload();
     try {
+      await saveLocalDraft({ sessionCode, taskId, role: 'B', section: 'feedback', payload: draftPayload });
       const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`draft:${sessionCode}:${taskId}:B:feedback`, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           role: 'B',
           section: 'feedback',
-          payload: payload(),
+          payload: draftPayload,
         }),
       });
-      if (!response.ok) throw new Error('保存失败');
+      if (!response.ok) throw new Error('save failed');
+      await removeQueuedDraft(sessionCode, taskId, 'B', 'feedback');
       setDirty(false);
-      setStatus(silent ? '已自动保存' : '已保存');
-      window.dispatchEvent(
-        new CustomEvent('task-draft-saved', {
-          detail: {
-            taskId,
-            role: 'B',
-            section: 'feedback',
-            payload: payload(),
-          },
-        }),
-      );
+      setStatus(silent ? 'autosaved' : 'saved');
+      window.dispatchEvent(new CustomEvent('task-draft-saved', { detail: { taskId, role: 'B', section: 'feedback', payload: draftPayload } }));
       window.dispatchEvent(new CustomEvent('workbench-draft-saved'));
-    } catch (err) {
-      setStatus(silent ? '自动保存失败' : err instanceof Error ? err.message : '保存失败');
+    } catch (error) {
+      await enqueueDraftSave({ sessionCode, taskId, role: 'B', section: 'feedback', payload: draftPayload }, error);
+      setStatus(silent ? 'local saved, waiting to sync' : 'local saved, will sync when online');
     } finally {
       setSaving(false);
     }
@@ -118,6 +115,10 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
 
   async function handleSubmit() {
     if (!canSubmit) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setError('network unavailable, please submit after reconnecting');
+      return;
+    }
     setSubmitting(true);
     setError('');
     const submitPayload = {
@@ -134,7 +135,9 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
       await saveDraft(true);
       const res = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`progress:${sessionCode}:${taskId}:b_feedback_submitted`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ role: 'B', stage: 'b_feedback_submitted', payload: submitPayload }),
       });
       if (!res.ok) throw new Error('提交失败');
@@ -142,7 +145,9 @@ export function BFeedbackForm({ sessionCode, taskId, companyName, companyNo, ini
       if (q1 === '是') {
         await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: idempotencyHeaders(`progress:${sessionCode}:${taskId}:b_feedback_to_a`, {
+            'Content-Type': 'application/json',
+          }),
           body: JSON.stringify({
             role: 'B',
             stage: 'b_feedback_to_a',

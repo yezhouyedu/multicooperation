@@ -2,6 +2,7 @@
 
 import { BFeedbackForm } from '@/components/b-feedback-form';
 import { SessionTopbar } from '@/components/session-topbar';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
@@ -10,7 +11,7 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 export default function WorkspaceBFeedbackPage() {
   const router = useRouter();
-  const { bootstrap, runtime, loading } = useSessionRuntime();
+  const { bootstrap, runtime, loading, connectionStatus, pendingDraftCount } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
   const { draft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'feedback');
 
@@ -44,6 +45,7 @@ export default function WorkspaceBFeedbackPage() {
     if (!bootstrap || !runtime?.currentTask) return;
     await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/b-complete`, {
       method: 'POST',
+      headers: idempotencyHeaders(`b-complete:${bootstrap.sessionCode}:${runtime.currentTask.id}`),
     }).catch(() => {});
     sessionStorage.removeItem(`b_feedback_resume:${bootstrap.sessionCode}`);
     router.push('/workspace/b');
@@ -57,6 +59,8 @@ export default function WorkspaceBFeedbackPage() {
           currentLabel={runtime?.currentTask?.company?.name ?? '当前项目'}
           stageLabel="当前阶段"
           countdownLabel="--:--"
+          connectionStatus={connectionStatus}
+          pendingDraftCount={pendingDraftCount}
         />
         <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
           {bootstrap && runtime?.currentTask?.company ? (

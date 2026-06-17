@@ -8,6 +8,8 @@ export type SessionTopbarProps = {
   stageLabel: string;
   countdownLabel: string;
   taskCountdownLabel?: string | null;
+  connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'polling' | 'offline';
+  pendingDraftCount?: number;
 };
 
 export function SessionTopbar({
@@ -16,8 +18,28 @@ export function SessionTopbar({
   stageLabel,
   countdownLabel,
   taskCountdownLabel,
+  connectionStatus,
+  pendingDraftCount = 0,
 }: SessionTopbarProps) {
   useExperimentFullscreen();
+  const statusLabel =
+    connectionStatus === 'connected'
+      ? 'online'
+      : connectionStatus === 'offline'
+        ? 'offline'
+        : connectionStatus === 'polling'
+          ? 'polling'
+          : connectionStatus === 'reconnecting'
+            ? 'reconnecting'
+            : connectionStatus === 'connecting'
+              ? 'connecting'
+              : null;
+  const statusClass =
+    connectionStatus === 'connected'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : connectionStatus === 'offline'
+        ? 'border-red-200 bg-red-50 text-red-700'
+        : 'border-amber-200 bg-amber-50 text-amber-700';
 
   return (
     <nav
@@ -36,6 +58,12 @@ export function SessionTopbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        {statusLabel ? (
+          <div className={`rounded-md border px-3 py-1 text-xs font-medium ${statusClass}`}>
+            {statusLabel}
+            {pendingDraftCount > 0 ? ` / pending ${pendingDraftCount}` : ''}
+          </div>
+        ) : null}
         <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-[#1e80ff]">
           {stageLabel}：{countdownLabel}
         </div>

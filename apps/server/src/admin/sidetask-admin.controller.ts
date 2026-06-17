@@ -8,16 +8,19 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { SideTaskAdminService } from './sidetask-admin.service';
 import { storagePath } from '../storage-paths';
+import { AdminAuthGuard } from './admin-auth.guard';
 
 const TEMP_UPLOAD_DIR = storagePath('tmp');
 
 @Controller('admin/sidetask')
+@UseGuards(AdminAuthGuard)
 export class SideTaskAdminController {
   constructor(private readonly sideTaskAdminService: SideTaskAdminService) {}
 

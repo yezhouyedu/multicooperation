@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  emitDraftSyncStatus,
+  flushDraftQueue,
+  getPendingDraftCount,
+  loadLocalDraft,
+  type DraftSection,
+} from './draft-sync';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
@@ -221,6 +228,8 @@ export type SessionStreamEvent = {
   data: unknown;
 };
 
+export type RuntimeConnectionStatus = 'connecting' | 'connected' | 'reconnecting' | 'polling' | 'offline';
+
 export function readSessionBootstrap(): SessionBootstrap | null {
   if (typeof window === 'undefined') return null;
   const participantId = sessionStorage.getItem('exp_participant_id');
@@ -237,6 +246,11 @@ export function useSessionRuntime() {
   const [segmentCountdown, setSegmentCountdown] = useState<number | null>(null);
   const [taskCountdown, setTaskCountdown] = useState<number | null>(null);
   const [lastEvent, setLastEvent] = useState<SessionStreamEvent | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<RuntimeConnectionStatus>('connecting');
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [nextReconnectDelayMs, setNextReconnectDelayMs] = useState(0);
+  const [pendingDraftCount, setPendingDraftCount] = useState(0);
+  const lastEventIdRef = useRef<string | null>(null);
 
   const applyRuntime = useCallback((data: RuntimeState) => {
     setRuntime(data);
@@ -254,16 +268,26 @@ export function useSessionRuntime() {
       return;
     }
 
-    setBootstrap(nextBootstrap);
-    const url = `${serverBaseUrl}/experiment/session/${nextBootstrap.sessionCode}/runtime?participantId=${nextBootstrap.participantId}`;
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) {
-      setLoading(false);
-      return;
-    }
+    setBootstrap((prev) =>
+      prev?.participantId === nextBootstrap.participantId &&
+      prev.role === nextBootstrap.role &&
+      prev.sessionCode === nextBootstrap.sessionCode
+        ? prev
+        : nextBootstrap,
+    );
+    try {
+      const url = `${serverBaseUrl}/experiment/session/${nextBootstrap.sessionCode}/runtime?participantId=${nextBootstrap.participantId}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) {
+        setLoading(false);
+        return;
+      }
 
-    const data = (await res.json()) as RuntimeState & { ok: boolean };
-    applyRuntime(data);
+      const data = (await res.json()) as RuntimeState & { ok: boolean };
+      applyRuntime(data);
+    } catch {
+      setLoading(false);
+    }
   }, [applyRuntime]);
 
   useEffect(() => {
@@ -273,10 +297,59 @@ export function useSessionRuntime() {
   useEffect(() => {
     if (!bootstrap) return;
 
-    const streamUrl = `${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/events?participantId=${bootstrap.participantId}`;
-    const source = new EventSource(streamUrl);
+    let source: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let disposed = false;
+    let attempt = 0;
 
-    source.addEventListener('runtime', (event) => {
+    const stopPolling = () => {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
+    };
+
+    const startPolling = () => {
+      if (pollTimer) return;
+      setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'polling');
+      void refresh();
+      pollTimer = setInterval(() => {
+        void refresh();
+      }, 5000);
+    };
+
+    const recordEventId = (event: Event) => {
+      const message = event as MessageEvent<string>;
+      if (message.lastEventId) lastEventIdRef.current = message.lastEventId;
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        setConnectionStatus('offline');
+        startPolling();
+        reconnectTimer = setTimeout(connect, 5000);
+        setNextReconnectDelayMs(5000);
+        return;
+      }
+
+      const params = new URLSearchParams({ participantId: bootstrap.participantId });
+      if (lastEventIdRef.current) params.set('lastEventId', lastEventIdRef.current);
+      const streamUrl = `${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/events?${params}`;
+      source = new EventSource(streamUrl);
+      setConnectionStatus(attempt > 0 ? 'reconnecting' : 'connecting');
+      setReconnectAttempt(attempt);
+
+      source.addEventListener('open', () => {
+        attempt = 0;
+        setReconnectAttempt(0);
+        setNextReconnectDelayMs(0);
+        setConnectionStatus('connected');
+        stopPolling();
+        void flushDraftQueue().then(setPendingDraftCount);
+      });
+
+      source.addEventListener('runtime', (event) => {
+        recordEventId(event);
       const message = event as MessageEvent<string>;
       try {
         const payload = JSON.parse(message.data) as RuntimeState & { ok: boolean };
@@ -285,9 +358,10 @@ export function useSessionRuntime() {
       } catch {
         // ignore malformed event payloads
       }
-    });
+      });
 
-    const forwardEvent = (type: string) => (event: Event) => {
+      const forwardEvent = (type: string) => (event: Event) => {
+      recordEventId(event);
       const message = event as MessageEvent<string>;
       let data: unknown = null;
       try {
@@ -300,23 +374,68 @@ export function useSessionRuntime() {
       window.dispatchEvent(new CustomEvent('session-stream-event', { detail: nextEvent }));
     };
 
-    source.addEventListener('b_feedback_to_a', forwardEvent('b_feedback_to_a'));
-    source.addEventListener('a_task_submitted', forwardEvent('a_task_submitted'));
-    source.addEventListener('a_task_auto_submitted', forwardEvent('a_task_auto_submitted'));
-    source.addEventListener('practice_a_task_auto_submitted', forwardEvent('practice_a_task_auto_submitted'));
-    source.addEventListener('b_task_completed', forwardEvent('b_task_completed'));
-    source.addEventListener('practice_b_task_completed', forwardEvent('practice_b_task_completed'));
-    source.addEventListener('break_questionnaire_submitted', forwardEvent('break_questionnaire_submitted'));
-    source.addEventListener('segment_survey_submitted', forwardEvent('segment_survey_submitted'));
-    source.addEventListener('post_survey_submitted', forwardEvent('post_survey_submitted'));
+      source.addEventListener('b_feedback_to_a', forwardEvent('b_feedback_to_a'));
+      source.addEventListener('a_task_submitted', forwardEvent('a_task_submitted'));
+      source.addEventListener('a_task_auto_submitted', forwardEvent('a_task_auto_submitted'));
+      source.addEventListener('practice_a_task_auto_submitted', forwardEvent('practice_a_task_auto_submitted'));
+      source.addEventListener('b_task_completed', forwardEvent('b_task_completed'));
+      source.addEventListener('practice_b_task_completed', forwardEvent('practice_b_task_completed'));
+      source.addEventListener('break_questionnaire_submitted', forwardEvent('break_questionnaire_submitted'));
+      source.addEventListener('segment_survey_submitted', forwardEvent('segment_survey_submitted'));
+      source.addEventListener('post_survey_submitted', forwardEvent('post_survey_submitted'));
 
-    source.onerror = () => {
-      source.close();
-      void refresh();
+      source.onerror = () => {
+        source?.close();
+        attempt += 1;
+        const delay = Math.min(30000, 1000 * 2 ** Math.min(attempt - 1, 5));
+        setConnectionStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'polling');
+        setReconnectAttempt(attempt);
+        setNextReconnectDelayMs(delay);
+        startPolling();
+        reconnectTimer = setTimeout(connect, delay);
+      };
     };
 
-    return () => source.close();
+    connect();
+
+    return () => {
+      disposed = true;
+      source?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      stopPolling();
+    };
   }, [applyRuntime, bootstrap, refresh]);
+
+  useEffect(() => {
+    const updateDraftCount = () => {
+      void getPendingDraftCount().then(setPendingDraftCount).catch(() => setPendingDraftCount(0));
+    };
+    const handleOnline = () => {
+      setConnectionStatus((status) => (status === 'offline' ? 'reconnecting' : status));
+      void flushDraftQueue().then(setPendingDraftCount);
+      void refresh();
+    };
+    const handleOffline = () => {
+      setConnectionStatus('offline');
+      updateDraftCount();
+    };
+    const handleDraftStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ pendingCount?: number }>).detail;
+      if (typeof detail?.pendingCount === 'number') setPendingDraftCount(detail.pendingCount);
+      else updateDraftCount();
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('draft-sync-status', handleDraftStatus as EventListener);
+    updateDraftCount();
+    void emitDraftSyncStatus();
+    if (typeof navigator !== 'undefined' && !navigator.onLine) setConnectionStatus('offline');
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('draft-sync-status', handleDraftStatus as EventListener);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -339,6 +458,10 @@ export function useSessionRuntime() {
     countdownLabel,
     taskCountdownLabel,
     lastEvent,
+    connectionStatus,
+    reconnectAttempt,
+    nextReconnectDelayMs,
+    pendingDraftCount,
   };
 }
 
@@ -364,7 +487,11 @@ export function useTaskDraft(
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load task draft');
       const data = (await res.json()) as { ok: boolean; payload: unknown };
-      setDraft(data.payload ?? null);
+      const local = await loadLocalDraft(sessionCode, taskId, role, section as DraftSection).catch(() => null);
+      setDraft(data.payload ?? local?.payload ?? null);
+    } catch {
+      const local = await loadLocalDraft(sessionCode, taskId, role, section as DraftSection).catch(() => null);
+      setDraft(local?.payload ?? null);
     } finally {
       setLoading(false);
     }

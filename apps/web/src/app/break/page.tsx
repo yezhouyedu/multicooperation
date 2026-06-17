@@ -2,6 +2,7 @@
 
 import { QuestionnaireForm, type QuestionnaireAnswers } from '@/components/questionnaire-form';
 import { SessionTopbar } from '@/components/session-topbar';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -10,7 +11,7 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 export default function BreakPage() {
   const router = useRouter();
-  const { bootstrap, runtime, loading, countdownLabel, refresh } = useSessionRuntime();
+  const { bootstrap, runtime, loading, countdownLabel, refresh, connectionStatus, pendingDraftCount } = useSessionRuntime();
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const feedbackResumeTaskId =
@@ -46,7 +47,10 @@ export default function BreakPage() {
     try {
       const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/questionnaire`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(
+          `questionnaire:${bootstrap.sessionCode}:${bootstrap.participantId}:${runtime?.questionnaireTemplate?.segmentIndex ?? 'break'}`,
+          { 'Content-Type': 'application/json' },
+        ),
         body: JSON.stringify({ participantId: bootstrap.participantId, answers }),
       });
       if (!response.ok) throw new Error(await response.text());
@@ -66,6 +70,8 @@ export default function BreakPage() {
         currentLabel="休息问卷"
         stageLabel="休息剩余时间"
         countdownLabel={countdownLabel}
+        connectionStatus={connectionStatus}
+        pendingDraftCount={pendingDraftCount}
       />
 
       <div className="no-scrollbar flex-1 overflow-y-auto p-6">

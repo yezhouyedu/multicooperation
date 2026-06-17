@@ -510,3 +510,20 @@ model ExportJob {
   @@index([createdAt])
   @@index([sessionId])
 }
+
+model IdempotencyRecord {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  route       String
+  scope       String?
+  response    Json?
+  status      String   @default("pending")
+  errorMessage String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([route])
+  @@index([scope])
+  @@index([expiresAt])
+}

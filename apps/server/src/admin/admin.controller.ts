@@ -9,6 +9,7 @@ import {
   Query,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -17,10 +18,12 @@ import { diskStorage } from 'multer';
 import { AdminService } from './admin.service';
 import { ExportService } from '../recording/export.service';
 import { storagePath } from '../storage-paths';
+import { AdminAuthGuard } from './admin-auth.guard';
 
 const TEMP_UPLOAD_DIR = storagePath('tmp');
 
 @Controller('admin')
+@UseGuards(AdminAuthGuard)
 export class AdminController {
   constructor(
     private readonly adminService: AdminService,

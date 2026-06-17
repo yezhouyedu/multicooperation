@@ -2,6 +2,7 @@
 
 import { AiChatPanel } from '@/components/ai-chat-panel';
 import { WorkbenchLayout } from '@/components/workbench-layout';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { RuntimeState } from '@/lib/session-runtime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -257,7 +258,9 @@ export function SideTaskStrip({
     try {
       await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/sidetask/${planId}/answer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`side-task-answer:${sessionCode}:${participantId}:${planId}`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ participantId, answer }),
       });
     } catch {

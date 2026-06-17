@@ -8,6 +8,7 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft, type CompanyData, type MaterialItem } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -70,7 +71,16 @@ const metricLabels: { key: keyof NormalizedADraft['metrics']; label: string }[] 
 export default function WorkspaceBPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
-  const { bootstrap, runtime, loading, countdownLabel, refresh, lastEvent } = useSessionRuntime();
+  const {
+    bootstrap,
+    runtime,
+    loading,
+    countdownLabel,
+    refresh,
+    lastEvent,
+    connectionStatus,
+    pendingDraftCount,
+  } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
   const { draft: diligenceDraftPayload, refresh: refreshDiligenceDraft } = useTaskDraft(
     bootstrap?.sessionCode,
@@ -125,6 +135,7 @@ export default function WorkspaceBPage() {
     if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
     await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/view-a-info`, {
       method: 'POST',
+      headers: idempotencyHeaders(`view-a-info:${bootstrap.sessionCode}:${runtime.currentTask.id}`),
     });
     setActiveSidebarKey('diligence-info');
     await refreshDiligenceDraft();
@@ -135,6 +146,7 @@ export default function WorkspaceBPage() {
     if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
     await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/tasks/${runtime.currentTask.id}/view-a-materials`, {
       method: 'POST',
+      headers: idempotencyHeaders(`view-a-materials:${bootstrap.sessionCode}:${runtime.currentTask.id}`),
     });
     await refresh();
   }
@@ -166,7 +178,9 @@ export default function WorkspaceBPage() {
     sessionStorage.setItem(key, '1');
     void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/progress`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: idempotencyHeaders(`progress:${bootstrap.sessionCode}:${runtime.assignedRole}:ai_upgrade_notice_seen:${runtime.segmentIndex}`, {
+        'Content-Type': 'application/json',
+      }),
       body: JSON.stringify({
         role: runtime.assignedRole,
         stage: 'ai_upgrade_notice_seen',
@@ -292,6 +306,8 @@ export default function WorkspaceBPage() {
           currentLabel={company?.name ?? '当前项目'}
           stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
+          connectionStatus={connectionStatus}
+          pendingDraftCount={pendingDraftCount}
         />
         {bootstrap && runtime ? (
           <SideTaskStrip
@@ -392,7 +408,13 @@ export default function WorkspaceBPage() {
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
-                      disabledReason={runtime.phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
+                      disabledReason={
+                        connectionStatus === 'offline'
+                          ? 'network unavailable, AI will resume after reconnecting'
+                          : runtime.phase === 'practice'
+                            ? 'AI is enabled after the formal task begins.'
+                            : undefined
+                      }
                       onScreenshot={() => materialPanelRef.current?.startCapture()}
                     />
                   </ScopedZoomSurface>

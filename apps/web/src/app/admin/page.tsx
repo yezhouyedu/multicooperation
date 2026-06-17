@@ -3,11 +3,17 @@
 import { AdminSidefeedPanel } from '@/components/admin-sidefeed-panel';
 import { AdminAiSettingsPanel } from '@/components/admin-ai-settings-panel';
 import { CompanyMaterialPanel } from '@/components/company-material-panel';
+import { adminFetch, clearAdminToken, hasAdminToken, loginAdmin } from '@/lib/admin-auth';
 import type { CompanyData } from '@/lib/session-runtime';
 import { ArrowDown, ArrowUp, RefreshCw, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
+const rawFetch = globalThis.fetch.bind(globalThis);
+const fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+  return url.includes('/admin/') ? adminFetch(input, init) : rawFetch(input, init);
+};
 
 type TabId = 'sessions' | 'participants' | 'config' | 'questionnaires' | 'materials' | 'sidefeed' | 'ai-settings';
 
@@ -1750,6 +1756,69 @@ function MaterialsLibraryTab() {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<TabId>('sessions');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
+
+  useEffect(() => {
+    setAuthenticated(hasAdminToken());
+    const handleExpired = () => {
+      setAuthenticated(false);
+      setAuthError('Login expired. Please enter the admin password again.');
+    };
+    window.addEventListener('admin-auth-expired', handleExpired);
+    return () => window.removeEventListener('admin-auth-expired', handleExpired);
+  }, []);
+
+  async function handleAdminLogin() {
+    try {
+      await loginAdmin(password.trim());
+      setAuthenticated(true);
+      setAuthError('');
+    } catch {
+      clearAdminToken();
+      setAuthenticated(false);
+      setAuthError('Password is incorrect or the server is unavailable.');
+    }
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f0f2f5]">
+        <div className="w-full max-w-sm rounded-2xl border border-[#eaecf0] bg-white p-8 shadow-sm">
+          <div className="mb-8 text-center">
+            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI Investment Platform</div>
+            <div className="text-sm text-[#86909c]">Enter admin password</div>
+          </div>
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-[#1d2129]">Admin password</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setAuthError('');
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void handleAdminLogin();
+                }}
+                className="w-full rounded-lg border border-[#eaecf0] bg-[#f5f7fa] px-3 py-2.5 text-sm text-[#1d2129] outline-none transition focus:border-[#1e80ff] focus:bg-white focus:ring-2 focus:ring-[#1e80ff]/20"
+              />
+            </label>
+            {authError ? <div className="text-xs text-red-500">{authError}</div> : null}
+            <button
+              type="button"
+              onClick={() => void handleAdminLogin()}
+              className="w-full rounded-lg bg-[#1e80ff] py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] active:scale-[0.98]"
+            >
+              Enter admin
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen bg-[#f0f2f5] text-[#1d2129] text-sm">

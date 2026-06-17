@@ -108,6 +108,8 @@ const PRACTICE_TUTORIAL_STEPS = [
 @Injectable()
 export class ExperimentService {
   private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
+  private readonly sessionEventCache = new Map<string, SessionStreamEnvelope[]>();
+  private nextSessionEventId = 1;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -128,11 +130,12 @@ export class ExperimentService {
     };
   }
 
-  createSessionEventStream(sessionCode: string, participantId?: string): Observable<MessageEvent> {
+  createSessionEventStream(sessionCode: string, participantId?: string, lastEventId?: string): Observable<MessageEvent> {
     return new Observable<MessageEvent>((subscriber) => {
       let disposed = false;
       let lastRuntimeSignature = '';
       const sessionStream = this.getSessionStream(sessionCode);
+      const replayEvents = this.getReplayEvents(sessionCode, lastEventId);
 
       const emitRuntime = async () => {
         if (disposed) return;
@@ -141,10 +144,12 @@ export class ExperimentService {
           const signature = JSON.stringify(runtime);
           if (signature === lastRuntimeSignature) return;
           lastRuntimeSignature = signature;
-          subscriber.next({ type: 'runtime', data: runtime });
+          subscriber.next({ id: this.issueSessionEventId(), type: 'runtime', data: runtime, retry: 1000 });
         } catch (error) {
           subscriber.next({
+            id: this.issueSessionEventId(),
             type: 'runtime_error',
+            retry: 1000,
             data: {
               message:
                 error instanceof Error ? error.message : `Failed to refresh runtime for ${sessionCode}`,
@@ -152,6 +157,10 @@ export class ExperimentService {
           });
         }
       };
+
+      for (const event of replayEvents) {
+        subscriber.next(event);
+      }
 
       const sessionSubscription: Subscription = sessionStream.subscribe((event) => {
         if (event.type === 'runtime_invalidated') {
@@ -981,12 +990,14 @@ export class ExperimentService {
       },
     });
 
-    await this.recordProgress({
-      sessionCode,
-      role: ParticipantRole.B,
-      stage: 'b_viewed_a_info',
-      payload: { taskId },
-    });
+    if (!task.bViewedAInfoAt) {
+      await this.recordProgress({
+        sessionCode,
+        role: ParticipantRole.B,
+        stage: 'b_viewed_a_info',
+        payload: { taskId },
+      });
+    }
     this.emitRuntimeInvalidated(sessionCode);
 
     return { ok: true, task: updated };
@@ -1046,6 +1057,17 @@ export class ExperimentService {
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
     const active = this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId);
     if (!active) throw new BadRequestException('No active questionnaire for current phase');
+    const existing = await this.prisma.questionnaireResponse.findFirst({
+      where: {
+        sessionId: synced.session.id,
+        participantId,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: active.segmentIndex,
+      },
+      orderBy: { submittedAt: 'desc' },
+    });
+    if (existing) return { ok: true, duplicate: true };
+
     const payload = {
       kind: active.kind,
       templateVersion: active.questionnaire.templateVersion,
@@ -1192,6 +1214,7 @@ export class ExperimentService {
     const session = synced.session;
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
+    if (task.aSubmittedAt) return { ok: true, taskId, duplicate: true };
 
     const now = new Date();
     if (task.aDeadlineAt && now < task.aDeadlineAt) {
@@ -1228,6 +1251,7 @@ export class ExperimentService {
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
+    if (task.bCompletedAt) return { ok: true, taskId, duplicate: true };
 
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.taskAssignment.update({
@@ -3368,9 +3392,31 @@ export class ExperimentService {
   }
 
   private emitSessionEvent(sessionCode: string, event: SessionStreamEnvelope) {
-    this.getSessionStream(sessionCode).next({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    const envelope = {
       ...event,
+      id: this.issueSessionEventId(),
+      retry: 1000,
+    };
+    const cached = this.sessionEventCache.get(sessionCode) ?? [];
+    cached.push(envelope);
+    this.sessionEventCache.set(sessionCode, cached.slice(-100));
+    this.getSessionStream(sessionCode).next(envelope);
+  }
+
+  private issueSessionEventId() {
+    const nextId = String(this.nextSessionEventId);
+    this.nextSessionEventId += 1;
+    return nextId;
+  }
+
+  private getReplayEvents(sessionCode: string, lastEventId?: string) {
+    if (!lastEventId) return [];
+    const lastSeen = Number(lastEventId);
+    if (!Number.isFinite(lastSeen)) return [];
+    const cached = this.sessionEventCache.get(sessionCode) ?? [];
+    return cached.filter((event) => {
+      const eventId = Number(event.id);
+      return Number.isFinite(eventId) && eventId > lastSeen;
     });
   }
 

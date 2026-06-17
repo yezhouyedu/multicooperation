@@ -36,7 +36,7 @@ export function WorkbenchLayout({
 
   useEffect(() => {
     const onSaved = () => setDraftStatus('saved');
-    const onDirty = () => setDraftStatus((current) => (current === 'saved' ? 'dirty' : current));
+    const onDirty = () => setDraftStatus('dirty');
     window.addEventListener('workbench-draft-saved', onSaved);
     window.addEventListener('workbench-draft-dirty', onDirty);
     return () => {
@@ -44,6 +44,16 @@ export function WorkbenchLayout({
       window.removeEventListener('workbench-draft-dirty', onDirty);
     };
   }, []);
+
+  useEffect(() => {
+    if (draftStatus !== 'dirty') return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [draftStatus]);
 
   function startHorizontalDrag(event: React.MouseEvent) {
     event.preventDefault();

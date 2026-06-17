@@ -9,6 +9,7 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
@@ -19,7 +20,16 @@ export default function WorkspaceAPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
   const finalFlushTaskRef = useRef<string | null>(null);
-  const { bootstrap, runtime, loading, countdownLabel, taskCountdownLabel, taskCountdown } = useSessionRuntime();
+  const {
+    bootstrap,
+    runtime,
+    loading,
+    countdownLabel,
+    taskCountdownLabel,
+    taskCountdown,
+    connectionStatus,
+    pendingDraftCount,
+  } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'A', 'main');
 
@@ -68,7 +78,9 @@ export default function WorkspaceAPage() {
     sessionStorage.setItem(key, '1');
     void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/progress`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: idempotencyHeaders(`progress:${bootstrap.sessionCode}:${runtime.assignedRole}:ai_upgrade_notice_seen:${runtime.segmentIndex}`, {
+        'Content-Type': 'application/json',
+      }),
       body: JSON.stringify({
         role: runtime.assignedRole,
         stage: 'ai_upgrade_notice_seen',
@@ -100,6 +112,8 @@ export default function WorkspaceAPage() {
           stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
           taskCountdownLabel={isPractice ? undefined : taskCountdownLabel}
+          connectionStatus={connectionStatus}
+          pendingDraftCount={pendingDraftCount}
         />
         {bootstrap && runtime ? (
           <SideTaskStrip
@@ -166,7 +180,13 @@ export default function WorkspaceAPage() {
                       phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
                       segmentIndex={runtime.segmentIndex}
                       aiLevel={runtime.aiLevel}
-                      disabledReason={runtime.phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
+                      disabledReason={
+                        connectionStatus === 'offline'
+                          ? 'network unavailable, AI will resume after reconnecting'
+                          : runtime.phase === 'practice'
+                            ? 'AI is enabled after the formal task begins.'
+                            : undefined
+                      }
                       onScreenshot={() => materialPanelRef.current?.startCapture()}
                     />
                   </ScopedZoomSurface>

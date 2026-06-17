@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { ExperimentController } from './experiment/experiment.controller';
 import { ExperimentService } from './experiment/experiment.service';
+import { IdempotencyService } from './idempotency/idempotency.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { RecordingModule } from './recording/recording.module';
 
@@ -23,6 +24,6 @@ import { RecordingModule } from './recording/recording.module';
     RecordingModule,
   ],
   controllers: [AppController, ExperimentController],
-  providers: [AppService, ExperimentService],
+  providers: [AppService, ExperimentService, IdempotencyService],
 })
 export class AppModule {}

@@ -1,6 +1,7 @@
 'use client';
 
 import { SessionTopbar } from '@/components/session-topbar';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -9,7 +10,7 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 export default function PracticeQuizPage() {
   const router = useRouter();
-  const { bootstrap, runtime, loading, refresh } = useSessionRuntime();
+  const { bootstrap, runtime, loading, refresh, connectionStatus, pendingDraftCount } = useSessionRuntime();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ correctCount: number; passed: boolean; passCount: number } | null>(null);
@@ -57,7 +58,9 @@ export default function PracticeQuizPage() {
     try {
       const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/practice-quiz`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`practice-quiz:${bootstrap.sessionCode}:${bootstrap.participantId}`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ participantId: bootstrap.participantId, answers }),
       });
       if (!response.ok) throw new Error('practice quiz submit failed');
@@ -78,6 +81,8 @@ export default function PracticeQuizPage() {
         currentLabel="测试题"
         stageLabel="当前阶段"
         countdownLabel="--:--"
+        connectionStatus={connectionStatus}
+        pendingDraftCount={pendingDraftCount}
       />
       <div className="no-scrollbar flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl rounded-2xl border border-[#eaecf0] bg-white p-8 shadow-sm">

@@ -1,5 +1,7 @@
 'use client';
 
+import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import type { CompanyData } from '@/lib/session-runtime';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -149,17 +151,18 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
 
   async function saveDraft(silent = false) {
     if (!sessionCode || !taskId) {
-      setStatus('预览模式未保存');
+      setStatus('preview mode, not saved');
       return;
     }
     if (silent) setIsAutosaving(true);
-    else setStatus('保存中...');
+    else setStatus('saving...');
 
+    const payload = buildPayload();
     try {
-      const payload = buildPayload();
+      await saveLocalDraft({ sessionCode, taskId, role: 'A', section: 'main', payload });
       const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`draft:${sessionCode}:${taskId}:A:main`, { 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           role: 'A',
           section: 'main',
@@ -167,12 +170,14 @@ export function ATaskEditor({ sessionCode, taskId, initialData, company, disable
         }),
       });
       if (!response.ok) throw new Error('save failed');
-      setStatus(silent ? '已自动保存' : '已保存');
+      await removeQueuedDraft(sessionCode, taskId, 'A', 'main');
       setIsDirty(false);
+      setStatus(silent ? 'autosaved' : 'saved');
       window.dispatchEvent(new CustomEvent('task-draft-saved', { detail: { taskId, role: 'A', section: 'main', payload } }));
       window.dispatchEvent(new CustomEvent('workbench-draft-saved'));
-    } catch {
-      setStatus(silent ? '自动保存失败' : '保存失败');
+    } catch (error) {
+      await enqueueDraftSave({ sessionCode, taskId, role: 'A', section: 'main', payload }, error);
+      setStatus(silent ? 'local saved, waiting to sync' : 'local saved, will sync when online');
     } finally {
       setIsAutosaving(false);
     }

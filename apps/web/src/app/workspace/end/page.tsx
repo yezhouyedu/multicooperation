@@ -1,6 +1,7 @@
 'use client';
 
 import { QuestionnaireForm, type QuestionnaireAnswers } from '@/components/questionnaire-form';
+import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime } from '@/lib/session-runtime';
 import { useEffect, useState } from 'react';
 
@@ -20,7 +21,9 @@ export default function ExperimentEndPage() {
     if (code && role) {
       void fetch(`${serverBaseUrl}/experiment/session/${code}/progress`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`progress:${code}:${role}:experiment_completed`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ role, stage: 'experiment_completed', payload: {} }),
       }).catch(() => {});
     }
@@ -32,7 +35,9 @@ export default function ExperimentEndPage() {
     try {
       const response = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/questionnaire`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: idempotencyHeaders(`questionnaire:${bootstrap.sessionCode}:${bootstrap.participantId}:post`, {
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ participantId: bootstrap.participantId, answers }),
       });
       if (!response.ok) throw new Error(await response.text());
