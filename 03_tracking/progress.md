@@ -1774,3 +1774,7 @@
 
 **验证**：
 - `corepack pnpm --filter web build` 通过。
+- Git 提交 `eef5c9b 修复测试轮教学自动跳步`，并已 push 到 GitHub `main`。
+- 线上服务器 GitHub 直连同步失败，报 `Failed to connect to github.com port 443 ... Connection timed out`；随后改用本地 `git archive` 源码包上传到服务器。
+- 上传源码后服务器源码已确认包含 `userInitiated` 修复；本轮为纯前端修复，因此只执行 `docker compose --env-file .env.production -f compose.production.yml build web` 和 `up -d web`。
+- 线上验证：`http://49.233.203.108:3001/health` 返回 200，`http://49.233.203.108:3000/admin` 返回 200，`web` 容器已重新创建并运行，`server` / `postgres` 保持健康。
