@@ -63,6 +63,27 @@ services:
     ports:
       - "${WEB_PUBLIC_PORT:-3000}:3000"
 
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: multi_cooperation_nginx_prod
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_started
+      server:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PUBLIC_PORT:-80}:80"
+      - "${HTTPS_PUBLIC_PORT:-443}:443"
+    volumes:
+      - ./infra/nginx/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${NGINX_CERT_DIR:-/etc/multi-cooperation/certs}:/etc/nginx/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   server_storage:

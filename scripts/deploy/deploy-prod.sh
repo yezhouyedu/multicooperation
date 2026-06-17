@@ -9,9 +9,9 @@ SERVER_HEALTH_URL="${SERVER_HEALTH_URL:-http://127.0.0.1:3001/health}"
 TARGET="${1:-all}"
 
 case "$TARGET" in
-  all|web|server) ;;
+  all|web|server|nginx) ;;
   *)
-    echo "Usage: bash scripts/deploy/deploy-prod.sh [all|web|server]"
+    echo "Usage: bash scripts/deploy/deploy-prod.sh [all|web|server|nginx]"
     exit 2
     ;;
 esac
@@ -36,6 +36,8 @@ echo "Compose config rendered to /tmp/multi-cooperation-compose.rendered.yml"
 step "[3/8] Building images ($TARGET)"
 if [ "$TARGET" = "all" ]; then
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+elif [ "$TARGET" = "nginx" ]; then
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull nginx
 else
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build "$TARGET"
 fi

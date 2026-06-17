@@ -1876,3 +1876,21 @@
 **本地验证**：
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
+### 2026-06-17 HTTPS 与域名正式入口接入
+
+**背景**：域名 `aiseek.tech` / `www.aiseek.tech` 已完成 A 记录解析到 `49.233.203.108`，腾讯云安全组已放行 80 / 443 / 22，用户已申请免费 SSL 证书并提供 Nginx 证书文件。裸 IP 3000 / 3001 访问已跑通，本轮把线上入口收口到 `https://aiseek.tech`。
+
+**本轮实现**：
+- `compose.production.yml` 新增 `nginx` 服务，监听 80 / 443，挂载 `/etc/multi-cooperation/certs` 中的证书文件。
+- 新增 `infra/nginx/production.conf`：`http://aiseek.tech` 和 `www.aiseek.tech` 统一 301 到 `https://aiseek.tech`；`/` 反代到 web；`/api/*` 去掉 `/api` 前缀后反代到 server；SSE 相关路径关闭 proxy buffering。
+- `.env.production.example` 更新为 HTTPS 口径：`NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api`，并新增 `HTTP_PUBLIC_PORT`、`HTTPS_PUBLIC_PORT`、`NGINX_CERT_DIR`。
+- `scripts/deploy/deploy-prod.sh` 支持 `nginx` 定向部署，便于后续只更新证书或 Nginx 配置。
+
+**证书口径**：
+- 本地证书检查确认 SAN 同时包含 `aiseek.tech` 和 `www.aiseek.tech`。
+- 证书私钥不进入 git；实际部署时上传到服务器 `/etc/multi-cooperation/certs`。
+
+**后续验证口径**：
+- 服务器 `.env.production` 需要设置 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api` 后重新构建 web。
+- 验证入口为 `https://aiseek.tech`、`https://aiseek.tech/api/health`、`http://aiseek.tech` 跳转、`https://www.aiseek.tech` 跳转。
+- HTTPS 稳定后，建议再把安全组中的公网 3000 / 3001 关闭，只保留 80 / 443 / 22。
