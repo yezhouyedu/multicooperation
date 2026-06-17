@@ -1795,7 +1795,9 @@
 **验证**：
 - `upload-git-archive.ps1` PowerShell AST 语法检查通过。
 - `upload-project.ps1` PowerShell AST 语法检查通过。
-- 本机无 bash 环境，`deploy-prod.sh` 的 shell 语法未在本地执行；需在服务器或 GitHub Actions/Linux 环境验证。
+- 新脚本已实测：`powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -Service web` 成功上传当前 commit、同步服务器源码、只重建并重启 `web`。
+- 服务器侧 `deploy-prod.sh web` 已在 Linux 环境执行通过；构建完成后 server health 与 web health 均通过。
+- 外部访问验证：`http://49.233.203.108:3001/health` 返回 200，`http://49.233.203.108:3000/admin` 返回 200。
 
 **仍需人工配置 / 后续建议**：
 - 如需继续使用服务器直连 GitHub，需要配置稳定 GitHub 网络、deploy key 或 token；当前不再依赖此路线。
