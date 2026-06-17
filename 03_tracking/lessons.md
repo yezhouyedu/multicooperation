@@ -150,3 +150,22 @@
 - 如果以后要恢复服务器 GitHub 直连，需要给服务器配置稳定访问 GitHub 的网络、deploy key 或 token。
 - 如果要进入更标准的长期形态，建议配置 GitHub Actions 或 self-hosted runner，让 CI 接管部署。
 - 正式实验前仍应补数据库和 `server_storage` 的自动备份/恢复演练；部署链路稳定不等于数据备份完成。
+
+## 2026-06-17 反思补充：ready 页长时间停留必须后端幂等 + 自同步
+
+### 事件经过
+
+正式 ready 页在用户长时间停留后复现 `Current session phase does not support this readiness action`。两名参与者间隔很久才点击“我已准备”时，前端仍停在 `/ready?target=formal`，但后端 runtime 可能已经因测试轮到点、`syncRuntime` 或另一端操作推进到后续阶段。
+
+### 根因分析
+
+1. **ready 动作不是纯前端按钮，而是阶段推进触发器**：浏览器睡眠、SSE 断线、页面长时间不刷新都会让前端显示落后于后端真实阶段。
+2. **旧后端只校验当前 `runtimePhase`，没有先自同步**：`ready-formal` 直接读数据库阶段，遇到滞后状态就返回英文 400。
+3. **新增 `PRE_SEGMENT_INSTRUCTION` 后，ready 页更容易遇到“已经过站”的情况**：formal ready 后的合法后续阶段不再只有 `FORMAL_WORK`，还包括段前指导语。
+
+### 长期处理原则
+
+- 所有“准备 / 继续 / 阶段推进”类接口都应该先执行或等价调用 runtime 同步逻辑。
+- 阶段推进接口要尽量幂等：如果 session 已经进入合法后续阶段，重复点击应返回成功并让前端刷新跳转，而不是 400。
+- 前端遇到阶段不匹配错误时，不应只展示原始英文错误；应刷新 runtime 并提示“当前阶段已变化”。
+- 对长时间实验流程，必须把浏览器休眠、SSE 断线、用户离开页面再回来当作常态，而不是异常。
