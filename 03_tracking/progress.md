@@ -1731,6 +1731,15 @@
 - `corepack pnpm --filter server prisma:generate` 通过。
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
+- 本地 API smoke 通过：formal ready 后进入 `pre_segment_instruction`；15 秒前完成被后端拒绝；单方完成进入等待；双方完成后进入 `formal_work`；导出包包含 `instructionPlan`、`variables.instructions`、`segment_metadata.preSegmentInstruction`。
+
+**线上部署与 HTTPS 验证**：
+- 已通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传 commit `ef37f26` 到服务器 `/opt/multi-cooperation`。
+- 首次 all 部署在 server recreate 时 SSH 连接中断；随后单独执行 `deploy-prod.sh server` 和 `deploy-prod.sh web` 补齐，最终 `postgres/server/web/nginx` 均正常运行。
+- `https://aiseek.tech/api/health`、`https://aiseek.tech/login`、`https://aiseek.tech/admin`、`https://aiseek.tech/pre-segment-instruction` 返回 200。
+- `http://aiseek.tech` 与 `https://www.aiseek.tech` 均 301 到 `https://aiseek.tech/`。
+- 线上 API smoke 通过：测试轮 5 分钟自然到点后进入 formal ready，双方 ready 后进入段 1 前指导语；15 秒后双方完成并进入正式工作段 1。
+- 线上选中 session 导出通过，服务器 volume 中导出 JSON 已确认包含 `instructionPlan`、`variables.instructions`、`segment_metadata.preSegmentInstruction`。
 - 本地启动脚本在 sandbox 内会因 `Get-CimInstance` / Corepack 缓存权限失败；提升执行 `powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1` 后启动成功。
 - `http://localhost:3001/health` 返回 200。
 - `http://localhost:3000/admin` 返回 200。
