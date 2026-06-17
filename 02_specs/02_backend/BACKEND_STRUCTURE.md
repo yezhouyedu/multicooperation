@@ -171,7 +171,30 @@
 ### 4.3 AI 相关
 
 - `AiMessageLog`
+  - 保存 AI 聊天、请求耗时、provider 状态和 requestId。
+  - `AiService` 同步写入 `ai_wait_started` / `ai_wait_ended` 到 `ExperimentEvent`，用于 D/E 时间戳变量。
 - `AiSettings`
+
+### 4.3.1 时间戳变量
+
+不新增专用表或 migration：
+
+- `ExperimentEvent`
+  - `side_area_entered`
+  - `main_area_returned`
+  - `mainline_activity`
+  - `main_context_activity`
+  - `side_activity`
+  - `ai_wait_started`
+  - `ai_wait_ended`
+- `AiMessageLog`
+  - 作为 AI 等待窗的 requestId、createdAt、completedAt、latencyMs 校验源。
+- `SideTaskExposureLog`
+  - 作为副线释放、提醒、打开、作答的校验源。
+- `SessionSegmentState` / `TaskAssignment`
+  - 作为正式工作段区间和公司上下文来源。
+
+导出时生成 participant 根目录的 `timestamps.json`，并把摘要写入 `variables.json.timing`。
 
 ### 4.4 材料系统相关
 
@@ -261,6 +284,9 @@
 - `POST /experiment/session/:code/pre-segment-instruction/complete`
 - `POST /experiment/session/:code/complete-practice`
 - `POST /experiment/session/:code/progress`
+- `POST /experiment/session/:code/timestamps/event`
+  - 仅写 `ExperimentEvent`，用于主副线切换、主线恢复和时间戳变量原始事件。
+  - `payload.clientEventId` 用于前端重试去重。
 
 ### 6.3 主任务
 

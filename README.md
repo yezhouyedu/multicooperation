@@ -127,6 +127,7 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -
 | [问卷流程方案.md](02_specs/03_execution/问卷流程方案.md) | 正式问卷流程与保存口径 |
 | [段前指导语方案.md](02_specs/03_execution/段前指导语方案.md) | 正式工作段前阅读材料流程 |
 | [变量记录与服务器导出方案.md](02_specs/04_pre_deploy/变量记录与服务器导出方案.md) | 变量记录设计 |
+| [时间戳变量保存方案.md](02_specs/04_pre_deploy/时间戳变量保存方案.md) | 主线/副线/AI 等待时间戳变量 |
 | [数据库文件夹手册.md](02_specs/04_pre_deploy/数据库文件夹手册.md) | 导出包阅读指南 |
 | [命令运行清单.md](02_specs/05_server_deploy/命令运行清单.md) | 服务器运维命令 |
 

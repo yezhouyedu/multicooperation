@@ -1887,6 +1887,20 @@
 **本地验证**：
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
+
+### 2026-06-17 neat-freak：时间戳模块文档一致性收口
+
+**背景**：时间戳变量模块已完成本地构建、GitHub push、线上部署和 HTTPS 导出 smoke，需要确认 Markdown 不再停留在“后续实现/建议实现”口径。
+
+**本轮文档修正**：
+- `README.md` 文档导航新增 `时间戳变量保存方案.md`。
+- `02_specs/02_backend/BACKEND_STRUCTURE.md` 补充时间戳变量后端职责、`ExperimentEvent` 事件类型、AI D/E 打点来源和 `POST /experiment/session/:code/timestamps/event`。
+- `02_specs/04_pre_deploy/变量记录与服务器导出方案.md` 将 AI 等待期间行为变量从“后续可通过事件时间戳推导”改为当前已通过 `timestamps.json.aiWaitWindows` 和 `variables.json.timing` 导出。
+- `02_specs/04_pre_deploy/时间戳变量保存方案.md` 将“原始事件建议 / 实现优先级”收口为“当前实现 / 实现状态”，标明 P0/P1 已完成。
+
+**审查结论**：
+- `数据库文件夹手册.md` 已和真实导出结构一致，无需本轮继续修改。
+- 未修改服务器部署文档；本轮是纯时间戳模块文档口径收口，不改变部署路线。
 ### 2026-06-17 主界面调试：测试轮个人计时、材料 tab 稳定性、副线条残留滚动修复
 
 **背景**：用户复查测试轮和主工作台时发现：副线任务条在待处理为 0 时右侧露出残留滚动按钮；测试轮教学结束后希望每个被试各自启动 5 分钟测试轮，而不是等双方教学都结束；B 端材料区 5 分钟前没有稳定显示 A 原始材料锁定 tab；材料 tab 点击后会自动跳回第一个材料；材料 tab 只能点左右按钮横移，不支持滚轮快速滚动。
