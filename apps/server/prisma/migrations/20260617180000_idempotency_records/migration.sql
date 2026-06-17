@@ -1,4 +1,4 @@
-﻿CREATE TABLE "IdempotencyRecord" (
+CREATE TABLE "IdempotencyRecord" (
     "id" TEXT NOT NULL,
     "key" TEXT NOT NULL,
     "route" TEXT NOT NULL,
