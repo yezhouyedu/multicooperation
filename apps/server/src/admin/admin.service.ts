@@ -18,6 +18,10 @@ import {
   scanCaseLibrary,
 } from './materials';
 import { storagePath } from '../storage-paths';
+import {
+  FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+  formalQuestionnaireTemplateJson,
+} from '../questionnaire/three-chapter-v1-1';
 
 type CompanyWithMaterials = {
   id: string;
@@ -39,6 +43,8 @@ type SingleChoiceQuestionInput = {
   options: string[];
   correctOption?: string;
 };
+
+type FormalQuestionnaireInput = Prisma.InputJsonValue | Record<string, unknown> | null | undefined;
 
 type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
 
@@ -182,7 +188,7 @@ export class AdminService {
     breakDurationMinutes: number;
     segmentAiLevels: string[];
     questionnaireTitle?: string;
-    questionnaireItems: SingleChoiceQuestionInput[];
+    questionnaireItems: FormalQuestionnaireInput;
     practiceQuizTitle?: string;
     practiceQuizItems: SingleChoiceQuestionInput[];
     practiceQuizPassCount?: number;
@@ -199,25 +205,17 @@ export class AdminService {
       batchPauseSec?: number;
     };
   }) {
-    const cleanItems = (input.questionnaireItems ?? [])
-      .map((item, index) => ({
-        id: item.id?.trim() || `q${index + 1}`,
-        prompt: item.prompt?.trim() || '',
-        options: (item.options ?? []).map((option) => option.trim()).filter(Boolean),
-      }))
-      .filter((item) => item.prompt && item.options.length >= 2);
-
     const template = await this.prisma.questionnaireTemplate.upsert({
-      where: { id: 'default-break-questionnaire' },
+      where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: input.questionnaireTitle?.trim() || '默认休息问卷',
-        items: cleanItems as Prisma.InputJsonValue,
+        title: input.questionnaireTitle?.trim() || 'three-chapter-questionnaire-v1.1',
+        items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
       create: {
-        id: 'default-break-questionnaire',
-        title: input.questionnaireTitle?.trim() || '默认休息问卷',
-        items: cleanItems as Prisma.InputJsonValue,
+        id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+        title: input.questionnaireTitle?.trim() || 'three-chapter-questionnaire-v1.1',
+        items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
     });
@@ -1001,9 +999,38 @@ export class AdminService {
         },
         include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
       });
+    } else if (config.activeQuestionnaireTemplateId !== FORMAL_QUESTIONNAIRE_TEMPLATE_ID) {
+      const template = await this.ensureDefaultTemplate();
+      config = await this.prisma.experimentConfig.update({
+        where: { id: config.id },
+        data: {
+          activeQuestionnaireTemplateId: template.id,
+        },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
+      });
+    } else if (
+      config.activeQuestionnaireTemplate?.title.includes('?') ||
+      !this.hasFormalQuestionnaireShape(config.activeQuestionnaireTemplate?.items)
+    ) {
+      await this.ensureDefaultTemplate();
+      const refreshed = await this.prisma.experimentConfig.findUnique({
+        where: { id: 'default' },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
+      });
+      if (refreshed) config = refreshed;
     }
 
     return config;
+  }
+
+  private hasFormalQuestionnaireShape(value: unknown) {
+    return Boolean(
+      value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        (value as Record<string, unknown>).segmentSurvey &&
+        (value as Record<string, unknown>).postSurvey,
+    );
   }
 
   private normalizeExperimentMode(value?: string): ExperimentMode {
@@ -1162,23 +1189,29 @@ export class AdminService {
 
   private async ensureDefaultTemplate(): Promise<QuestionnaireTemplate> {
     return this.prisma.questionnaireTemplate.upsert({
-      where: { id: 'default-break-questionnaire' },
+      where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
+        title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+        items: formalQuestionnaireTemplateJson(),
         isActive: true,
       },
       create: {
-        id: 'default-break-questionnaire',
-        title: '默认休息问卷',
+        id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+        title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
         isActive: true,
-        items: [
-          {
-            id: 'q1',
-            prompt: '你当前的认知负荷感受如何？',
-            options: ['很低', '较低', '中等', '较高', '很高'],
-          },
-        ] as Prisma.InputJsonValue,
+        items: formalQuestionnaireTemplateJson(),
       },
     });
+  }
+
+  private normalizeFormalQuestionnaireTemplate(value: FormalQuestionnaireInput): Prisma.InputJsonValue {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const row = value as Record<string, unknown>;
+      if (row.schemaVersion && row.segmentSurvey && row.postSurvey) {
+        return row as Prisma.InputJsonValue;
+      }
+    }
+    return formalQuestionnaireTemplateJson();
   }
 
   private async ensureDefaultPracticeQuizTemplate(): Promise<QuestionnaireTemplate> {

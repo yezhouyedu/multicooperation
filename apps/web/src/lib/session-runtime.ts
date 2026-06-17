@@ -59,10 +59,38 @@ export type RuntimeTask = {
   crossUpgradeBoundaryFlag: boolean;
 };
 
+export type QuestionnaireItem = {
+  id: string;
+  code: string;
+  prompt: string;
+  type: 'scale' | 'single' | 'multi' | 'number' | 'text';
+  required?: boolean;
+  reverse?: boolean;
+  construct?: string;
+  order?: number;
+  options: string[];
+  min?: number;
+  max?: number;
+  minLabel?: string;
+  maxLabel?: string;
+  maxLength?: number;
+  followup?: {
+    prompt: string;
+    triggerText: string;
+  };
+};
+
 export type QuestionnaireTemplate = {
   id: string;
   title: string;
-  items: { id: string; prompt: string; options: string[] }[];
+  kind?: 'segment_survey' | 'post_survey';
+  templateVersion?: string;
+  experimentMode?: 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+  role?: 'A' | 'B';
+  segmentIndex?: number;
+  workSegment?: number | null;
+  sections?: { title: string; items: QuestionnaireItem[] }[];
+  items: QuestionnaireItem[];
 };
 
 export type RuntimeState = {
@@ -253,6 +281,8 @@ export function useSessionRuntime() {
     source.addEventListener('b_task_completed', forwardEvent('b_task_completed'));
     source.addEventListener('practice_b_task_completed', forwardEvent('practice_b_task_completed'));
     source.addEventListener('break_questionnaire_submitted', forwardEvent('break_questionnaire_submitted'));
+    source.addEventListener('segment_survey_submitted', forwardEvent('segment_survey_submitted'));
+    source.addEventListener('post_survey_submitted', forwardEvent('post_survey_submitted'));
 
     source.onerror = () => {
       source.close();

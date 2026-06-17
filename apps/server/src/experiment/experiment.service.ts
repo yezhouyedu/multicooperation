@@ -23,6 +23,10 @@ import { Observable, Subject, Subscription } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMaterialPublicUrl, normalizeMaterials } from '../admin/materials';
 import { ExperimentAuditService } from '../recording/experiment-audit.service';
+import {
+  FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+  formalQuestionnaireTemplateJson,
+} from '../questionnaire/three-chapter-v1-1';
 
 type EnterExperimentInput = {
   nickname?: string;
@@ -84,6 +88,7 @@ type RuntimeConfig = ExperimentConfig & {
 };
 
 type BarrierTarget = 'practice' | 'formal';
+type FormalQuestionnaireKind = 'segment_survey' | 'post_survey';
 
 const PRACTICE_TUTORIAL_STEPS = [
   'material_tab',
@@ -441,13 +446,11 @@ export class ExperimentService {
       : null;
     const isPracticePhase = session.runtimePhase === RuntimePhase.PRACTICE;
     const currentTaskPhase = isPracticePhase ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
+    const activeQuestionnaire = participantId
+      ? this.buildActiveQuestionnaire(session, config, assignedRole, participantId)
+      : null;
     const questionnaireSubmitted = participantId
-      ? session.questionnaireAnswers.some(
-          (answer) =>
-            answer.participantId === participantId &&
-            answer.phase === ExperimentPhase.FORMAL &&
-            answer.segmentIndex === session.currentSegmentIndex,
-        )
+      ? this.hasSubmittedQuestionnaire(session, participantId, activeQuestionnaire?.segmentIndex ?? session.currentSegmentIndex)
       : false;
 
     return {
@@ -496,14 +499,7 @@ export class ExperimentService {
       feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
       ...(await this.getSideTaskRuntime(session, config, participantId)),
       syncState,
-      questionnaireTemplate:
-        session.runtimePhase === RuntimePhase.FORMAL_BREAK && config.activeQuestionnaireTemplate
-          ? {
-              id: config.activeQuestionnaireTemplate.id,
-              title: config.activeQuestionnaireTemplate.title,
-              items: config.activeQuestionnaireTemplate.items,
-            }
-          : null,
+      questionnaireTemplate: activeQuestionnaire?.questionnaire ?? null,
       practiceQuizTemplate:
         (!practiceQuizPassed || this.mapRuntimePhase(session.runtimePhase) === 'practice_quiz') && config.practiceQuizTemplate
           ? {
@@ -865,21 +861,20 @@ export class ExperimentService {
     return { ok: true, task: updated };
   }
 
-  async getQuestionnaire(sessionCode: string) {
+  async getQuestionnaire(sessionCode: string, participantId?: string) {
     const synced = await this.syncRuntime(sessionCode);
-    if (synced.session.runtimePhase !== RuntimePhase.FORMAL_BREAK) {
+    const pairing = synced.session.pairings[0];
+    const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    const active = participantId
+      ? this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId)
+      : null;
+    if (!active) {
       return { ok: true, questionnaire: null };
     }
 
     return {
       ok: true,
-      questionnaire: synced.config.activeQuestionnaireTemplate
-        ? {
-            id: synced.config.activeQuestionnaireTemplate.id,
-            title: synced.config.activeQuestionnaireTemplate.title,
-            items: synced.config.activeQuestionnaireTemplate.items,
-          }
-        : null,
+      questionnaire: active.questionnaire,
     };
   }
 
@@ -887,6 +882,22 @@ export class ExperimentService {
     const synced = await this.syncRuntime(sessionCode);
     const participant = await this.prisma.participant.findUnique({ where: { id: participantId } });
     if (!participant) throw new NotFoundException('Participant not found');
+    const pairing = synced.session.pairings[0];
+    const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    const active = this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId);
+    if (!active) throw new BadRequestException('No active questionnaire for current phase');
+    const payload = {
+      kind: active.kind,
+      templateVersion: active.questionnaire.templateVersion,
+      title: active.questionnaire.title,
+      experimentMode: synced.session.experimentMode,
+      role: assignedRole,
+      segmentIndex: active.segmentIndex,
+      workSegment: active.questionnaire.workSegment ?? null,
+      submittedAt: new Date().toISOString(),
+      items: active.questionnaire.items,
+      answers,
+    };
 
     await this.prisma.questionnaireResponse.create({
       data: {
@@ -894,8 +905,8 @@ export class ExperimentService {
         participantId,
         templateId: synced.config.activeQuestionnaireTemplate?.id,
         phase: ExperimentPhase.FORMAL,
-        segmentIndex: synced.session.currentSegmentIndex,
-        answers,
+        segmentIndex: active.segmentIndex,
+        answers: payload as Prisma.InputJsonValue,
       },
     });
 
@@ -903,23 +914,23 @@ export class ExperimentService {
       data: {
         sessionId: synced.session.id,
         participantId,
-        stage: 'break_questionnaire_submitted',
-        payload: answers,
+        stage: `${active.kind}_submitted`,
+        payload: payload as Prisma.InputJsonValue,
       },
     });
     await this.audit.record({
       sessionId: synced.session.id,
       participantId,
       role: participant.role,
-      eventType: 'break_questionnaire_submitted',
+      eventType: `${active.kind}_submitted`,
       phase: ExperimentPhase.FORMAL,
-      segmentIndex: synced.session.currentSegmentIndex,
-      payload: answers,
+      segmentIndex: active.segmentIndex,
+      payload: payload as Prisma.InputJsonValue,
     });
 
     this.emitSessionEvent(sessionCode, {
-      type: 'break_questionnaire_submitted',
-      data: { participantId, payload: answers },
+      type: `${active.kind}_submitted`,
+      data: { participantId, payload },
     });
     this.emitRuntimeInvalidated(sessionCode);
 
@@ -2905,6 +2916,115 @@ export class ExperimentService {
     });
   }
 
+  private buildActiveQuestionnaire(
+    session: RuntimeSession,
+    config: RuntimeConfig,
+    role: ParticipantRole,
+    participantId: string,
+  ) {
+    if (!config.activeQuestionnaireTemplate) return null;
+    if (session.runtimePhase === RuntimePhase.FORMAL_BREAK) {
+      const segmentIndex = session.currentSegmentIndex;
+      return {
+        kind: 'segment_survey' as const,
+        segmentIndex,
+        questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'segment_survey', {
+          mode: session.experimentMode,
+          role,
+          segmentIndex,
+          workSegment: this.workSegmentBeforeQuestionnaire(segmentIndex),
+        }),
+      };
+    }
+    if (session.runtimePhase === RuntimePhase.END) {
+      if (!this.hasSubmittedQuestionnaire(session, participantId, 6)) {
+        return {
+          kind: 'segment_survey' as const,
+          segmentIndex: 6,
+          questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'segment_survey', {
+            mode: session.experimentMode,
+            role,
+            segmentIndex: 6,
+            workSegment: 3,
+          }),
+        };
+      }
+      if (!this.hasSubmittedQuestionnaire(session, participantId, 99)) {
+        return {
+          kind: 'post_survey' as const,
+          segmentIndex: 99,
+          questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'post_survey', {
+            mode: session.experimentMode,
+            role,
+            segmentIndex: 99,
+            workSegment: null,
+          }),
+        };
+      }
+    }
+    return null;
+  }
+
+  private hasSubmittedQuestionnaire(session: RuntimeSession, participantId: string, segmentIndex: number) {
+    return session.questionnaireAnswers.some(
+      (answer) =>
+        answer.participantId === participantId &&
+        answer.phase === ExperimentPhase.FORMAL &&
+        answer.segmentIndex === segmentIndex,
+    );
+  }
+
+  private workSegmentBeforeQuestionnaire(segmentIndex: number) {
+    if (segmentIndex === 2) return 1;
+    if (segmentIndex === 4) return 2;
+    if (segmentIndex === 6) return 3;
+    return null;
+  }
+
+  private buildFormalQuestionnaire(
+    template: QuestionnaireTemplate,
+    kind: FormalQuestionnaireKind,
+    context: { mode: string; role: ParticipantRole; segmentIndex: number; workSegment: number | null },
+  ) {
+    const root = this.normalizeFormalTemplate(template.items);
+    const sections =
+      kind === 'segment_survey'
+        ? [{ title: root.segmentSurvey.title, items: root.segmentSurvey.items }]
+        : this.buildPostSurveySections(root, context.mode, context.role);
+    const items = sections.flatMap((section) => section.items);
+    return {
+      id: template.id,
+      title: kind === 'segment_survey' ? `\u5de5\u4f5c\u6bb5 ${context.workSegment ?? ''} \u540e\u95ee\u5377` : root.postSurvey.title,
+      kind,
+      templateVersion: root.version,
+      experimentMode: context.mode,
+      role: context.role,
+      segmentIndex: context.segmentIndex,
+      workSegment: context.workSegment,
+      sections,
+      items,
+    };
+  }
+
+  private buildPostSurveySections(root: any, mode: string, role: ParticipantRole) {
+    const sections = [...root.postSurvey.commonSections];
+    const manipulation = root.postSurvey.manipulationChecks[mode as keyof typeof root.postSurvey.manipulationChecks];
+    if (manipulation) sections.splice(1, 0, manipulation);
+    sections.splice(2, 0, root.postSurvey.roleSpecific[role]);
+    return sections;
+  }
+
+  private normalizeFormalTemplate(value: unknown) {
+    const root =
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : (formalQuestionnaireTemplateJson() as Record<string, unknown>);
+    if (!root.segmentSurvey || !root.postSurvey) {
+      return formalQuestionnaireTemplateJson() as unknown as typeof import('../questionnaire/three-chapter-v1-1').formalQuestionnaireTemplate;
+    }
+    return root as unknown as typeof import('../questionnaire/three-chapter-v1-1').formalQuestionnaireTemplate;
+  }
+
   private normalizeQuestionnaireItems(value: unknown) {
     if (!Array.isArray(value)) return [];
     return value
@@ -2959,18 +3079,16 @@ export class ExperimentService {
 
     if (!config) {
       const template = await this.prisma.questionnaireTemplate.upsert({
-        where: { id: 'default-break-questionnaire' },
-        update: { isActive: true },
+        where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
+        update: {
+          title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+          items: formalQuestionnaireTemplateJson(),
+          isActive: true,
+        },
         create: {
-          id: 'default-break-questionnaire',
-          title: '默认休息问卷',
-          items: [
-            {
-              id: 'q1',
-              prompt: '你当前的认知负荷感受如何？',
-              options: ['很低', '较低', '中等', '较高', '很高'],
-            },
-          ] as Prisma.InputJsonValue,
+          id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+          title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+          items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
       });

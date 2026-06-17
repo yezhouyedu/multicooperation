@@ -1803,3 +1803,49 @@
 - 如需继续使用服务器直连 GitHub，需要配置稳定 GitHub 网络、deploy key 或 token；当前不再依赖此路线。
 - 更完整的长期方案是 GitHub Actions 或 self-hosted runner：Codex 只负责 push，CI 负责构建和部署。
 - 正式实验前仍需补自动备份与恢复演练，部署链路稳定不等于数据安全闭环完成。
+### 2026-06-17 正式问卷接入：三章实验问卷 V1.1、Admin 配置与导出更新
+
+**背景**：用户确认招募问卷后续单独外发，不放入系统；师兄 HTML 只作为题目来源，不复用其中计时、预览、样式、论文来源和内部备注。平台需要提取纯问卷题目，接入现有前端风格，并在后端、数据库导出、admin 配置和文档中形成完整口径。
+
+**后端改动**：
+- 新增 `apps/server/src/questionnaire/three-chapter-v1-1.ts`，从 `三章实验问卷可用版_V1.1_可点击计时版(1).html` 提取正式问卷模板。
+- 模板 ID 固定为 `three-chapter-questionnaire-v1-1`；招募问卷明确排除在系统外。
+- `ExperimentConfig.activeQuestionnaireTemplate` 改为正式三章问卷模板；旧“休息问卷模板”不再作为主配置入口。
+- 正式问卷运行逻辑：
+  - 工作段 1 后问卷保存为 `segmentIndex = 2`。
+  - 工作段 2 后问卷保存为 `segmentIndex = 4`。
+  - 工作段 3 后问卷在结束页先呈现，保存为 `segmentIndex = 6`。
+  - 最后问卷随后呈现，保存为 `segmentIndex = 99`。
+- 问卷提交写入 `QuestionnaireResponse`、`TaskProgress` 和 `ExperimentEvent`，事件类型为 `segment_survey_submitted` / `post_survey_submitted`。
+
+**前端改动**：
+- 新增通用 `QuestionnaireForm`，支持量表、单选、多选、数字输入、开放题和条件追问。
+- `/break` 改为渲染后端返回的工作段后问卷，提交后留在休息页等待下一阶段。
+- `/workspace/end` 改为先补第三次工作段后问卷，再呈现最后问卷；最后问卷提交后才显示实验完成页。
+- admin 新增“问卷配置”tab，展示问卷组装说明，并支持编辑题干、选项、量表端点和开放题最大字数。
+- “实验配置”tab 中移除旧“休息问卷模板”编辑区，避免两套问卷配置并存。
+
+**变量记录与导出**：
+- `questionnaires/` 导出结构更新为：
+  - `practice_quiz.json`
+  - `segment_1.json`
+  - `segment_2.json`
+  - `segment_3.json`
+  - `post_survey.json`
+- `variables.json.questionnaire` 更新为：
+  - `practiceQuizPassed`
+  - `segmentSurveySubmittedCount`
+  - `segment1Submitted`
+  - `segment2Submitted`
+  - `segment3Submitted`
+  - `postSurveySubmitted`
+- 动态自检中 participant 必备问卷文件同步更新为三次段后问卷和最后问卷。
+- 不保存招募问卷、论文来源、论文链接、HTML 计时脚本、预览说明或内部备注。
+
+**文档**：
+- 新增 `02_specs/03_execution/问卷流程方案.md`。
+- 更新 `02_specs/04_pre_deploy/数据库文件夹手册.md`，新增正式问卷导出口径章节。
+
+**本地验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
-type TabId = 'sessions' | 'participants' | 'config' | 'materials' | 'sidefeed' | 'ai-settings';
+type TabId = 'sessions' | 'participants' | 'config' | 'questionnaires' | 'materials' | 'sidefeed' | 'ai-settings';
 
 type SessionSummary = {
   id: string;
@@ -33,6 +33,33 @@ type SessionSummary = {
 
 type Participant = { id: string; phone: string | null; createdAt: string };
 type QuestionnaireItem = { id: string; prompt: string; options: string[]; correctOption?: string };
+type FormalQuestionnaireItem = {
+  code: string;
+  prompt: string;
+  type: 'scale' | 'single' | 'multi' | 'number' | 'text';
+  required?: boolean;
+  options?: string[];
+  min?: number;
+  max?: number;
+  minLabel?: string;
+  maxLabel?: string;
+  maxLength?: number;
+  followup?: { prompt: string; triggerText: string };
+};
+type FormalQuestionnaireSection = { title: string; items: FormalQuestionnaireItem[] };
+type FormalQuestionnaireTemplate = {
+  schemaVersion: number;
+  version: string;
+  title: string;
+  recruitmentExcluded: boolean;
+  segmentSurvey: FormalQuestionnaireSection;
+  postSurvey: {
+    title: string;
+    commonSections: FormalQuestionnaireSection[];
+    manipulationChecks: Record<string, FormalQuestionnaireSection>;
+    roleSpecific: Record<'A' | 'B', FormalQuestionnaireSection>;
+  };
+};
 type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
 type ExperimentModeSettings = {
   ai_upgrade: { fixedSideDispatchMode: 'continuous' | 'batch'; fixedNarrativeGroup: 'neutral_info' | 'coop_narrative' };
@@ -63,7 +90,7 @@ type ExperimentConfig = {
   questionnaireTemplate: {
     id: string;
     title: string;
-    items: QuestionnaireItem[];
+    items: FormalQuestionnaireTemplate;
   } | null;
   practiceQuizTemplate: {
     id: string;
@@ -112,12 +139,13 @@ type LibraryCaseOverview = {
 };
 
 const NAV_ITEMS: { id: TabId; label: string }[] = [
-  { id: 'sessions', label: 'Session 概览' },
-  { id: 'participants', label: '被试名单' },
-  { id: 'config', label: '实验配置' },
-  { id: 'materials', label: '材料管理' },
-  { id: 'sidefeed', label: '副线调度' },
-  { id: 'ai-settings', label: 'AI 参数' },
+  { id: 'sessions', label: 'Session \u6982\u89c8' },
+  { id: 'participants', label: '\u88ab\u8bd5\u540d\u5355' },
+  { id: 'config', label: '\u5b9e\u9a8c\u914d\u7f6e' },
+  { id: 'questionnaires', label: '\u95ee\u5377\u914d\u7f6e' },
+  { id: 'materials', label: '\u6750\u6599\u7ba1\u7406' },
+  { id: 'sidefeed', label: '\u526f\u7ebf\u8c03\u5ea6' },
+  { id: 'ai-settings', label: 'AI \u53c2\u6570' },
 ];
 
 async function fetchJsonWithRetry<T>(url: string, init?: RequestInit, attempts = 4): Promise<T> {
@@ -789,8 +817,8 @@ function ConfigTab() {
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
-        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '休息问卷',
-        questionnaireItems: currentConfig.questionnaireTemplate?.items ?? [],
+        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? 'three-chapter-questionnaire-v1.1',
+        questionnaireItems: currentConfig.questionnaireTemplate?.items ?? null,
         practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
         practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
         practiceQuizPassCount: currentConfig.practiceQuizPassCount,
@@ -800,12 +828,6 @@ function ConfigTab() {
     setStatus('已保存');
     await load();
   }
-
-  const questionnaire = config.questionnaireTemplate ?? {
-    id: 'default',
-    title: '休息问卷',
-    items: [{ id: 'q1', prompt: '', options: ['选项 1', '选项 2'] }],
-  };
   const practiceQuiz = config.practiceQuizTemplate ?? {
     id: 'default-practice-quiz',
     title: '测试题',
@@ -955,8 +977,6 @@ function ConfigTab() {
         <div className="mt-2 text-xs text-[#86909c]">填 0 表示默认按“全对通过”。</div>
       </div>
 
-      <SingleChoiceEditor title="休息问卷模板" template={questionnaire} onChange={(next) => setConfig((prev) => (prev ? { ...prev, questionnaireTemplate: next } : prev))} />
-
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-4 font-bold text-[#1d2129]">指导语积木</div>
         <div className="grid gap-4 lg:grid-cols-2">
@@ -987,6 +1007,237 @@ function ConfigTab() {
 
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">保存配置</button>
+        {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function cloneFormalTemplate(template: FormalQuestionnaireTemplate): FormalQuestionnaireTemplate {
+  return JSON.parse(JSON.stringify(template)) as FormalQuestionnaireTemplate;
+}
+
+function updateFormalItems(
+  template: FormalQuestionnaireTemplate,
+  matcher: (section: FormalQuestionnaireSection) => boolean,
+  updater: (items: FormalQuestionnaireItem[]) => FormalQuestionnaireItem[],
+) {
+  const next = cloneFormalTemplate(template);
+  if (matcher(next.segmentSurvey)) next.segmentSurvey.items = updater(next.segmentSurvey.items);
+  next.postSurvey.commonSections = next.postSurvey.commonSections.map((section) =>
+    matcher(section) ? { ...section, items: updater(section.items) } : section,
+  );
+  next.postSurvey.manipulationChecks = Object.fromEntries(
+    Object.entries(next.postSurvey.manipulationChecks).map(([key, section]) => [
+      key,
+      matcher(section) ? { ...section, items: updater(section.items) } : section,
+    ]),
+  );
+  next.postSurvey.roleSpecific = {
+    A: matcher(next.postSurvey.roleSpecific.A)
+      ? { ...next.postSurvey.roleSpecific.A, items: updater(next.postSurvey.roleSpecific.A.items) }
+      : next.postSurvey.roleSpecific.A,
+    B: matcher(next.postSurvey.roleSpecific.B)
+      ? { ...next.postSurvey.roleSpecific.B, items: updater(next.postSurvey.roleSpecific.B.items) }
+      : next.postSurvey.roleSpecific.B,
+  };
+  return next;
+}
+
+function FormalQuestionnaireSectionEditor({
+  section,
+  onChange,
+}: {
+  section: FormalQuestionnaireSection;
+  onChange: (nextItems: FormalQuestionnaireItem[]) => void;
+}) {
+  function updateItem(index: number, updater: (item: FormalQuestionnaireItem) => FormalQuestionnaireItem) {
+    onChange(section.items.map((item, itemIndex) => (itemIndex === index ? updater(item) : item)));
+  }
+
+  return (
+    <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="font-bold text-[#1d2129]">{section.title}</div>
+        <div className="text-xs text-[#86909c]">{section.items.length} 题</div>
+      </div>
+      <div className="space-y-4">
+        {section.items.map((item, index) => (
+          <div key={item.code} className="rounded-lg border border-[#e5e6eb] p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[#86909c]">
+              <span className="rounded bg-gray-100 px-2 py-1">{item.code}</span>
+              <span className="rounded bg-blue-50 px-2 py-1 text-[#1e80ff]">{item.type}</span>
+              {item.required ? <span className="rounded bg-red-50 px-2 py-1 text-red-600">required</span> : null}
+            </div>
+            <label className="block text-sm text-[#4e5969]">
+              题干
+              <textarea
+                value={item.prompt}
+                onChange={(event) => updateItem(index, (entry) => ({ ...entry, prompt: event.target.value }))}
+                rows={2}
+                className="mt-1 w-full resize-y rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+              />
+            </label>
+            {item.options ? (
+              <div className="mt-3 space-y-2">
+                <div className="text-xs font-semibold text-[#4e5969]">选项</div>
+                {item.options.map((option, optionIndex) => (
+                  <input
+                    key={`${item.code}-${optionIndex}`}
+                    value={option}
+                    onChange={(event) =>
+                      updateItem(index, (entry) => ({
+                        ...entry,
+                        options: (entry.options ?? []).map((current, currentIndex) =>
+                          currentIndex === optionIndex ? event.target.value : current,
+                        ),
+                      }))
+                    }
+                    className="w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 text-sm outline-none focus:border-[#1e80ff]"
+                  />
+                ))}
+              </div>
+            ) : null}
+            {item.type === 'scale' ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-[#4e5969]">
+                  左端点
+                  <input
+                    value={item.minLabel ?? ''}
+                    onChange={(event) => updateItem(index, (entry) => ({ ...entry, minLabel: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+                  />
+                </label>
+                <label className="text-xs text-[#4e5969]">
+                  右端点
+                  <input
+                    value={item.maxLabel ?? ''}
+                    onChange={(event) => updateItem(index, (entry) => ({ ...entry, maxLabel: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+                  />
+                </label>
+              </div>
+            ) : null}
+            {item.type === 'text' ? (
+              <label className="mt-3 block text-xs text-[#4e5969]">
+                最大字数
+                <input
+                  type="number"
+                  min={1}
+                  value={item.maxLength ?? 500}
+                  onChange={(event) => updateItem(index, (entry) => ({ ...entry, maxLength: Number(event.target.value) || 500 }))}
+                  className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
+                />
+              </label>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function QuestionnaireConfigTab() {
+  const [config, setConfig] = useState<ExperimentConfig | null>(null);
+  const [status, setStatus] = useState('');
+
+  async function load() {
+    const response = await fetch(`${serverBaseUrl}/admin/experiment-config`, { cache: 'no-store' });
+    const data = (await response.json()) as { config: ExperimentConfig };
+    setConfig(data.config);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function save() {
+    if (!config?.questionnaireTemplate) return;
+    setStatus('保存中...');
+    await fetch(`${serverBaseUrl}/admin/experiment-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        activeExperimentMode: config.activeExperimentMode,
+        experimentModeSettings: config.experimentModeSettings,
+        instructionBlocks: config.instructionBlocks,
+        practiceDurationMinutes: config.practiceDurationMinutes,
+        workDurationMinutes: config.workDurationMinutes,
+        breakDurationMinutes: config.breakDurationMinutes,
+        segmentAiLevels: config.segmentAiLevels,
+        questionnaireTitle: config.questionnaireTemplate.title,
+        questionnaireItems: config.questionnaireTemplate.items,
+        practiceQuizTitle: config.practiceQuizTemplate?.title ?? '测试题',
+        practiceQuizItems: config.practiceQuizTemplate?.items ?? [],
+        practiceQuizPassCount: config.practiceQuizPassCount,
+        feedbackNotificationDurationSec: config.feedbackNotificationDurationSec,
+      }),
+    });
+    setStatus('已保存');
+    await load();
+  }
+
+  if (!config?.questionnaireTemplate) {
+    return <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 text-sm text-[#86909c]">问卷配置加载中...</div>;
+  }
+
+  const template = config.questionnaireTemplate.items;
+  const updateTemplate = (updater: (current: FormalQuestionnaireTemplate) => FormalQuestionnaireTemplate) => {
+    setConfig((prev) =>
+      prev?.questionnaireTemplate
+        ? {
+            ...prev,
+            questionnaireTemplate: {
+              ...prev.questionnaireTemplate,
+              items: updater(prev.questionnaireTemplate.items),
+            },
+          }
+        : prev,
+    );
+  };
+
+  const sectionBlocks: Array<{ key: string; section: FormalQuestionnaireSection }> = [
+    { key: 'segmentSurvey', section: template.segmentSurvey },
+    ...template.postSurvey.commonSections.map((section, index) => ({ key: `common-${index}`, section })),
+    ...Object.entries(template.postSurvey.manipulationChecks).map(([key, section]) => ({ key: `mc-${key}`, section })),
+    { key: 'role-A', section: template.postSurvey.roleSpecific.A },
+    { key: 'role-B', section: template.postSurvey.roleSpecific.B },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+        <div className="mb-2 text-lg font-bold text-[#1d2129]">三章实验正式问卷</div>
+        <div className="grid gap-3 text-sm leading-7 text-[#4e5969] lg:grid-cols-3">
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="font-semibold text-[#1d2129]">段后问卷</div>
+            <div>工作段 1、2、3 结束后分别呈现同一套段后题目。</div>
+          </div>
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="font-semibold text-[#1d2129]">最后问卷</div>
+            <div>共同模块 + 当前实验模式操纵检验 + 当前角色专属题共同组装。</div>
+          </div>
+          <div className="rounded-lg border border-[#e5e6eb] bg-[#fafafa] p-4">
+            <div className="font-semibold text-[#1d2129]">不进入系统</div>
+            <div>招募问卷不在本平台呈现；论文来源、链接和师兄 HTML 计时信息不写入数据库。</div>
+          </div>
+        </div>
+      </div>
+
+      {sectionBlocks.map(({ key, section }) => (
+        <FormalQuestionnaireSectionEditor
+          key={key}
+          section={section}
+          onChange={(items) =>
+            updateTemplate((current) => updateFormalItems(current, (candidate) => candidate.title === section.title, () => items))
+          }
+        />
+      ))}
+
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">
+          保存问卷配置
+        </button>
         {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}
       </div>
     </div>
@@ -1528,6 +1779,7 @@ export default function AdminPage() {
         {activeTab === 'sessions' ? <SessionsTab /> : null}
         {activeTab === 'participants' ? <ParticipantsTab /> : null}
         {activeTab === 'config' ? <ConfigTab /> : null}
+        {activeTab === 'questionnaires' ? <QuestionnaireConfigTab /> : null}
         {activeTab === 'materials' ? <MaterialsLibraryTab /> : null}
         {activeTab === 'sidefeed' ? <AdminSidefeedPanel /> : null}
         {activeTab === 'ai-settings' ? <AdminAiSettingsPanel /> : null}

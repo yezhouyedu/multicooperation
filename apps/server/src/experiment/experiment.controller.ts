@@ -149,8 +149,8 @@ export class ExperimentController {
   }
 
   @Get('session/:code/questionnaire')
-  getQuestionnaire(@Param('code') code: string) {
-    return this.experimentService.getQuestionnaire(code.toUpperCase());
+  getQuestionnaire(@Param('code') code: string, @Query('participantId') participantId?: string) {
+    return this.experimentService.getQuestionnaire(code.toUpperCase(), participantId);
   }
 
   @Post('session/:code/questionnaire')

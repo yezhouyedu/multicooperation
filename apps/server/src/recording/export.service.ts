@@ -263,8 +263,9 @@ export class ExportService {
     });
 
     for (const [filename, segmentIndex, workSegmentBeforeBreak] of [
-      ['break_1.json', 2, 1],
-      ['break_2.json', 4, 2],
+      ['segment_1.json', 2, 1],
+      ['segment_2.json', 4, 2],
+      ['segment_3.json', 6, 3],
     ] as const) {
       const row = session.questionnaireAnswers.find(
         (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL && item.segmentIndex === segmentIndex,
@@ -272,7 +273,8 @@ export class ExportService {
       await this.storage.writeJson(join(participantDir, 'questionnaires', filename), {
         templateId: row?.templateId ?? null,
         segmentIndex,
-        workSegmentBeforeBreak,
+        workSegment: workSegmentBeforeBreak,
+        kind: 'segment_survey',
         shownAt: session.segmentStates.find((state) => state.segmentIndex === segmentIndex)?.startedAt?.toISOString() ?? null,
         submittedAt: row?.submittedAt?.toISOString() ?? null,
         answers: row?.answers ?? null,
@@ -280,6 +282,19 @@ export class ExportService {
         missing: !row,
       });
     }
+
+    const postSurvey = session.questionnaireAnswers.find(
+      (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL && item.segmentIndex === 99,
+    );
+    await this.storage.writeJson(join(participantDir, 'questionnaires', 'post_survey.json'), {
+      templateId: postSurvey?.templateId ?? null,
+      segmentIndex: 99,
+      kind: 'post_survey',
+      submittedAt: postSurvey?.submittedAt?.toISOString() ?? null,
+      answers: postSurvey?.answers ?? null,
+      templateItems: postSurvey?.template?.items ?? null,
+      missing: !postSurvey,
+    });
   }
 
   private async writePracticeRound(
@@ -697,8 +712,13 @@ export class ExportService {
         practiceQuizPassed: Boolean(
           session.questionnaireAnswers.find((row) => row.participantId === participantId && row.phase === ExperimentPhase.PRACTICE)?.answers,
         ),
-        break1Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 2),
-        break2Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 4),
+        segmentSurveySubmittedCount: [2, 4, 6].filter((segmentIndex) =>
+          formalQuestionnaires.some((row) => row.segmentIndex === segmentIndex),
+        ).length,
+        segment1Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 2),
+        segment2Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 4),
+        segment3Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 6),
+        postSurveySubmitted: formalQuestionnaires.some((row) => row.segmentIndex === 99),
       },
       qualityFlags: this.buildQualityFlags(session, participantId),
     };
@@ -781,8 +801,10 @@ export class ExportService {
         'participant_metadata.json',
         'variables.json',
         join('questionnaires', 'practice_quiz.json'),
-        join('questionnaires', 'break_1.json'),
-        join('questionnaires', 'break_2.json'),
+        join('questionnaires', 'segment_1.json'),
+        join('questionnaires', 'segment_2.json'),
+        join('questionnaires', 'segment_3.json'),
+        join('questionnaires', 'post_survey.json'),
         join('practice_round', 'round_metadata.json'),
         join('side_tasks', 'side_plan.json'),
         join('side_tasks', 'side_responses.jsonl'),
