@@ -107,12 +107,17 @@ export default function WorkspaceBPage() {
   }, [redirectPath, router]);
 
   useEffect(() => {
-    const firstMaterialId = runtime?.currentTask?.company?.materials?.find((item) => {
+    const materials = runtime?.currentTask?.company?.materials ?? [];
+    const firstMaterialId = materials.find((item) => {
       const role = item.metadata?.participantRole;
       return role === undefined || role === null || role === 'shared' || role === 'B';
     })?.id;
-    setActiveSidebarKey(firstMaterialId);
-  }, [currentTaskId, runtime?.currentTask?.company?.materials]);
+    setActiveSidebarKey((current) => {
+      if (!currentTaskId) return firstMaterialId;
+      if (current && (current === 'diligence-info' || materials.some((item) => item.id === current))) return current;
+      return firstMaterialId;
+    });
+  }, [currentTaskId, runtime?.currentTask?.company?.id, runtime?.currentTask?.company?.materials?.length]);
 
   async function openDiligenceInfo() {
     if (!bootstrap || !runtime?.currentTask || !runtime.aInfoUnlocked) return;
@@ -177,7 +182,7 @@ export default function WorkspaceBPage() {
     [company?.materials],
   );
   const aMaterials = useMemo(
-    () => (company?.materials ?? []).filter((item) => item.metadata?.participantRole === 'A'),
+    () => (company?.materials ?? []).filter((item) => String(item.metadata?.participantRole ?? '').toUpperCase() === 'A'),
     [company?.materials],
   );
   const companyForBMaterials = useMemo<CompanyData | null>(

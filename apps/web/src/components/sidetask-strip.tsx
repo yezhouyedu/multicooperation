@@ -146,6 +146,17 @@ export function SideTaskStrip({
   const answeredItems = useMemo(() => effectiveQueue.filter((i) => i.answered), [effectiveQueue]);
   const pendingCount = pendingItems.length;
 
+  useEffect(() => {
+    if (pendingCount !== 0) return;
+    activeRef.current = false;
+    cancelAnimationFrame(rafRef.current);
+    const el = tickerRef.current;
+    if (!el) return;
+    el.style.display = 'none';
+    el.style.opacity = '0';
+    el.style.left = '100%';
+  }, [pendingCount]);
+
   // Play one ticker pass for each server-side notification pulse.
   useEffect(() => {
     const pulse = sideTaskConfig.notificationPulse;
@@ -396,7 +407,7 @@ export function SideTaskStrip({
 
   return (
     <>
-      <section className="relative z-20 flex h-12 shrink-0 items-center border-b border-blue-200 bg-blue-50/60 px-4">
+      <section className="relative z-20 flex h-12 shrink-0 items-center overflow-hidden border-b border-blue-200 bg-blue-50/60 px-4">
         <button
           type="button"
           onClick={openPanel}
@@ -412,7 +423,7 @@ export function SideTaskStrip({
             type="button"
             onClick={openPanel}
             style={{ display: 'none' }}
-            className="rounded-full border border-blue-200 bg-white px-4 py-1.5 text-xs text-blue-800 shadow-sm"
+            className="max-w-full rounded-full border border-blue-200 bg-white px-4 py-1.5 text-xs text-blue-800 shadow-sm"
           >
             【{tickerMessage}】
           </button>

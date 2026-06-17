@@ -446,6 +446,8 @@ export class ExperimentService {
       : null;
     const isPracticePhase = session.runtimePhase === RuntimePhase.PRACTICE;
     const currentTaskPhase = isPracticePhase ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
+    const practiceTimerEndsAt =
+      isPracticePhase && participantId ? await this.getPracticeTimerEndsAt(session.id, participantId) : null;
     const activeQuestionnaire = participantId
       ? this.buildActiveQuestionnaire(session, config, assignedRole, participantId)
       : null;
@@ -459,7 +461,7 @@ export class ExperimentService {
       phase: this.mapRuntimePhase(session.runtimePhase),
       segmentIndex: session.currentSegmentIndex,
       segmentType: session.currentSegmentType,
-      segmentRemainingSeconds: this.getRemainingSeconds(session.currentSegmentEnds),
+      segmentRemainingSeconds: this.getRemainingSeconds(practiceTimerEndsAt ?? session.currentSegmentEnds),
       currentTask: roleTask
         ? {
             id: roleTask.id,
@@ -581,7 +583,7 @@ export class ExperimentService {
     });
 
     if (input.stage === 'practice_tutorial_completed') {
-      await this.tryStartPracticeAfterGate(input.sessionCode);
+      await this.startPracticeTimerForParticipant(input.sessionCode, participant.id, input.role);
     }
 
     return {
@@ -1341,6 +1343,11 @@ export class ExperimentService {
 
       const now = new Date();
 
+      if (session.runtimePhase === RuntimePhase.PRACTICE) {
+        const advanced = await this.syncPracticeParticipantTimers(tx, session, config, now);
+        if (advanced) return;
+      }
+
       if (session.runtimePhase === RuntimePhase.FORMAL_WORK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
         const currentATask = session.tasks.find((task) => !task.aSubmittedAt);
         if (currentATask?.aDeadlineAt && currentATask.aDeadlineAt <= now) {
@@ -1541,12 +1548,92 @@ export class ExperimentService {
     this.emitRuntimeInvalidated(sessionCode);
   }
 
+  private async syncPracticeParticipantTimers(
+    tx: Prisma.TransactionClient,
+    session: RuntimeSession,
+    config: ExperimentConfig,
+    now: Date,
+  ) {
+    const pairing = session.pairings[0];
+    const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
+    if (!pairing || !practiceTask) return false;
+
+    const timerRows = await tx.taskProgress.findMany({
+      where: { sessionId: session.id, stage: 'practice_timer_started' },
+      orderBy: { createdAt: 'asc' },
+    });
+    const timerByParticipant = new Map<string, Date>();
+    for (const row of timerRows) {
+      const endsAt = this.practiceTimerEndsAt(row.payload);
+      if (endsAt && !timerByParticipant.has(row.participantId)) {
+        timerByParticipant.set(row.participantId, endsAt);
+      }
+    }
+
+    let aSubmitted = Boolean(practiceTask.aSubmittedAt);
+    let bCompleted = Boolean(practiceTask.bCompletedAt);
+
+    const aEndsAt = pairing.participantAId ? timerByParticipant.get(pairing.participantAId) : null;
+    if (!aSubmitted && aEndsAt && aEndsAt <= now) {
+      await tx.taskAssignment.update({
+        where: { id: practiceTask.id },
+        data: {
+          aSubmittedAt: aEndsAt,
+          aUnlockedForBAt: aEndsAt,
+          bCanSubmitAt: aEndsAt,
+          aDeadlineAt: null,
+          aRemainingSeconds: 0,
+          aAiLevelAtWindow: this.getCurrentAiLevel(config, 0),
+        },
+      });
+      if (pairing.participantAId) {
+        await tx.taskProgress.create({
+          data: {
+            sessionId: session.id,
+            participantId: pairing.participantAId,
+            stage: 'practice_a_task_auto_submitted',
+            payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'participant_practice_timer_timeout' },
+          },
+        });
+      }
+      aSubmitted = true;
+    }
+
+    const bEndsAt = pairing.participantBId ? timerByParticipant.get(pairing.participantBId) : null;
+    if (!bCompleted && bEndsAt && bEndsAt <= now) {
+      await tx.taskAssignment.update({
+        where: { id: practiceTask.id },
+        data: { bCompletedAt: bEndsAt },
+      });
+      if (pairing.participantBId) {
+        await tx.taskProgress.create({
+          data: {
+            sessionId: session.id,
+            participantId: pairing.participantBId,
+            stage: 'practice_b_task_auto_completed',
+            payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'participant_practice_timer_timeout' },
+          },
+        });
+      }
+      bCompleted = true;
+    }
+
+    if (aSubmitted && bCompleted) {
+      await this.advanceAfterPractice(tx, session, now);
+      return true;
+    }
+
+    return false;
+  }
+
   private async advanceAfterPractice(
     tx: Prisma.TransactionClient,
     session: RuntimeSession,
     now: Date,
   ) {
-    const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
+    const practiceTask = await tx.taskAssignment.findFirst({
+      where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE },
+    });
     if (practiceTask && !practiceTask.aSubmittedAt) {
       await tx.taskAssignment.update({
         where: { id: practiceTask.id },
@@ -1932,6 +2019,73 @@ export class ExperimentService {
       if (!bothReady) return;
 
       await this.startPracticePhase(tx, session.id, config, new Date());
+      started = true;
+    });
+
+    if (started) this.emitRuntimeInvalidated(sessionCode);
+  }
+
+  private async startPracticeTimerForParticipant(
+    sessionCode: string,
+    participantId: string,
+    role: ParticipantRole,
+  ) {
+    const config = await this.ensureConfig();
+    let started = false;
+
+    await this.prisma.$transaction(async (tx) => {
+      const session = await tx.session.findUnique({
+        where: { code: sessionCode },
+        include: {
+          pairings: true,
+          tasks: { where: { phase: ExperimentPhase.PRACTICE } },
+        },
+      });
+      if (!session || session.runtimePhase !== RuntimePhase.PRACTICE) return;
+
+      const existing = await tx.taskProgress.findFirst({
+        where: { sessionId: session.id, participantId, stage: 'practice_timer_started' },
+      });
+      if (existing) return;
+
+      const now = new Date();
+      const endsAt = new Date(now.getTime() + config.practiceDurationMinutes * 60 * 1000);
+      await tx.taskProgress.create({
+        data: {
+          sessionId: session.id,
+          participantId,
+          stage: 'practice_timer_started',
+          payload: {
+            startedAt: now.toISOString(),
+            endsAt: endsAt.toISOString(),
+            durationMinutes: config.practiceDurationMinutes,
+          } as Prisma.InputJsonValue,
+        },
+      });
+
+      const practiceTask = session.tasks[0];
+      if (practiceTask && role === ParticipantRole.A && !practiceTask.aStartedAt) {
+        await this.activateCurrentATask(
+          tx,
+          practiceTask,
+          endsAt,
+          now,
+          this.getCurrentAiLevel(config, 0),
+        );
+      }
+
+      await tx.experimentEvent.create({
+        data: {
+          sessionId: session.id,
+          participantId,
+          role,
+          eventType: 'practice_timer_started',
+          phase: ExperimentPhase.PRACTICE,
+          segmentIndex: 0,
+          serverTime: now,
+          payload: { endsAt: endsAt.toISOString() } as Prisma.InputJsonValue,
+        },
+      });
       started = true;
     });
 
@@ -2735,6 +2889,22 @@ export class ExperimentService {
   private getRemainingSeconds(endsAt?: Date | null) {
     if (!endsAt) return null;
     return Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / 1000));
+  }
+
+  private async getPracticeTimerEndsAt(sessionId: string, participantId: string) {
+    const row = await this.prisma.taskProgress.findFirst({
+      where: { sessionId, participantId, stage: 'practice_timer_started' },
+      orderBy: { createdAt: 'desc' },
+    });
+    return this.practiceTimerEndsAt(row?.payload);
+  }
+
+  private practiceTimerEndsAt(payload: unknown) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const raw = (payload as Record<string, unknown>).endsAt;
+    if (typeof raw !== 'string') return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
   private computeRemainingSeconds(endsAt?: Date | null) {

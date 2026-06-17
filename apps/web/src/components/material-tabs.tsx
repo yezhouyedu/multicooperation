@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { WheelEvent, useEffect, useRef, useState } from 'react';
 
 type TabItem = {
   key: string;
@@ -53,6 +53,16 @@ export function MaterialTabs({
     el.scrollBy({ left: direction === 'right' ? 240 : -240, behavior: 'smooth' });
   }
 
+  function handleWheel(event: WheelEvent<HTMLDivElement>) {
+    const el = tabsRef.current;
+    if (!el) return;
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (!delta) return;
+    event.preventDefault();
+    el.scrollBy({ left: delta, behavior: 'auto' });
+    window.setTimeout(syncScrollState, 0);
+  }
+
   useEffect(() => {
     syncScrollState();
     const el = tabsRef.current;
@@ -84,7 +94,7 @@ export function MaterialTabs({
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <div ref={tabsRef} className="no-scrollbar flex min-w-0 flex-1 gap-1 overflow-x-auto">
+        <div ref={tabsRef} onWheel={handleWheel} className="no-scrollbar flex min-w-0 flex-1 gap-1 overflow-x-auto">
           {items.map((item) => {
             const selected = item.key === current?.key;
             return (

@@ -1849,3 +1849,30 @@
 **本地验证**：
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
+### 2026-06-17 主界面调试：测试轮个人计时、材料 tab 稳定性、副线条残留滚动修复
+
+**背景**：用户复查测试轮和主工作台时发现：副线任务条在待处理为 0 时右侧露出残留滚动按钮；测试轮教学结束后希望每个被试各自启动 5 分钟测试轮，而不是等双方教学都结束；B 端材料区 5 分钟前没有稳定显示 A 原始材料锁定 tab；材料 tab 点击后会自动跳回第一个材料；材料 tab 只能点左右按钮横移，不支持滚轮快速滚动。
+
+**原因定位**：
+- 副线条右侧“冒头”来自滚动提醒 ticker 的上一次动画状态残留在 `left: 100%` 附近。
+- B 端材料 tab 自动跳回第一个材料，是 B 工作台在每次 runtime/company materials 刷新时强制重置 `activeSidebarKey`。
+- B 端 A 原始材料识别对 `metadata.participantRole` 判断过窄，已改为大小写稳健匹配。
+- 旧测试轮计时是 session 级别统一启动；用户确认改为“个人教学完成后个人测试轮倒计时开始，最终仍通过 formal ready 汇合”。
+
+**本轮修复**：
+- `SideTaskStrip`：
+  - 外层副线条增加 `overflow-hidden`。
+  - 当 `pendingCount = 0` 时强制停止 ticker animation 并隐藏 ticker，避免右侧残留小尾巴。
+- `MaterialTabs`：
+  - tab 横向区域增加滚轮横向滚动；只在 tab 区域拦截 wheel，不影响页面其他区域。
+- `workspace/b`：
+  - 只在任务切换或当前 active tab 不存在时回到首个材料，不再每次 runtime 刷新都跳回第一个材料。
+  - A 原始材料按 `participantRole` 大小写稳健识别，并继续作为 append materials 与 shared/B 材料、A 尽调表并列显示。
+- `ExperimentService`：
+  - `practice_tutorial_completed` 后为该 participant 写入 `practice_timer_started`，payload 记录个人 `startedAt`、`endsAt`、`durationMinutes`。
+  - runtime 在测试轮阶段优先返回当前 participant 的个人测试轮剩余时间。
+  - `syncRuntime` 会检查每个 participant 的个人测试轮截止时间：A 到点自动提交，B 到点自动完成；只有 A 已提交且 B 已完成后才推进到 `FORMAL_READY`。
+
+**本地验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
