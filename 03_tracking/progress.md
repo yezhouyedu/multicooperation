@@ -1778,3 +1778,26 @@
 - 线上服务器 GitHub 直连同步失败，报 `Failed to connect to github.com port 443 ... Connection timed out`；随后改用本地 `git archive` 源码包上传到服务器。
 - 上传源码后服务器源码已确认包含 `userInitiated` 修复；本轮为纯前端修复，因此只执行 `docker compose --env-file .env.production -f compose.production.yml build web` 和 `up -d web`。
 - 线上验证：`http://49.233.203.108:3001/health` 返回 200，`http://49.233.203.108:3000/admin` 返回 200，`web` 容器已重新创建并运行，`server` / `postgres` 保持健康。
+
+### 2026-06-17 长期部署链路收口：Git archive 上传 + 定向部署
+
+**背景**：服务器部署连续多次被 GitHub 直连超时、SSH 会话中断、Docker 完整重建耗时、Windows/Linux 行尾差异拖慢。用户要求把该问题作为长期问题处理，形成可复用方案，并记录到 progress 与 lessons。
+
+**本轮实现**：
+- 新增 `.gitattributes`，固定 `.sh` 为 LF、`.ps1` 为 CRLF，降低 shell 脚本进入 Linux 后的行尾风险。
+- `scripts/deploy/deploy-prod.sh` 支持 `all` / `web` / `server` 参数，纯前端修复可以只构建并重启 `web`。
+- 新增 `scripts/deploy/upload-git-archive.ps1`，默认使用 `ubuntu@49.233.203.108`，从当前 `git archive HEAD` 生成源码包并上传服务器，远端同步时保留 `.env.production`、`00_start_materials/`、`storage/`、`apps/server/storage/`。
+- `upload-git-archive.ps1` 会在远端同步后修正 `.sh` 与 `apps/server/docker-entrypoint.sh` 行尾和可执行权限，再按 `-Service web/server/all` 执行定向部署。
+- 调整旧 `scripts/deploy/upload-project.ps1`：默认用户改为 `ubuntu`，打包和同步时排除 `00_start_materials`，避免日常部署误传大材料目录或覆盖服务器材料库。
+- 更新 `02_specs/05_server_deploy/命令运行清单.md` 与 `02_specs/05_server_deploy/部署运行手册.md`：当前推荐路线改为本地 Git archive 上传；服务器 GitHub 直连降级为可选路线。
+- 更新 `03_tracking/lessons.md`，记录本次部署链路长期化教训。
+
+**验证**：
+- `upload-git-archive.ps1` PowerShell AST 语法检查通过。
+- `upload-project.ps1` PowerShell AST 语法检查通过。
+- 本机无 bash 环境，`deploy-prod.sh` 的 shell 语法未在本地执行；需在服务器或 GitHub Actions/Linux 环境验证。
+
+**仍需人工配置 / 后续建议**：
+- 如需继续使用服务器直连 GitHub，需要配置稳定 GitHub 网络、deploy key 或 token；当前不再依赖此路线。
+- 更完整的长期方案是 GitHub Actions 或 self-hosted runner：Codex 只负责 push，CI 负责构建和部署。
+- 正式实验前仍需补自动备份与恢复演练，部署链路稳定不等于数据安全闭环完成。

@@ -118,3 +118,35 @@
 **如果必须用 PowerShell**：
 - 必须加 `-Encoding utf8`：`Set-Content -Path $path -Value $text -Encoding utf8`
 - 写入后用 `[System.IO.File]::ReadAllBytes($path)` 验证前几字节是否为正确 UTF-8
+
+## 2026-06-17 反思补充：Codex + 裸 IP 服务器部署链路长期化
+
+### 事件经过
+
+2026-06-16 到 2026-06-17 连续几轮线上同步中，服务器部署多次被网络和跨平台细节拖慢：
+
+- 本地 SSH 到服务器基本可用，但服务器访问 GitHub `github.com:443` 多次超时。
+- `sync-from-github.sh` 在 `git clone` 阶段失败，错误包括 `Failed to connect to github.com port 443`。
+- 临时改走本地源码包上传后，曾暴露 Windows / Linux 行尾问题，导致远端 bash 看到 `pipefail\r`，以及 server entrypoint 无法启动。
+- 纯前端修复曾被完整 `deploy-prod.sh` 卷入 server 重建，扩大了失败面和等待时间。
+
+### 根因分析
+
+1. **链路过长**：本地 Codex 同时承担编码、SSH、远端 GitHub 拉取、Docker 构建、服务健康检查，任何一层抖动都会拖慢整轮工作。
+2. **服务器到 GitHub 不稳定**：当前服务器位于中国网络环境，直连 GitHub 443 并不可靠，不能作为唯一部署路径。
+3. **构建粒度过粗**：纯 web 改动也完整构建 web + server，会增加耗时和故障面。
+4. **跨平台行尾风险真实存在**：Windows 工作区进入 Linux 容器/服务器时，`.sh` 必须稳定保持 LF。
+
+### 长期处理原则
+
+- Codex 默认负责本地实现、本地验证、文档记录、commit、push；不要把“手动 SSH 排障”当作每轮主路径。
+- 服务器直连 GitHub 只能作为可选路线，不再作为唯一推荐路线。
+- 当前推荐使用 `scripts/deploy/upload-git-archive.ps1`：本地从 Git commit 生成源码包，上传服务器，同步后按 `web/server/all` 定向部署。
+- 纯前端修复只部署 `web`；后端和 Prisma 相关修复才部署 `server` 或 `all`。
+- `.sh` 文件必须由 `.gitattributes` 固定为 LF，并在上传部署脚本中再次做远端 LF 修正。
+
+### 仍需人工/环境配置的事
+
+- 如果以后要恢复服务器 GitHub 直连，需要给服务器配置稳定访问 GitHub 的网络、deploy key 或 token。
+- 如果要进入更标准的长期形态，建议配置 GitHub Actions 或 self-hosted runner，让 CI 接管部署。
+- 正式实验前仍应补数据库和 `server_storage` 的自动备份/恢复演练；部署链路稳定不等于数据备份完成。

@@ -1,6 +1,6 @@
 param(
   [string]$HostName = "49.233.203.108",
-  [string]$User = "root",
+  [string]$User = "ubuntu",
   [string]$KeyPath = "E:\Own_program\multi_cooperation_secrets\ssh\first_try.pem",
   [string]$RemoteDir = "/opt/multi-cooperation",
   [string]$ProjectRoot = "E:\Own_program\multi cooperation"
@@ -68,6 +68,7 @@ try {
     --exclude="apps/web/.next" `
     --exclude="apps/server/dist" `
     --exclude="storage" `
+    --exclude="00_start_materials" `
     --exclude="apps/server/storage" `
     --exclude=".env" `
     --exclude=".env.production" `
@@ -107,7 +108,7 @@ Run-Native "Combining remote chunks" {
 }
 
 Run-Native "Extracting archive" {
-  ssh -i $KeyPath -o IdentitiesOnly=yes "$User@$HostName" "set -e; STAGE_DIR='/tmp/multi-cooperation-deploy-new'; rm -rf `$STAGE_DIR; mkdir -p `$STAGE_DIR; tar -xzf /tmp/multi-cooperation-deploy.tar.gz -C `$STAGE_DIR; rsync -a --delete --exclude='.env.production' `$STAGE_DIR/ '$RemoteDir/'; rm -rf `$STAGE_DIR /tmp/multi-cooperation-deploy.tar.gz; rm -rf '$RemoteDir/.deploy-new'"
+  ssh -i $KeyPath -o IdentitiesOnly=yes "$User@$HostName" "set -e; STAGE_DIR='/tmp/multi-cooperation-deploy-new'; rm -rf `$STAGE_DIR; mkdir -p `$STAGE_DIR; tar -xzf /tmp/multi-cooperation-deploy.tar.gz -C `$STAGE_DIR; rsync -a --delete --exclude='.env.production' --exclude='00_start_materials' --exclude='storage' --exclude='apps/server/storage' `$STAGE_DIR/ '$RemoteDir/'; rm -rf `$STAGE_DIR /tmp/multi-cooperation-deploy.tar.gz; rm -rf '$RemoteDir/.deploy-new'"
 }
 
 Step "[5/5] Cleaning local archive"

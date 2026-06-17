@@ -6,6 +6,15 @@ ENV_FILE="${ENV_FILE:-.env.production}"
 COMPOSE_FILE="${COMPOSE_FILE:-compose.production.yml}"
 WEB_HEALTH_URL="${WEB_HEALTH_URL:-http://127.0.0.1:3000/login}"
 SERVER_HEALTH_URL="${SERVER_HEALTH_URL:-http://127.0.0.1:3001/health}"
+TARGET="${1:-all}"
+
+case "$TARGET" in
+  all|web|server) ;;
+  *)
+    echo "Usage: bash scripts/deploy/deploy-prod.sh [all|web|server]"
+    exit 2
+    ;;
+esac
 
 step() {
   echo
@@ -24,11 +33,19 @@ step "[2/8] Showing compose plan"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >/tmp/multi-cooperation-compose.rendered.yml
 echo "Compose config rendered to /tmp/multi-cooperation-compose.rendered.yml"
 
-step "[3/8] Building images"
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+step "[3/8] Building images ($TARGET)"
+if [ "$TARGET" = "all" ]; then
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build
+else
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build "$TARGET"
+fi
 
-step "[4/8] Starting services"
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+step "[4/8] Starting services ($TARGET)"
+if [ "$TARGET" = "all" ]; then
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+else
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d "$TARGET"
+fi
 
 step "[5/8] Waiting for containers"
 sleep 10
