@@ -1,5 +1,25 @@
 # progress.md
 
+### 2026-06-17 HTTPS 域名入口部署完成
+
+**结果**：`https://aiseek.tech` 已作为线上正式入口跑通，`www.aiseek.tech` 统一跳转到裸域名，`/api` 由 Nginx 反代到后端。
+
+**线上已完成**：
+- 证书文件已部署到服务器 `/etc/multi-cooperation/certs`，私钥权限为 `600 root:root`，未进入 git。
+- 服务器 `/opt/multi-cooperation/.env.production` 已切换为 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api`。
+- `compose.production.yml` 中的 `nginx` 容器已上线，80 / 443 均已绑定，容器状态 healthy。
+- `web` 已用 HTTPS API 地址重新构建，线上静态 chunk 检查未发现旧 `49.233.203.108:3001` API 地址。
+
+**验证结果**：
+- `https://aiseek.tech/api/health` 返回 200。
+- `https://aiseek.tech/admin` 返回 200。
+- `https://aiseek.tech/login` 返回 200。
+- `http://aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
+- `https://www.aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
+- 服务器内 `curl --resolve aiseek.tech:443:127.0.0.1 https://aiseek.tech/api/health` 返回 200。
+
+**后续收口建议**：HTTPS 稳定观察后，可以在腾讯云安全组关闭公网 3000 / 3001，只保留 80 / 443 / 22。关闭前建议再做一轮完整实验 smoke，尤其检查 SSE、AI 图片上传、变量导出是否都能经 `/api` 代理正常工作。
+
 ## 当前阶段
 
 - 2026-06-05：已回正副线变量 A 口径：continuous / batch 操纵的是提醒频率，不再操纵题目实际到达节奏；后端题目到达统一为 30 秒一条，前端提醒频率按模式区分。
