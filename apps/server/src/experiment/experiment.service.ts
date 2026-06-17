@@ -1336,10 +1336,14 @@ export class ExperimentService {
   }
 
   private async markBarrierReady(sessionCode: string, participantId: string, target: BarrierTarget) {
+    await this.syncRuntime(sessionCode);
     const config = await this.ensureConfig();
     const stage = target === 'practice' ? 'practice_ready' : 'formal_ready';
     const waitingPhase = target === 'practice' ? RuntimePhase.PRACTICE_READY : RuntimePhase.FORMAL_READY;
-    const activePhase = target === 'practice' ? RuntimePhase.PRACTICE : RuntimePhase.FORMAL_WORK;
+    const activePhases: RuntimePhase[] =
+      target === 'practice'
+        ? [RuntimePhase.PRACTICE_QUIZ, RuntimePhase.PRACTICE]
+        : [RuntimePhase.PRE_SEGMENT_INSTRUCTION, RuntimePhase.FORMAL_WORK, RuntimePhase.FORMAL_BREAK, RuntimePhase.END];
 
     const result = await this.prisma.$transaction(async (tx) => {
       const session = await tx.session.findUnique({
@@ -1356,7 +1360,7 @@ export class ExperimentService {
         throw new BadRequestException('Participant does not belong to this session');
       }
 
-      if (session.runtimePhase === activePhase) {
+      if (activePhases.includes(session.runtimePhase)) {
         return { ok: true, started: true, waiting: false };
       }
 

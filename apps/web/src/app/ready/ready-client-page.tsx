@@ -13,7 +13,7 @@ function formatRoleLabel(role: 'A' | 'B') {
 export default function ReadyClientPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { bootstrap, runtime, loading } = useSessionRuntime();
+  const { bootstrap, runtime, loading, refresh } = useSessionRuntime();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const target = searchParams.get('target') === 'formal' ? 'formal' : 'practice';
@@ -76,8 +76,13 @@ export default function ReadyClientPage() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null;
+        if (payload?.message === 'Current session phase does not support this readiness action') {
+          await refresh();
+          throw new Error('当前阶段已变化，页面正在刷新，请稍等。');
+        }
         throw new Error(payload?.message ?? payload?.error ?? `请求失败：${response.status}`);
       }
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : '提交准备状态失败');
     } finally {

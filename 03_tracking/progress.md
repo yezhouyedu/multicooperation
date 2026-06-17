@@ -1960,3 +1960,22 @@
 - `corepack pnpm --filter server prisma:generate` 通过。
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
+### 2026-06-17 ready-formal 长时间停留后 400 修复
+
+**背景**：用户在线上测试时，两名参与者在“已准备进入正式阶段”页间隔很久才点击“我已准备”，页面报 `Current session phase does not support this readiness action`，复现了此前师兄测试时的 ready-formal 400 问题。
+
+**原因定位**：
+- `ready-formal` 接口直接读取数据库中的 `runtimePhase` 做阶段校验，没有先执行 `syncRuntime()`。
+- 长时间停留、浏览器休眠或 SSE/轮询中断时，前端仍停在 ready 页；后端可能尚未把测试轮到点、正式 ready 或后续阶段同步到最新状态，于是 ready 动作打到旧/不匹配阶段并返回英文 400。
+- 另一个边界是 formal ready 后新增了 `PRE_SEGMENT_INSTRUCTION`，如果页面滞留在 ready 页，重复点击 ready-formal 也应该视为幂等成功并刷新跳转，而不是报错。
+
+**本轮修复**：
+- `markBarrierReady()` 开头先调用 `syncRuntime(sessionCode)`，让 ready 动作自身承担阶段同步。
+- formal ready 的后续合法阶段扩展为 `PRE_SEGMENT_INSTRUCTION / FORMAL_WORK / FORMAL_BREAK / END`，重复点击返回 `{ ok: true, started: true }`。
+- practice ready 的后续合法阶段扩展为 `PRACTICE_QUIZ / PRACTICE`。
+- 前端 `/ready` 提交成功后主动 `refresh()`；若仍收到阶段不支持错误，先刷新 runtime，并提示“当前阶段已变化，页面正在刷新，请稍等。”，避免用户卡在英文错误。
+
+**本地验证**：
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- 对已进入后续阶段的本地 session 再次调用 `ready-formal`，返回 `{ ok: true, started: true, waiting: false }`，不再 400。
