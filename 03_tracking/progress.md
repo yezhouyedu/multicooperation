@@ -1979,3 +1979,26 @@
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
 - 对已进入后续阶段的本地 session 再次调用 `ready-formal`，返回 `{ ok: true, started: true, waiting: false }`，不再 400。
+### 2026-06-17 neat-freak 全局文档一致性收口
+
+**背景**：用户指出前一次 `neat-freak` 只处理了最后一个 ready 400 问题，没有按整个会话上下文扫描全部目录与核心文档，可能留下“代码已变、文档仍旧”的问题。
+
+**本轮审查范围**：
+- 根目录 README / 启动 prompt。
+- `02_specs/02_backend/BACKEND_STRUCTURE.md`。
+- `02_specs/05_server_deploy/README.md`、`上线前工作指导.md`、`命令运行清单.md`、`部署运行手册.md`。
+- `03_tracking/progress.md`、`03_tracking/lessons.md`。
+- 关键代码位置：runtime 阶段、ready 幂等、段前指导语接口、导出字段、HTTPS/Nginx 部署脚本。
+
+**发现并修正的过期口径**：
+- README 仍写 P1 等待域名 HTTPS，已改为 `https://aiseek.tech` 已部署。
+- README 生产部署仍指向旧 `upload-project.ps1` 和不存在的“运维命令快速参考.md”，已改为 `upload-git-archive.ps1` 和 `命令运行清单.md`。
+- 服务器文档仍把 GitHub 拉取写成推荐路线，已改为本地 git archive 上传为当前推荐路线，服务器 GitHub 拉取降级为可选。
+- 服务器文档仍按 `postgres/server/web` 三容器描述，已补 `nginx`。
+- 上线前工作指导仍写 ICP 审核中、P1 未完成、旧私钥路径，已改为 P1 HTTPS 完成、P2 为当前重点、当前私钥路径。
+- 后端结构文档漏了 `PRE_SEGMENT_INSTRUCTION`、段前指导语接口、`view-a-materials`、admin 批量 session/participant/export/job 与问卷配置接口，已补。
+- 启动 prompt 中裸 IP / 三容器 / GitHub 拉取路线等旧口径已更新为 HTTPS、四容器、git archive 部署路线。
+
+**自检**：
+- 过期关键词搜索已复查：未再发现“等待 ICP / 下一步 P1 / GitHub 拉取部署（推荐）/ 三容器 / 旧私钥路径 / 不存在运维文档路径”等误导性口径。
+- `git diff --check` 无实质错误，仅 Windows 换行提示。

@@ -48,14 +48,14 @@
 
 当前阶段是：
 
-**长期实现 + 本地实测 + 裸 IP 已部署 + 上线前收口。**
+**长期实现 + 本地实测 + HTTPS 域名已部署 + 上线前收口。**
 
 2026-06-17 最新增补口径：
 
 - 正式入口已经从裸 IP 继续推进到 HTTPS 域名：`https://aiseek.tech`，`/api/*` 通过 Nginx 反代到 server，`/admin` 通过 web 访问。
 - 生产 Docker Compose 当前包含 `postgres`、`server`、`web`、`nginx` 四类服务；Nginx 证书文件在服务器 `/etc/multi-cooperation/certs`，证书私钥不进 git。
 - 服务器部署优先使用本地 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 打包当前 git HEAD 上传，再在服务器运行 `scripts/deploy/deploy-prod.sh`；不要依赖服务器直接从 GitHub 私仓拉取。
-- HTTPS 完整 smoke 没全部通过前，腾讯云安全组暂时保留公网 3000 / 3001 作为回退；完整 HTTPS smoke 通过后再关闭 3000 / 3001，只留 80 / 443 / 22。
+- HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排（含 SSE、AI、图片上传、副线、问卷、导出）通过后，再关闭公网 3000 / 3001，只留 80 / 443 / 22。
 - 正式问卷已经接入：段 1/2/3 后常规问卷 + 最终长问卷；招募问卷不进系统；旧“休息问卷模板”口径已废弃。
 - 正式工作段前新增段前指导语页：formal ready 后先进入段 1 前阅读材料，段 1/2 后问卷和休息结束后进入段 2/3 前阅读材料；强制观看 15 秒，双方完成后才启动对应工作段。
 - 段前指导语文本来自 `00_start_materials/第六次开会/段前指导语文本与第三章叙事随机机制说明_V0.2.md`；正式 specs 见 `02_specs/03_execution/段前指导语方案.md`。
@@ -75,7 +75,7 @@
 6. 题库与材料系统
 7. AI 上下文系统
 8. 变量记录与服务器导出系统
-9. 服务器裸 IP 部署与 Docker volume 持久化系统
+9. HTTPS 域名入口、Nginx 反向代理与 Docker volume 持久化系统
 
 ---
 
@@ -108,8 +108,9 @@
 - 最终版副线题库已经上线：active 900 条，V1.0 修订版，新字段完整。
 - admin 已支持实验 1/2/3 互斥模式卡片。
 - 变量保存模块第一期已经实现：事件、内容、AI 聊天、副线、图片附件、服务器导出 zip、自检表。
-- 线上裸 IP P0 已跑通并经过 APP_FLOW smoke：登录、配对、指导语、测试题、测试轮、正式 ready、正式段、AI、副线、变量导出均已验证过。
-- 线上服务器使用 Docker Compose：`postgres`、`server`、`web` 三个容器。
+- 线上裸 IP P0 已跑通，HTTPS 域名入口已部署：`https://aiseek.tech`。
+- 线上 HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排仍是正式实验前收口事项。
+- 线上服务器使用 Docker Compose：`postgres`、`server`、`web`、`nginx` 四类容器。
 - 线上真实持久化数据不只在项目目录里：PostgreSQL 数据在 Docker volume `multi-cooperation_postgres_data`；材料运行时副本、AI 图片附件、变量导出包在 Docker volume `multi-cooperation_server_storage`，容器内路径 `/app/storage`。
 - 不要执行 `docker compose down -v`、`docker volume rm ...` 或手动删除 `/var/lib/docker/volumes/...`。
 
@@ -287,9 +288,9 @@ corepack pnpm --filter web build
 - IP：`49.233.203.108`
 - SSH 用户：`ubuntu`
 - 服务器项目目录：`/opt/multi-cooperation`
-- web：`http://49.233.203.108:3000`
-- server health：`http://49.233.203.108:3001/health`
-- admin：`http://49.233.203.108:3000/admin`
+- web/admin：`https://aiseek.tech` / `https://aiseek.tech/admin`
+- server health：`https://aiseek.tech/api/health`
+- 裸 IP 回退：`http://49.233.203.108:3000`、`http://49.233.203.108:3001/health`
 
 SSH 私钥位置：
 
@@ -306,19 +307,17 @@ SSH 私钥位置：
 1. 本地改代码。
 2. 本地验证：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
 3. 本地 commit 并 push GitHub。
-4. 服务器运行：
+4. 本地用 git archive 上传当前 HEAD 并部署：
 
-```bash
-cd /opt/multi-cooperation
-sudo bash scripts/deploy/sync-from-github.sh
-sudo bash scripts/deploy/deploy-prod.sh
-docker compose --env-file .env.production -f compose.production.yml ps
-curl http://127.0.0.1:3001/health
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty
 ```
+
+可按影响面改成 `-Service web` 或 `-Service server`。
 
 已知注意点：
 
-- 当前服务器执行 `sync-from-github.sh` 可能因 GitHub 私有仓库凭据报 `could not read Username for 'https://github.com'`；如遇到，需要配置 deploy key / token，或临时走小补丁 SSH 上传。
+- 当前服务器执行 `sync-from-github.sh` 可能因 GitHub 私有仓库凭据或服务器直连 GitHub 网络报错；如遇到，不要反复重试，优先走 `upload-git-archive.ps1`。
 - 大材料包 SSH 直传曾不稳定；材料文件较大时可考虑云控制台文件管理上传。
 - Clash / 代理规则建议：Codex.exe 可以走美国代理；SSH 连接中国服务器时，`DST-PORT 22` 应走 `DIRECT`；中国 IP 可走 `GEOIP CN DIRECT`。此前美国代理转发 SSH 到中国服务器会导致上传/解压/登录明显变慢或不稳定，规则分流后 SSH 延迟恢复正常。
 - 如果 PowerShell 当前会话设置过 `$env:HTTP_PROXY` / `$env:HTTPS_PROXY`，跑 SSH / scp / rsync 前建议临时清空代理环境变量，例如：`$env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; ssh -i "E:\Own_program\multi_cooperation_secrets\ssh\first_try.pem" ubuntu@49.233.203.108`。如需恢复代理，再重新设置为 `http://127.0.0.1:7897`。

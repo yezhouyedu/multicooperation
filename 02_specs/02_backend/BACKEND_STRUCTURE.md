@@ -1,6 +1,6 @@
 # BACKEND_STRUCTURE.md
 
-> 状态：2026-05-28 已对齐当前实现
+> 状态：2026-06-17 已对齐当前实现
 > 位置：`02_specs/02_backend/BACKEND_STRUCTURE.md`
 
 ## 1. 后端现在负责什么
@@ -42,8 +42,9 @@
 
 - 统一 runtime 读取
 - 正式段 / 休息段 / 结束段推进
+- 段前指导语打开、15 秒校验、双方继续屏障
 - A 的 5 分钟自动提交
-- B 查看尽调员信息的解锁与记录
+- B 查看尽调员信息与 A 原始材料的解锁与记录
 - 草稿保存、快照冻结、恢复
 - SSE 事件流
 - 副线运行时、曝光记录、作答、归档
@@ -103,8 +104,10 @@
 - 指导语后先过一次同步准备页，再进入测试题
 - 只有双方都通过测试题，系统才自动启动测试轮
 - 测试轮后再过一次同步准备页
-- 两人同时进入正式工作段 1
-- 正式流程固定为 3 个工作段 + 2 个休息问卷段
+- formal ready 后进入段 1 前阅读材料页，双方完成 15 秒阅读后启动正式工作段 1
+- 工作段 1/2 后：段后问卷 → 休息 → 下一段前阅读材料 → 下一工作段
+- 工作段 3 后：段后问卷 → 最终长问卷 → 完成
+- 正式流程固定为 3 个工作段、3 次段后问卷、2 个休息段、3 次段前指导语和 1 次最终长问卷
 - 工作段与休息段切换由服务端统一判定
 
 ### 3.4 尽调员 / 投资经理规则
@@ -116,6 +119,8 @@
 - 投资经理可在解锁前先看自己的材料、写草稿、用 AI
 - 投资经理解锁后可直接提交
 - 是否点击过“查看尽调员信息”不再作为提交门槛，但仍要记录行为
+- A 提交后，B 可分别解锁 A 尽调表和 A 原始材料；二者是独立变量。
+- 点击任意 A 原始材料解锁入口会一次性解锁全部 A 原始材料，并记录 `bViewedAMaterialsAt`。
 
 ### 3.5 副线规则
 
@@ -148,6 +153,20 @@
   - 保存 A/B 当前草稿、反馈草稿、当前任务状态
 - `TaskSnapshot`
   - 保存工作段冻结快照与恢复来源
+
+### 4.2.1 段前指导语
+
+不新增专用表：
+
+- `Session.experimentSnapshot.instructionPlan`
+  - 保存团队级三段指导语计划。
+- `TaskProgress`
+  - `pre_segment_instruction_opened`
+  - `pre_segment_instruction_completed`
+- `ExperimentEvent`
+  - `pre_segment_instruction_started`
+  - `pre_segment_instruction_opened`
+  - `pre_segment_instruction_completed`
 
 ### 4.3 AI 相关
 
@@ -238,6 +257,8 @@
 - `POST /experiment/session/:code/practice-quiz`
 - `POST /experiment/session/:code/ready-practice`
 - `POST /experiment/session/:code/ready-formal`
+- `POST /experiment/session/:code/pre-segment-instruction/open`
+- `POST /experiment/session/:code/pre-segment-instruction/complete`
 - `POST /experiment/session/:code/complete-practice`
 - `POST /experiment/session/:code/progress`
 
@@ -251,6 +272,7 @@
 - `POST /experiment/session/:code/tasks/:taskId/restore-latest`
 - `POST /experiment/session/:code/tasks/:taskId/a-submit`
 - `POST /experiment/session/:code/tasks/:taskId/view-a-info`
+- `POST /experiment/session/:code/tasks/:taskId/view-a-materials`
 - `POST /experiment/session/:code/tasks/:taskId/b-complete`
 
 ### 6.4 副线
@@ -267,8 +289,15 @@
 
 - `GET /admin/sessions`
 - `GET /admin/export`
+- `POST /admin/export-jobs`
+- `POST /admin/sessions/delete-batch`
+- `POST /admin/participants`
+- `DELETE /admin/participants/:id`
+- `POST /admin/participants/delete-batch`
 - `GET /admin/experiment-config`
 - `POST /admin/experiment-config`
+- `GET /admin/questionnaire-template`
+- `POST /admin/questionnaire-template`
 - `GET /admin/ai-settings`
 - `POST /admin/ai-settings`
 - `POST /admin/sidetask/import`

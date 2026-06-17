@@ -10,14 +10,14 @@
 
 ### 核心功能
 
-- **参与者实验主流程**：登录 → 自动配对 → 指导语 → 测试题 → 测试轮（含教学引导）→ 3 个正式工作段 + 2 个休息问卷段 → 结束
+- **参与者实验主流程**：登录 → 自动配对 → 开场指导语 → 测试题 → 测试轮（含教学引导）→ formal ready → 段前阅读材料 → 3 个正式工作段 + 段后问卷/休息 → 最终长问卷 → 结束
 - **统一运行态与阶段引擎**：基于 SSE 的实时状态推送，支持自动阶段切换、倒计时、A 信息解锁
 - **A/B 主工作台三区**：材料区（支持 txt/docx/pdf/xlsx 混合阅读）、答题区（结构化表单）、AI 区（支持流式输出、Markdown、图片上传）
 - **草稿/快照/恢复系统**：跨工作段内容冻结与自动恢复
 - **AI 上下文系统**：基础版/高级版 AI、主线/副线隔离、分公司隔离、按阶段隔离
 - **副线任务系统**：900 题题库、continuous/batch 提醒频率、neutral_info/coop_narrative 叙事组别
 - **admin 管理后台**：实验模式切换（实验 1/2/3）、材料管理、题库导入、导出任务
-- **变量记录与服务器导出**：A/B 分目录归档、事件/内容/AI/副线完整记录、zip 导出包 + 动态自检
+- **变量记录与服务器导出**：A/B 分目录归档、事件/内容/AI/副线/问卷/段前指导语完整记录、zip 导出包 + 动态自检
 
 ### 实验 1/2/3
 
@@ -34,7 +34,7 @@
 | 前端 | Next.js 15 + React 19 + Tailwind CSS v4 |
 | 后端 | NestJS + Prisma 6 + PostgreSQL 16 |
 | AI | 阿里云千问（qwen-turbo / qwen3.6-plus） |
-| 部署 | Docker Compose（生产式单机部署） |
+| 部署 | Docker Compose（生产式单机部署，Nginx HTTPS 反向代理） |
 | 包管理 | pnpm（monorepo workspace） |
 
 ## 项目结构
@@ -102,21 +102,19 @@ corepack pnpm run dev:local
 ### 生产部署
 
 ```powershell
-# 上传到服务器
-powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-project.ps1 -User ubuntu
-
-# 创建生产环境变量
-powershell -ExecutionPolicy Bypass -File scripts/deploy/create-prod-env.ps1 -User ubuntu
+# 从当前 git HEAD 打包上传并部署
+powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty
 ```
 
-然后 SSH 到服务器：
+生产入口：
 
-```bash
-cd /opt/multi-cooperation
-sudo bash scripts/deploy/deploy-prod.sh
-```
+| 服务 | 地址 |
+|------|------|
+| Web / Admin | https://aiseek.tech |
+| Server API | https://aiseek.tech/api |
+| Health | https://aiseek.tech/api/health |
 
-详见 `02_specs/05_server_deploy/运维命令快速参考.md`。
+详见 [命令运行清单.md](02_specs/05_server_deploy/命令运行清单.md) 与 [HTTPS域名接入方案.md](02_specs/05_server_deploy/HTTPS部署/HTTPS域名接入方案.md)。
 
 ## 文档导航
 
@@ -126,16 +124,18 @@ sudo bash scripts/deploy/deploy-prod.sh
 | [PROJECT_RULES.md](01_rules/PROJECT_RULES.md) | 协作规则 |
 | [progress.md](03_tracking/progress.md) | 项目进度真相源 |
 | [实验123计划.md](02_specs/03_execution/实验123计划.md) | 实验 1/2/3 模式切换 |
+| [问卷流程方案.md](02_specs/03_execution/问卷流程方案.md) | 正式问卷流程与保存口径 |
+| [段前指导语方案.md](02_specs/03_execution/段前指导语方案.md) | 正式工作段前阅读材料流程 |
 | [变量记录与服务器导出方案.md](02_specs/04_pre_deploy/变量记录与服务器导出方案.md) | 变量记录设计 |
 | [数据库文件夹手册.md](02_specs/04_pre_deploy/数据库文件夹手册.md) | 导出包阅读指南 |
-| [运维命令快速参考.md](02_specs/05_server_deploy/运维命令快速参考.md) | 服务器运维命令 |
+| [命令运行清单.md](02_specs/05_server_deploy/命令运行清单.md) | 服务器运维命令 |
 
 ## 当前状态
 
-**阶段：长期实现 + 本地实测 + 上线前收口**
+**阶段：长期实现 + 本地实测 + HTTPS 域名已部署 + 上线前收口**
 
 - ✅ P0 服务器裸 IP 部署完成
-- ⏳ P1 等待 ICP 审核 → 接域名 + HTTPS
+- ✅ P1 域名 + HTTPS + Nginx 反向代理已接入：`https://aiseek.tech`
 - ⏳ P2 正式实验前备份、彩排、运维收口
 
 ## 许可证
