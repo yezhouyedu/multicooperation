@@ -2149,3 +2149,9 @@
 **待验收**：
 - 本地执行 `corepack pnpm --filter server prisma:generate`、`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
 - 提交 GitHub 后通过 git archive 部署到线上，验证 `https://aiseek.tech/api/health`、admin 密码登录、被试名单启停接口与最终状态为启用。
+**2026-06-18 验收补记**：本轮已完成本地、GitHub 与线上验收。
+- 本地：`corepack pnpm --filter server prisma:generate`、`corepack pnpm --filter server build`、`corepack pnpm --filter web build` 均通过。
+- GitHub：提交 `ff174b3 收口测试轮与实验入口启停` 已 push 到 `main`。
+- 线上：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传 git archive 并部署 `postgres/server/web/nginx` 四容器；`https://aiseek.tech/api/health` 返回 `ok`。
+- admin smoke：`POST /api/admin/auth/login` 使用 `20260617` 成功；`GET /api/admin/participants` 返回 14 位被试。
+- 实验启停 smoke：线上临时执行 `实验关闭` 后，第一位被试手机号登录返回 403；随后执行 `实验开始`，14 位被试均恢复 `isActive=true`。
