@@ -322,6 +322,28 @@ export function SideTaskStrip({
   const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(tickerCount));
 
   if (phase === 'practice') {
+    const demoAnswered = Boolean(optimisticAnswers.practice_demo_sidetask);
+
+    function answerPracticeDemo(answer: string) {
+      setOptimisticAnswers((prev) => ({ ...prev, practice_demo_sidetask: answer }));
+      window.dispatchEvent(
+        new CustomEvent('practice-tutorial-event', {
+          detail: { type: 'sidetask_answer', planId: 'practice_demo_sidetask', userInitiated: true },
+        }),
+      );
+      if (participantId) {
+        void recordTimestampEvent({
+          sessionCode,
+          participantId,
+          role,
+          eventType: 'side_activity',
+          phase,
+          segmentIndex,
+          payload: { activityKind: 'answer', source: 'practice_demo_sidetask', answer },
+        });
+      }
+    }
+
     function openPracticePanel() {
       setExpanded(true);
       window.dispatchEvent(
@@ -387,7 +409,39 @@ export function SideTaskStrip({
                   返回主界面
                 </button>
               </div>
-              <div className="min-h-0 flex-1 bg-white" />
+              <div className="min-h-0 flex-1 bg-white p-6">
+                <div className="mx-auto max-w-2xl rounded-lg border border-[#e5e6eb] bg-white p-5 text-sm text-[#1d2129] shadow-sm">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[#86909c]">教学演示题</div>
+                  <div className="mb-4 leading-7 text-[#4e5969]">
+                    这是测试轮教学用的演示题，不计入正式副线任务数量，也不会保存为正式副线作答。
+                  </div>
+                  <div className="mb-5 text-base font-bold">请选择任意一个选项，体验副线作答流程。</div>
+                  <div data-tutorial-anchor="sidetask-options" className="space-y-3">
+                    {['演示选项 A', '演示选项 B'].map((option, optionIndex) => {
+                      const selected = optimisticAnswers.practice_demo_sidetask === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          data-tutorial-anchor={!demoAnswered && optionIndex === 0 ? 'sidetask-option' : undefined}
+                          onClick={() => !demoAnswered && answerPracticeDemo(option)}
+                          disabled={demoAnswered}
+                          className={`block w-full rounded-lg border px-4 py-3 text-left transition ${
+                            selected
+                              ? 'border-[#1e80ff] bg-blue-50 text-[#1e80ff]'
+                              : demoAnswered
+                                ? 'cursor-not-allowed border-[#e5e6eb] bg-gray-50 text-[#c9cdd4]'
+                                : 'border-[#e5e6eb] bg-white hover:border-blue-200 hover:bg-blue-50/50'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 border-t border-[#e5e6eb] pt-4 text-xs text-[#86909c]">待处理: 0 / 0</div>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
