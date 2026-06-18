@@ -321,6 +321,80 @@ export function SideTaskStrip({
   const tickerCount = sideTaskConfig.notificationPulse?.newCount ?? pendingCount;
   const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(tickerCount));
 
+  if (phase === 'practice') {
+    function openPracticePanel() {
+      setExpanded(true);
+      window.dispatchEvent(
+        new CustomEvent('practice-tutorial-event', { detail: { type: 'sidetask_open', userInitiated: true } }),
+      );
+      if (participantId) {
+        void recordTimestampEvent({
+          sessionCode,
+          participantId,
+          role,
+          eventType: 'side_area_entered',
+          phase,
+          segmentIndex,
+          payload: { source: 'practice_blank_panel_open' },
+        });
+        void recordTimestampEvent({
+          sessionCode,
+          participantId,
+          role,
+          eventType: 'side_activity',
+          phase,
+          segmentIndex,
+          payload: { activityKind: 'open', source: 'practice_blank_panel_open' },
+        });
+      }
+    }
+
+    return (
+      <>
+        <section className="relative z-20 flex h-12 shrink-0 items-center overflow-hidden border-b border-blue-200 bg-blue-50/60 px-4">
+          <button
+            type="button"
+            onClick={openPracticePanel}
+            data-tutorial-anchor="sidetask-toggle"
+            className="mr-4 rounded-md bg-[#ef4444] px-4 py-1.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-600"
+          >
+            副线任务 (0)
+          </button>
+          <div className="min-w-0 flex-1" style={{ minHeight: 32 }} />
+        </section>
+
+        {expanded ? (
+          <div className="side-panel-backdrop fixed inset-0 z-50 bg-[#f0f2f5]">
+            <div className="side-panel-shell flex h-full flex-col">
+              <div className="flex h-12 items-center justify-end border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void recordTimestampEvent({
+                      sessionCode,
+                      participantId,
+                      role,
+                      eventType: 'main_area_returned',
+                      phase,
+                      segmentIndex,
+                      payload: { source: 'practice_blank_return_button' },
+                    });
+                    window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'side_return' } }));
+                    setExpanded(false);
+                  }}
+                  className="rounded-lg border border-[#e5e6eb] px-3 py-1 text-sm text-[#4e5969] hover:bg-gray-50"
+                >
+                  返回主界面
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 bg-white" />
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
   // Queue list sidebar
   const sidebar = (
     <div className="flex h-full flex-col text-sm">
@@ -515,7 +589,6 @@ export function SideTaskStrip({
                       phase={phase}
                       segmentIndex={segmentIndex}
                       aiLevel={aiLevel}
-                      disabledReason={phase === 'practice' ? 'AI 功能将在正式任务开始后启用。' : undefined}
                     />
                   ) : (
                     <div className="p-4 text-sm text-[#86909c]">缺少参与者信息</div>

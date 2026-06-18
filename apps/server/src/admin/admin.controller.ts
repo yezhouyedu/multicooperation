@@ -50,6 +50,11 @@ export class AdminController {
     return this.adminService.deleteParticipants(body.ids ?? []);
   }
 
+  @Post('participants/set-active')
+  setParticipantsActive(@Body() body: { isActive?: boolean }) {
+    return this.adminService.setParticipantsActive(Boolean(body.isActive));
+  }
+
   @Get('experiment-config')
   getExperimentConfig() {
     return this.adminService.getExperimentConfig();

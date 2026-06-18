@@ -92,11 +92,11 @@ export class AdminService {
       if (existing) {
         await this.prisma.participant.update({
           where: { phone },
-          data: { phone, role: null },
+          data: { phone, role: null, isActive: true },
         });
         updated++;
       } else {
-        await this.prisma.participant.create({ data: { phone } });
+        await this.prisma.participant.create({ data: { phone, isActive: true } });
         inserted++;
       }
     }
@@ -107,9 +107,17 @@ export class AdminService {
     const list = await this.prisma.participant.findMany({
       where: { phone: { not: null } },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, phone: true, createdAt: true },
+      select: { id: true, phone: true, isActive: true, createdAt: true },
     });
     return { ok: true, participants: list };
+  }
+
+  async setParticipantsActive(isActive: boolean) {
+    const result = await this.prisma.participant.updateMany({
+      where: { phone: { not: null } },
+      data: { isActive },
+    });
+    return { ok: true, isActive, updated: result.count };
   }
 
   async deleteParticipant(id: string) {

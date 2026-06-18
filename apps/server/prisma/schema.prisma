@@ -52,6 +52,7 @@ model Participant {
   phone                 String?                 @unique
   nickname              String?
   role                  ParticipantRole?
+  isActive              Boolean                 @default(true)
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
   pairingsAsA           Pairing[]               @relation("PairingParticipantA")

@@ -24,15 +24,15 @@ export function SessionTopbar({
   useExperimentFullscreen();
   const statusLabel =
     connectionStatus === 'connected'
-      ? 'online'
+      ? '网络正常'
       : connectionStatus === 'offline'
-        ? 'offline'
+        ? '网络异常'
         : connectionStatus === 'polling'
-          ? 'polling'
+          ? '正在同步'
           : connectionStatus === 'reconnecting'
-            ? 'reconnecting'
+            ? '正在重连'
             : connectionStatus === 'connecting'
-              ? 'connecting'
+              ? '正在连接'
               : null;
   const statusClass =
     connectionStatus === 'connected'
@@ -61,7 +61,7 @@ export function SessionTopbar({
         {statusLabel ? (
           <div className={`rounded-md border px-3 py-1 text-xs font-medium ${statusClass}`}>
             {statusLabel}
-            {pendingDraftCount > 0 ? ` / pending ${pendingDraftCount}` : ''}
+            {pendingDraftCount > 0 ? ` / 待同步 ${pendingDraftCount} 条` : ''}
           </div>
         ) : null}
         <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-[#1e80ff]">

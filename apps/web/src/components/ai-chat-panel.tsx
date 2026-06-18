@@ -427,6 +427,9 @@ export function AiChatPanel({
     } finally {
       abortRef.current = null;
       setSending(false);
+      if (contextType === 'main') {
+        window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'ai_response_end' } }));
+      }
     }
   }
 
@@ -667,12 +670,13 @@ export function AiChatPanel({
               disabled={isDisabled}
               data-tutorial-anchor="ai-input"
               placeholder={
-                disabledReason ??
-                (followUpTarget
+                disabledReason
+                  ? ''
+                  : followUpTarget
                   ? '继续写你的追问，发送时不会复制整段原回答...'
                   : imageEnabled
                     ? '输入问题，或上传/粘贴图片让 AI 辅助分析...'
-                    : '输入问题，让 AI 帮你整理判断...')
+                    : '输入问题，让 AI 帮你整理判断...'
               }
               className="no-scrollbar h-9 w-full resize-none bg-transparent p-2 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-[#86909c]"
             />

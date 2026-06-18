@@ -413,9 +413,9 @@ export default function WorkspaceBPage() {
                       aiLevel={runtime.aiLevel}
                       disabledReason={
                         connectionStatus === 'offline'
-                          ? 'network unavailable, AI will resume after reconnecting'
+                          ? '网络异常，AI助手将在网络恢复后可用'
                           : runtime.phase === 'practice'
-                            ? 'AI is enabled after the formal task begins.'
+                            ? '暂不可用，AI助手将在正式实验启用'
                             : undefined
                       }
                       onScreenshot={() => materialPanelRef.current?.startCapture()}

@@ -37,7 +37,7 @@ type SessionSummary = {
   }[];
 };
 
-type Participant = { id: string; phone: string | null; createdAt: string };
+type Participant = { id: string; phone: string | null; isActive: boolean; createdAt: string };
 type QuestionnaireItem = { id: string; prompt: string; options: string[]; correctOption?: string };
 type FormalQuestionnaireItem = {
   code: string;
@@ -507,6 +507,26 @@ function ParticipantsTab() {
     }
   }
 
+  async function setExperimentOpen(isActive: boolean) {
+    if (participants.length === 0) return;
+    const action = isActive ? '开始实验' : '关闭实验';
+    if (!isActive && !window.confirm('确认关闭实验吗？关闭后名单保留，但所有被试将无法登录进入。')) return;
+    setStatus(`${action}处理中...`);
+    try {
+      const response = await fetch(`${serverBaseUrl}/admin/participants/set-active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) throw new Error('set active failed');
+      const data = (await response.json()) as { updated?: number };
+      setStatus(`${action}完成：已更新 ${data.updated ?? participants.length} 位被试`);
+      await load();
+    } catch {
+      setStatus(`${action}失败`);
+    }
+  }
+
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -528,6 +548,8 @@ function ParticipantsTab() {
   }
 
   const allSelected = participants.length > 0 && selectedIds.size === participants.length;
+  const activeCount = participants.filter((participant) => participant.isActive).length;
+  const inactiveCount = participants.length - activeCount;
 
   return (
     <div className="space-y-5">
@@ -579,6 +601,34 @@ function ParticipantsTab() {
       </div>
 
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+        <div className="mb-4 rounded-lg border border-[#e5e6eb] bg-gray-50 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-[#1d2129]">实验入口状态</div>
+              <div className="mt-1 text-xs text-[#86909c]">
+                已启用 {activeCount} 位，已关闭 {inactiveCount} 位；关闭后名单保留，被试无法登录。
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void setExperimentOpen(true)}
+                disabled={participants.length === 0 || inactiveCount === 0}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                实验开始
+              </button>
+              <button
+                type="button"
+                onClick={() => void setExperimentOpen(false)}
+                disabled={participants.length === 0 || activeCount === 0}
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+              >
+                实验关闭
+              </button>
+            </div>
+          </div>
+        </div>
         <div className="mb-3 flex items-center justify-between">
           <div className="font-bold text-[#1d2129]">当前名单</div>
           <div className="flex gap-2">
@@ -623,6 +673,13 @@ function ParticipantsTab() {
               />
               <span className="flex-1 font-medium text-[#1d2129]">{participant.phone}</span>
               <span className="rounded bg-blue-50 px-2 py-0.5 text-xs text-[#1e80ff]">准入令牌</span>
+              <span
+                className={`rounded px-2 py-0.5 text-xs ${
+                  participant.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-[#86909c]'
+                }`}
+              >
+                {participant.isActive ? '已启用' : '已关闭'}
+              </span>
               <button
                 type="button"
                 onClick={() => void deleteSingle(participant.id, participant.phone ?? '')}

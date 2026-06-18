@@ -2130,3 +2130,22 @@
 
 **本地验证**：
 - `corepack pnpm --filter web build` 通过（23 个页面全部生成）。
+
+### 2026-06-18 测试轮副线空白、状态栏中文与实验入口启停
+
+**背景**：根据上线前小修反馈，需要收口测试轮 AI 文案、副线任务呈现、网络状态中文显示，并在 admin 被试名单中提供研究员可控的实验开始/关闭入口。
+
+**本轮实现**：
+- 测试轮主线 AI 区只保留一处禁用提示：`暂不可用，AI助手将在正式实验启用`；网络异常时提示改为中文：`网络异常，AI助手将在网络恢复后可用`。
+- 工作台状态栏从英文状态改为中文：`网络正常`、`网络异常`、`正在同步`、`正在重连`、`正在连接`；本地待同步草稿显示为 `待同步 N 条`。
+- 测试轮不再生成副线任务计划；前端测试轮副线入口保留教程锚点，但打开后内容区为空白，只保留返回主界面按钮。
+- 本地测试轮副线材料 Excel 已从 `副线任务样例.xlsx` 改名为 `副线任务样例_废.xlsx`，作为本地材料废弃标记；该目录不进入 git。
+- `时间戳变量保存方案.md` 补充 E 时间戳定义：E 是后端 `ai_wait_ended.at`，在 AI 流式成功收口、失败结束或超时结束时由服务端写入；若 D 后服务端未能收口则导出标记 `missing_ai_wait_end`，不伪造 E。
+- admin 被试名单新增实验入口启停：`Participant.isActive` 数据库字段控制被试是否可登录；`实验关闭` 会停用全部名单但不删除，`实验开始` 会重新启用全部名单。
+
+**数据库变更**：
+- 新增 migration：`20260618143000_participant_is_active`，为 `Participant` 增加 `isActive Boolean @default(true)`。
+
+**待验收**：
+- 本地执行 `corepack pnpm --filter server prisma:generate`、`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
+- 提交 GitHub 后通过 git archive 部署到线上，验证 `https://aiseek.tech/api/health`、admin 密码登录、被试名单启停接口与最终状态为启用。

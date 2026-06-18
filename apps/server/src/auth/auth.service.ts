@@ -79,6 +79,9 @@ export class AuthService {
     if (!participant) {
       throw new ForbiddenException('手机号未在被试名单中，请核对后重试');
     }
+    if (!participant.isActive) {
+      throw new ForbiddenException('实验暂未开始，请等待研究员通知后再进入');
+    }
 
     const result = await this.prisma.$transaction(
       async (tx) => {
@@ -354,8 +357,6 @@ export class AuthService {
 
     const dispatchMode = experimentSnapshot.sideDispatchMode;
     const narrativeGroup = experimentSnapshot.narrativeGroup;
-    const practiceDispatchMode: DispatchMode = 'continuous';
-    const practiceNarrativeGroup: NarrativeGroup = 'neutral_info';
     const themeOrder = experimentSnapshot.themeOrder ?? [];
     const segmentThemes: (string | null)[] =
       narrativeGroup === 'coop_narrative' ? [themeOrder[0] ?? null, themeOrder[1] ?? null, themeOrder[2] ?? null] : [null, null, null];
@@ -379,46 +380,7 @@ export class AuthService {
     });
 
     // 3. For each formal work segment (workSegment 1/2/3 → segmentIndex 1/3/5)
-    const practiceCandidatesRaw = await sidetaskTx.sideTaskItem.findMany({
-      where: {
-        isActive: true,
-        workSegment: { in: [0, 1] },
-      },
-      select: { id: true, itemCode: true, workSegment: true },
-      orderBy: [{ workSegment: 'asc' }, { createdAt: 'asc' }],
-    });
-    const practiceCandidates = Array.from(
-      new Map<string, { id: string; itemCode: string; workSegment: number }>(
-        practiceCandidatesRaw.map((item: { id: string; itemCode: string; workSegment: number }) => [
-          item.itemCode,
-          item,
-        ]),
-      ).values(),
-    );
-    const practiceCount = Math.min(5, practiceCandidates.length);
-
-    if (practiceCount > 0) {
-      const sampledPractice = this.sampleWithSeed(
-        practiceCandidates,
-        practiceCount,
-        `${sessionId}:practice:segment:0`,
-      );
-
-      for (let queueOrder = 0; queueOrder < sampledPractice.length; queueOrder++) {
-        const item = sampledPractice[queueOrder];
-        await sidetaskTx.sideTaskPlan.create({
-          data: {
-            sessionId,
-            segmentIndex: 0,
-            itemId: item.id,
-            dispatchMode: practiceDispatchMode,
-            narrativeGroup: practiceNarrativeGroup,
-            themeLabel: 'practice',
-            queueOrder: queueOrder + 1,
-          },
-        });
-      }
-    }
+    // Practice round intentionally has no side-task queue.
 
     const usedItemCodes = new Set<string>();
 
