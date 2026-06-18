@@ -427,9 +427,6 @@ export function AiChatPanel({
     } finally {
       abortRef.current = null;
       setSending(false);
-      if (contextType === 'main') {
-        window.dispatchEvent(new CustomEvent('timestamp-anchor', { detail: { anchorType: 'ai_response_end' } }));
-      }
     }
   }
 
