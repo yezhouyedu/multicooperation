@@ -16,7 +16,19 @@ export default function RootLayout({
       lang="zh-CN"
       className="h-full antialiased"
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <footer className="beian-footer" aria-label="公安备案信息">
+          <a
+            href="https://beian.mps.gov.cn/#/query/webSearch?code=37098202000886"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <img src="/beian-police.png" alt="" aria-hidden="true" />
+            <span>鲁公网安备37098202000886号</span>
+          </a>
+        </footer>
+      </body>
     </html>
   );
 }

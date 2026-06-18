@@ -33,6 +33,38 @@ body {
   font-family: var(--font-sans);
 }
 
+.beian-footer {
+  position: fixed;
+  right: 12px;
+  bottom: 8px;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.beian-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 3px 6px;
+  color: #4e5969;
+  font-size: 12px;
+  line-height: 18px;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  pointer-events: auto;
+}
+
+.beian-footer a:hover {
+  color: #1e80ff;
+}
+
+.beian-footer img {
+  height: 14px;
+  width: 14px;
+}
+
 button, a {
   transition-property: color, background-color, border-color, opacity;
   transition-duration: 150ms;
