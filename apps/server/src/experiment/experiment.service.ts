@@ -2891,58 +2891,24 @@ export class ExperimentService {
     }
 
     if (currentSegmentIndex === 0) {
-      await this.prisma.sideTaskPlan.updateMany({
-        where: { sessionId, segmentIndex: 0 },
-        data: { dispatchMode: 'continuous', narrativeGroup: 'neutral_info', batchNo: null },
-      });
-
-      const existingPracticePlans = await this.prisma.sideTaskPlan.count({
-        where: { sessionId, segmentIndex: 0 },
-      });
-
-      if (existingPracticePlans === 0) {
-        const practiceCandidatesRaw = await this.prisma.sideTaskItem.findMany({
-          where: {
-            isActive: true,
-            workSegment: { in: [0, 1] },
-          },
-          select: { id: true, itemCode: true, workSegment: true },
-          orderBy: [{ workSegment: 'asc' }, { createdAt: 'asc' }],
-        });
-        const practiceCandidates = Array.from(
-          new Map<string, { id: string; itemCode: string; workSegment: number }>(
-            practiceCandidatesRaw.map((item: { id: string; itemCode: string; workSegment: number }) => [
-              item.itemCode,
-              item,
-            ]),
-          ).values(),
-        );
-        const practiceCount = Math.min(5, practiceCandidates.length);
-
-        if (practiceCount > 0) {
-          const sampledPractice = this.sampleWithSeed(
-            practiceCandidates,
-            practiceCount,
-            `${sessionId}:practice:segment:0`,
-          );
-
-          for (let queueOrder = 0; queueOrder < sampledPractice.length; queueOrder++) {
-            const item = sampledPractice[queueOrder];
-            await this.prisma.sideTaskPlan.create({
-              data: {
-                sessionId,
-                segmentIndex: 0,
-                itemId: item.id,
-                dispatchMode: 'continuous',
-                narrativeGroup: 'neutral_info',
-                themeLabel: 'practice',
-                queueOrder: queueOrder + 1,
-                scheduledAt: now,
-              },
-            });
-          }
-        }
-      }
+      return {
+        sideTaskQueue: [],
+        sideTaskConfig: {
+          dispatchMode: 'continuous' as const,
+          scrollDurationSec: config.sideTaskScrollDurationSec,
+          holdSec: config.sideTaskHoldSec,
+          fadeSec: config.sideTaskFadeSec,
+          pauseSec: config.sideTaskContinuousPauseSec,
+          totalPlanned: 0,
+          totalReleased: 0,
+          totalAnswered: 0,
+          totalArchived: 0,
+          nextScheduledAt: null,
+          notificationPulse: null,
+          pendingLabel: '待处理事项',
+          tickerMessage: '您有新事项入库，请尽快处理',
+        },
+      };
     }
 
     const plans = await this.prisma.sideTaskPlan.findMany({
