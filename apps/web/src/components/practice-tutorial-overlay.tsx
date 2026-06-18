@@ -339,6 +339,7 @@ export function PracticeTutorialOverlay({
   const holeHeight = highlightRect ? Math.min(viewportHeight - 16, highlightRect.height + 16) : 0;
   const holeRight = holeLeft + holeWidth;
   const holeBottom = holeTop + holeHeight;
+  const isSideTaskDemoStep = nextStep?.key === 'sidetask_answer' && !highlightRect;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[80]">
@@ -373,7 +374,20 @@ export function PracticeTutorialOverlay({
           <div className="mb-2 text-lg font-semibold text-[#1d2129]">{nextStep!.title}</div>
           <div className="text-sm leading-7 text-[#4e5969]">{nextStep!.detail}</div>
 
-          {isAcknowledgeStep ? (
+          {isSideTaskDemoStep ? (
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-6 text-[#1e80ff]">
+                当前测试轮真实副线任务数量为 0。这里提供一个教学演示选项，只用于完成教学引导，不会保存为正式副线作答。
+              </div>
+              <button
+                type="button"
+                onClick={() => void markStepDone(nextStep!.key)}
+                className="w-full rounded-xl border border-[#1e80ff] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1e80ff] transition hover:bg-blue-50 active:scale-[0.99]"
+              >
+                教学演示选项
+              </button>
+            </div>
+          ) : isAcknowledgeStep ? (
             <div className="mt-4">
               <button
                 type="button"
