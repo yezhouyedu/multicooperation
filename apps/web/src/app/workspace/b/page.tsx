@@ -319,6 +319,7 @@ export default function WorkspaceBPage() {
             sideTaskConfig={runtime.sideTaskConfig}
             phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
             segmentIndex={runtime.segmentIndex}
+            showPracticeDemoTask={runtime.phase === 'practice' && !runtime.practiceTutorialState?.completed}
           />
         ) : null}
         <div className="min-h-0 flex-1 overflow-hidden p-2">

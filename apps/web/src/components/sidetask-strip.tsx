@@ -11,6 +11,7 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 type QueueItem = RuntimeState['sideTaskQueue'][number];
 type SideTaskConfig = RuntimeState['sideTaskConfig'];
+const practiceDemoPlanId = 'practice_demo_sidetask';
 
 type Props = {
   sessionCode: string;
@@ -21,6 +22,7 @@ type Props = {
   sideTaskConfig: SideTaskConfig;
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
+  showPracticeDemoTask?: boolean;
 };
 
 export function SideTaskStrip({
@@ -32,6 +34,7 @@ export function SideTaskStrip({
   sideTaskConfig,
   phase = 'formal',
   segmentIndex = 0,
+  showPracticeDemoTask = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -105,15 +108,29 @@ export function SideTaskStrip({
   }, [expanded]);
 
   // Merge server answers with optimistic answers
-  const effectiveQueue = useMemo(
-    () =>
-      sideTaskQueue.map((item) => ({
+  const effectiveQueue = useMemo(() => {
+    const merged = sideTaskQueue.map((item) => ({
         ...item,
         answered: item.answered || !!optimisticAnswers[item.planId],
         answer: item.answer ?? optimisticAnswers[item.planId] ?? null,
-      })),
-    [sideTaskQueue, optimisticAnswers],
-  );
+      }));
+    if (showPracticeDemoTask && sideTaskQueue.length === 0) {
+      merged.push({
+        planId: practiceDemoPlanId,
+        text: '教学演示题',
+        question: '这是教学演示题。请选择任意一个选项，体验副线作答流程。',
+        optionA: '演示选项 A',
+        optionB: '演示选项 B',
+        directAiFlag: false,
+        narrativeCategory: null,
+        queueOrder: 1,
+        batchNo: null,
+        answered: Boolean(optimisticAnswers[practiceDemoPlanId]),
+        answer: optimisticAnswers[practiceDemoPlanId] ?? null,
+      });
+    }
+    return merged;
+  }, [showPracticeDemoTask, sideTaskQueue, optimisticAnswers]);
 
   const reportNotified = useCallback(
     async (planIds: string[], pulse: NonNullable<SideTaskConfig['notificationPulse']>, displayed: boolean) => {
@@ -147,6 +164,7 @@ export function SideTaskStrip({
   const pendingItems = useMemo(() => effectiveQueue.filter((i) => !i.answered), [effectiveQueue]);
   const answeredItems = useMemo(() => effectiveQueue.filter((i) => i.answered), [effectiveQueue]);
   const pendingCount = pendingItems.length;
+  const realPendingCount = sideTaskQueue.filter((item) => !item.answered && !optimisticAnswers[item.planId]).length;
 
   useEffect(() => {
     if (pendingCount !== 0) return;
@@ -256,6 +274,21 @@ export function SideTaskStrip({
       setSelectedPlanId(pendingItems[currentIdx + 1].planId);
     }
 
+    if (planId === practiceDemoPlanId) {
+      if (participantId) {
+        void recordTimestampEvent({
+          sessionCode,
+          participantId,
+          role,
+          eventType: 'side_activity',
+          phase,
+          segmentIndex,
+          payload: { activityKind: 'answer', source: 'practice_demo_sidetask', answer },
+        });
+      }
+      return;
+    }
+
     try {
       void recordTimestampEvent({
         sessionCode,
@@ -286,7 +319,7 @@ export function SideTaskStrip({
     );
     // Report opened exposure
     if (participantId) {
-      const firstPlanId = pendingItems[0]?.planId ?? sideTaskQueue[0]?.planId ?? null;
+      const firstPlanId = sideTaskQueue[0]?.planId ?? null;
       void recordTimestampEvent({
         sessionCode,
         participantId,
@@ -318,14 +351,14 @@ export function SideTaskStrip({
     }
   }
 
-  const tickerCount = sideTaskConfig.notificationPulse?.newCount ?? pendingCount;
+  const tickerCount = sideTaskConfig.notificationPulse?.newCount ?? realPendingCount;
   const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(tickerCount));
 
   // Queue list sidebar
   const sidebar = (
     <div className="flex h-full flex-col text-sm">
       <div className="border-b border-[#e5e6eb] px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#86909c]">
-        待处理 ({pendingItems.length})
+        待处理 ({realPendingCount})
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {pendingItems.map((item, index) => (
@@ -408,7 +441,7 @@ export function SideTaskStrip({
 
       <div className="mt-4 flex shrink-0 items-center justify-between border-t border-[#e5e6eb] pt-4">
         <div className="text-xs text-[#86909c]">
-          待处理: {pendingCount} / {sideTaskConfig.totalPlanned}
+          待处理: {realPendingCount} / {sideTaskConfig.totalPlanned}
         </div>
         <div className="flex gap-2">
           <button
@@ -449,7 +482,7 @@ export function SideTaskStrip({
           data-tutorial-anchor="sidetask-toggle"
           className="mr-4 rounded-md bg-[#ef4444] px-4 py-1.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-600"
         >
-          {sideTaskConfig.pendingLabel} ({pendingCount})
+          {sideTaskConfig.pendingLabel} ({realPendingCount})
         </button>
 
         <div className="relative min-w-0 flex-1 overflow-hidden" style={{ minHeight: 32 }}>
