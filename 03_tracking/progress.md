@@ -2155,3 +2155,23 @@
 - 线上：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传 git archive 并部署 `postgres/server/web/nginx` 四容器；`https://aiseek.tech/api/health` 返回 `ok`。
 - admin smoke：`POST /api/admin/auth/login` 使用 `20260617` 成功；`GET /api/admin/participants` 返回 14 位被试。
 - 实验启停 smoke：线上临时执行 `实验关闭` 后，第一位被试手机号登录返回 403；随后执行 `实验开始`，14 位被试均恢复 `isActive=true`。
+
+### 2026-06-18 测试轮副线教学与真实任务隔离最终收口
+
+**背景**：上一轮为了让测试轮副线真实任务数为 0，曾出现两类偏差：一是教学页没有可点击题目导致教学卡住，二是为了教学临时造出的题目又进入真实测试轮副线队列。本轮最终确认口径为“真实测试轮副线为 0，教学题仅前端演示”。
+
+**最终实现口径**：
+- 后端提交 `fe9f1c0 禁止测试轮真实副线出题`：`segmentIndex = 0` 不创建或返回真实 `SideTaskPlan`，并在 runtime 层隐藏历史测试轮副线计划；测试轮不会按 30 秒节奏释放副线题。
+- 前端提交 `1e7c057 将副线教学题放回面板内`：仅在测试轮教学未完成且真实副线队列为空时，在副线面板内部临时显示 `practice_demo_sidetask` 演示题。
+- 教学演示题点击只推进教学步骤并记录必要教学 / 时间戳事件，不调用正式 `/sidetask/:id/answer`，不进入 `side_plan.json`、`side_responses.jsonl`，不参与副线正确率、反应时或提醒效果计算。
+- 真实待处理计数继续来自服务端队列，因此测试轮显示为 `0 / 0` 是正确状态；正式工作段副线计划仍按 session 配置生成和释放。
+
+**文档同步**：
+- `02_specs/00_overview/APP_FLOW.md` 已补充测试轮真实副线为 0、教学演示题仅前端临时注入的流程口径。
+- `02_specs/04_pre_deploy/变量记录与服务器导出方案.md` 已说明练习轮不生成真实副线任务，演示题只作为教学行为事件来源。
+- `02_specs/04_pre_deploy/数据库文件夹手册.md` 已把 `practice_round/side_tasks.jsonl` 改为兼容位，并明确正式副线目录只描述正式工作段真实副线任务。
+
+**验证与部署状态**：
+- 本地：后端 build 已在 `fe9f1c0` 后通过，前端 build 已在 `1e7c057` 后通过。
+- GitHub：`fe9f1c0`、`1e7c057` 已 push 到 `main`。
+- 线上：server 已部署到 `fe9f1c0`，web 已部署到 `1e7c057`；`https://aiseek.tech/api/health` 返回 `ok`。
