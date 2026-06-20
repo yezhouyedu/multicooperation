@@ -107,7 +107,7 @@ export default function WorkspaceAPage() {
     <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
       <div className="flex h-full flex-col">
         <SessionTopbar
-          roleLabel="尽调员"
+          roleLabel="A"
           currentLabel={company?.name ?? '当前项目'}
           stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
@@ -198,7 +198,7 @@ export default function WorkspaceAPage() {
                   <div />
                 )
               }
-              taskTitle="尽调表"
+              taskTitle="任务表"
               aiTitle="AI助手"
               aiBadge={aiBadge}
             />

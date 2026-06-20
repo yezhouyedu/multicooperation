@@ -7,7 +7,7 @@ import { recordTimestampEvent } from '@/lib/timestamp-events';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type SourceOption = '自有材料' | '上游尽调信息' | '上游备注' | '上游材料' | '';
+type SourceOption = '自有材料' | '上游提取信息' | '上游备注' | '上游材料' | '';
 
 type InfoPoint = {
   text: string;
@@ -22,6 +22,8 @@ type BEditorData = {
   confidence?: 1 | 2 | 3 | 4 | 5 | null;
   noObviousOpportunity?: boolean;
   noObviousRisk?: boolean;
+  ordinaryOpportunityCount?: number | null;
+  ordinaryRiskCount?: number | null;
 };
 
 type Props = {
@@ -36,7 +38,7 @@ type Props = {
 };
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
-const sourceOptions: Exclude<SourceOption, ''>[] = ['自有材料', '上游尽调信息', '上游备注', '上游材料'];
+const sourceOptions: Exclude<SourceOption, ''>[] = ['自有材料', '上游提取信息', '上游备注', '上游材料'];
 const minInfoRows = 2;
 const maxInfoLength = 50;
 const maxAssessmentLength = 120;
@@ -45,9 +47,14 @@ function createEmptyInfoPoint(): InfoPoint {
   return { text: '', source: '' };
 }
 
+function normalizeSourceOption(value: unknown): SourceOption {
+  if (value === '\u4e0a\u6e38\u5c3d\u8c03\u4fe1\u606f') return '上游提取信息';
+  return sourceOptions.includes(value as Exclude<SourceOption, ''>) ? value as SourceOption : '';
+}
+
 function padInfoPoints(points?: InfoPoint[]) {
   const normalized = Array.isArray(points)
-    ? points.map((item) => ({ text: item.text ?? '', source: item.source ?? '' }))
+    ? points.map((item) => ({ text: item.text ?? '', source: normalizeSourceOption(item.source) }))
     : [];
   while (normalized.length < minInfoRows) normalized.push(createEmptyInfoPoint());
   return normalized;
@@ -63,6 +70,8 @@ function normalizeData(value: unknown) {
     confidence: typeof data.confidence === 'number' ? data.confidence : null,
     noObviousOpportunity: Boolean(data.noObviousOpportunity),
     noObviousRisk: Boolean(data.noObviousRisk),
+    ordinaryOpportunityCount: typeof data.ordinaryOpportunityCount === 'number' ? data.ordinaryOpportunityCount : null,
+    ordinaryRiskCount: typeof data.ordinaryRiskCount === 'number' ? data.ordinaryRiskCount : null,
   };
 }
 
@@ -345,7 +354,7 @@ export function BTaskEditor({
               <div>1. 仅依据当前可见的材料、AI 辅助结果和已解锁的信息填写；不要使用材料之外的知识进行推测。</div>
               <div>2. 重要信息点可自由增加行。信息简述应简短、具体，尽量写成会影响投资判断的事实或判断。</div>
               <div>3. 每条机会或风险信息都必须选择一个“权重最大”的主要来源。</div>
-              <div>4. 主要来源选项固定为：自有材料、上游尽调信息、上游备注、上游材料。AI 仅作为辅助工具，不作为来源选项。</div>
+              <div>4. 主要来源选项固定为：自有材料、上游提取信息、上游备注、上游材料。AI仅作为辅助工具，不作为来源选项；如使用AI整理信息，仍请选择你最终采纳该信息时权重最大的材料来源。</div>
               <div>5. 综合判断用于说明你如何权衡机会与风险，不需要重复逐条罗列前面的信息点。</div>
               <div>6. 最终投资建议必须选择；判断信心用于表示你对最终建议的确定程度。</div>
             </div>
@@ -365,19 +374,19 @@ export function BTaskEditor({
                 </tr>
                 <tr>
                   <Td>自有材料</Td>
-                  <Td>投资经理当前公司材料。</Td>
+                  <Td>B端当前公司材料。</Td>
                 </tr>
                 <tr>
-                  <Td>上游尽调信息</Td>
-                  <Td>尽调员主表中的基础数值摘录和材料线索记录。</Td>
+                  <Td>上游提取信息</Td>
+                  <Td>A端任务表中的基础数值摘录和材料线索记录。</Td>
                 </tr>
                 <tr>
                   <Td>上游备注</Td>
-                  <Td>尽调员“给投资经理的总体交接备注”。</Td>
+                  <Td>A端“给B的总体交接备注”。</Td>
                 </tr>
                 <tr>
                   <Td>上游材料</Td>
-                  <Td>投资经理主动查看并复核的尽调员原始材料。</Td>
+                  <Td>B主动查看并复核的A端原始材料。</Td>
                 </tr>
               </tbody>
             </DocTable>
@@ -479,6 +488,13 @@ export function BTaskEditor({
             <div>
               <h3 className="text-[16px] font-bold">五、最终投资建议</h3>
               <p className="mt-1 text-[12px] leading-6 text-[#86909c]">提示：请在最终提交前检查机会/风险信息点、来源、综合判断和最终投资建议是否完整。</p>
+              <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-[12px] leading-6 text-[#1e80ff]">
+                <div className="font-semibold">“最终投资建议”填写规则：</div>
+                <div>若识别到重要风险，最终建议应为 不投资。</div>
+                <div>若没有识别到重要风险，则按以下规则计算：</div>
+                <div>总分 = 重要机会数量 × 2 + 普通机会数量 × 1 − 普通风险数量 × 1</div>
+                <div>总分大于0时，应选择 投资。总分小于或等于0时，应选择 不投资。</div>
+              </div>
             </div>
             <DocTable>
               <tbody>
@@ -492,11 +508,37 @@ export function BTaskEditor({
                 </tr>
                 <tr>
                   <Td>识别到普通风险数量</Td>
-                  <Td />
+                  <Td>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.ordinaryRiskCount ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value === '' ? null : Math.max(0, Number(event.target.value) || 0);
+                        setForm((prev) => ({ ...prev, ordinaryRiskCount: value }));
+                        touch();
+                      }}
+                      disabled={disabled}
+                      className="w-28 border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] disabled:opacity-60"
+                    />
+                  </Td>
                 </tr>
                 <tr>
                   <Td>识别到普通机会数量</Td>
-                  <Td />
+                  <Td>
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.ordinaryOpportunityCount ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value === '' ? null : Math.max(0, Number(event.target.value) || 0);
+                        setForm((prev) => ({ ...prev, ordinaryOpportunityCount: value }));
+                        touch();
+                      }}
+                      disabled={disabled}
+                      className="w-28 border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] disabled:opacity-60"
+                    />
+                  </Td>
                 </tr>
                 <tr>
                   <Td>最终投资建议</Td>
@@ -547,6 +589,27 @@ export function BTaskEditor({
                 </tr>
               </tbody>
             </DocTable>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[16px] font-bold">六、绩效说明</h3>
+            <div className="space-y-3 rounded-lg border border-[#dde1e7] bg-[#f8fafc] px-4 py-4 text-[13px] leading-7 text-[#4e5969]">
+              <div>
+                <div className="font-semibold text-[#1d2129]">个人绩效提醒</div>
+                <p>你的个人绩效按你提交的公司累计。</p>
+                <p>每条重要机会或重要风险都需要选择权重最大的主要来源。若你填写的信息有材料依据，且来源能够支持该信息，可获得相应绩效分。</p>
+              </div>
+              <div>
+                <div className="font-semibold text-[#1d2129]">以下规则适用于重要机会/重要风险区：</div>
+                <p>如果填写的是标准重要机会或重要风险，且来源能够支持，可得分；</p>
+                <p>如果填写的信息在材料中没有依据，会扣除B个人绩效分；</p>
+                <p>综合判断会按三方面给分：语句是否基本通顺，推理是否完整，是否有明确结论。</p>
+              </div>
+              <div>
+                <div className="font-semibold text-[#1d2129]">团队绩效提醒</div>
+                <p>团队绩效只计算角色B完整提交的公司。最终投资建议正确、重要机会和重要风险覆盖正确、普通机会和普通风险数量准确，会提高团队绩效。如果公司存在重要风险，但B没有识别并填写，会扣团队绩效分。</p>
+              </div>
+            </div>
           </section>
         </div>
       </div>

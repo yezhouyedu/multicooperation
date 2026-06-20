@@ -515,8 +515,8 @@ export class AiService {
       : '你是尽调助手。请帮助用户提炼机会点、风险点、证据片段和交接提示。';
     const sideBlock =
       contextType === 'side'
-        ? '当前是副线任务场景。优先直接回答题目本身，不要扩展成主线尽调或投资结论。'
-        : '当前是主线任务场景。回答应紧贴当前公司材料，不要空泛扩展。';
+        ? '当前是任务2场景。优先直接回答题目本身，不要扩展成任务1或投资结论。'
+        : '当前是任务1场景。回答应紧贴当前公司材料，不要空泛扩展。';
 
     // Read format rules from database
     const DEFAULT_FORMAT_RULES = [

@@ -118,7 +118,7 @@ export function SideTaskStrip({
       merged.push({
         planId: practiceDemoPlanId,
         text: '教学演示题',
-        question: '这是教学演示题。请选择任意一个选项，体验副线作答流程。',
+        question: '这是教学演示题。请选择任意一个选项，体验任务2作答流程。',
         optionA: '演示选项 A',
         optionB: '演示选项 B',
         directAiFlag: false,
@@ -358,7 +358,7 @@ export function SideTaskStrip({
   const sidebar = (
     <div className="flex h-full flex-col text-sm">
       <div className="border-b border-[#e5e6eb] px-4 py-2 text-xs font-bold uppercase tracking-widest text-[#86909c]">
-        待处理 ({realPendingCount})
+        任务2 ({realPendingCount})
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {pendingItems.map((item, index) => (
@@ -375,7 +375,7 @@ export function SideTaskStrip({
           </button>
         ))}
         {pendingItems.length === 0 && (
-          <div className="px-4 py-6 text-center text-xs text-[#c9cdd4]">暂无待处理事项</div>
+            <div className="px-4 py-6 text-center text-xs text-[#c9cdd4]">暂无任务2题目</div>
         )}
       </div>
 
@@ -409,7 +409,7 @@ export function SideTaskStrip({
     <div className="flex h-full min-h-0 flex-col p-5 text-sm text-[#4e5969]">
       <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="mb-2 text-xs font-bold uppercase tracking-widest text-[#86909c]">
-          副线题目 #{selectedItem.queueOrder}
+          任务2题目 #{selectedItem.queueOrder}
           {selectedItem.answered && <span className="ml-2 text-green-500">已作答</span>}
         </div>
         <div className="mb-4 leading-7">{selectedItem.text}</div>
@@ -441,7 +441,7 @@ export function SideTaskStrip({
 
       <div className="mt-4 flex shrink-0 items-center justify-between border-t border-[#e5e6eb] pt-4">
         <div className="text-xs text-[#86909c]">
-          待处理: {realPendingCount} / {sideTaskConfig.totalPlanned}
+          任务2: {realPendingCount} / {sideTaskConfig.totalPlanned}
         </div>
         <div className="flex gap-2">
           <button
@@ -503,7 +503,7 @@ export function SideTaskStrip({
           <div className="side-panel-shell flex h-full flex-col">
             <div className="flex h-12 items-center justify-between border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
               <div className="text-sm font-bold text-[#1d2129]">
-                副线任务处理区
+                任务2处理区
                 <span className="ml-3 text-xs font-normal text-[#86909c]">
                   {sideTaskConfig.dispatchMode === 'continuous' ? '持续到达' : '批量到达'} ·
                   已到 {sideTaskConfig.totalReleased} / {sideTaskConfig.totalPlanned}
@@ -534,7 +534,7 @@ export function SideTaskStrip({
             <div className="min-h-0 flex-1 p-2">
               <WorkbenchLayout
                 sidebar={sidebar}
-                sidebarTitle="副线队列"
+                sidebarTitle="任务2队列"
                 taskPane={taskPane}
                 aiPane={
                   participantId ? (
@@ -553,7 +553,7 @@ export function SideTaskStrip({
                     <div className="p-4 text-sm text-[#86909c]">缺少参与者信息</div>
                   )
                 }
-                taskTitle="副线作答"
+                taskTitle="任务2作答"
                 aiTitle="AI助手"
               />
             </div>

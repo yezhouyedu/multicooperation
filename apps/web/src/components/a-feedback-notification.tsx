@@ -72,7 +72,7 @@ export function AFeedbackNotification({ sessionCode, participantId, durationSec 
   return (
     <div className="fixed bottom-6 right-6 z-[100] w-64 rounded-xl border border-blue-200 bg-white shadow-2xl">
       <div className="flex items-center justify-between border-b border-[#e5e6eb] px-3 py-2">
-        <span className="text-xs font-bold text-[#1e80ff]">投资经理反馈</span>
+        <span className="text-xs font-bold text-[#1e80ff]">B反馈</span>
         <button type="button" onClick={() => setVisible(false)} className="text-sm leading-none text-gray-400 hover:text-gray-600">关闭</button>
       </div>
       <div className="space-y-2 px-3 py-3">

@@ -64,9 +64,9 @@ export const formalQuestionnaireTemplate = {
       },
       {
         "code": "SEG-SD-01",
-        "prompt": "副线任务的到达打断了我的主线思路。",
+        "prompt": "任务2的到达打断了我的任务1思路。",
         "type": "scale",
-        "construct": "副线打断",
+        "construct": "任务2打断",
         "reverse": false,
         "required": true,
         "order": 5,
@@ -77,9 +77,9 @@ export const formalQuestionnaireTemplate = {
       },
       {
         "code": "SEG-SD-02",
-        "prompt": "副线任务让我难以专注于主线任务。",
+        "prompt": "任务2让我难以专注于任务1。",
         "type": "scale",
-        "construct": "副线干扰",
+        "construct": "任务2干扰",
         "reverse": false,
         "required": true,
         "order": 6,
@@ -405,7 +405,7 @@ export const formalQuestionnaireTemplate = {
         "items": [
           {
             "code": "POST-STR-01",
-            "prompt": "我通常在主线任务卡住或等待 AI 时处理副线任务。",
+            "prompt": "我通常在任务1卡住或等待 AI 时处理任务2。",
             "type": "scale",
             "construct": "AI 等待期间策略",
             "reverse": false,
@@ -418,9 +418,9 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "POST-STR-02",
-            "prompt": "副线任务的个人奖励让我更愿意投入时间。",
+            "prompt": "任务2的个人奖励让我更愿意投入时间。",
             "type": "scale",
-            "construct": "副线激励吸引",
+            "construct": "任务2激励吸引",
             "reverse": false,
             "required": true,
             "order": 2,
@@ -431,9 +431,9 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "POST-STR-03",
-            "prompt": "为了完成更多副线，我有时减少了主线材料核查。",
+            "prompt": "为了完成更多任务2，我有时减少了任务1材料核查。",
             "type": "scale",
-            "construct": "主线牺牲",
+            "construct": "任务1牺牲",
             "reverse": false,
             "required": true,
             "order": 3,
@@ -444,9 +444,9 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "POST-STR-04",
-            "prompt": "我倾向于把副线任务集中处理，而不是一到达就处理。",
+            "prompt": "我倾向于把任务2集中处理，而不是一到达就处理。",
             "type": "scale",
-            "construct": "副线集中处理",
+            "construct": "任务2集中处理",
             "reverse": false,
             "required": true,
             "order": 4,
@@ -684,7 +684,7 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "POST-OPEN-01",
-            "prompt": "你在主线、AI、副线之间分配时间时，主要遵循什么策略？",
+            "prompt": "你在任务1、AI、任务2之间分配时间时，主要遵循什么策略？",
             "type": "text",
             "construct": "策略开放题",
             "reverse": false,
@@ -749,7 +749,7 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "MC1-05",
-            "prompt": "如果 AI 能力发生变化，你觉得这种变化对主线任务的影响是否很大？",
+            "prompt": "如果 AI 能力发生变化，你觉得这种变化对任务1的影响是否很大？",
             "type": "scale",
             "construct": "升级实际帮助",
             "reverse": false,
@@ -772,9 +772,9 @@ export const formalQuestionnaireTemplate = {
         "items": [
           {
             "code": "MC2-01",
-            "prompt": "实验中副线任务的到达方式更接近哪一种？",
+            "prompt": "实验中任务2的到达方式更接近哪一种？",
             "type": "single",
-            "construct": "副线到达节奏感知",
+            "construct": "任务2到达节奏感知",
             "reverse": false,
             "required": true,
             "order": 1,
@@ -786,9 +786,9 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "MC2-02",
-            "prompt": "副线任务释放频率给你的感觉是：",
+            "prompt": "任务2释放频率给你的感觉是：",
             "type": "scale",
-            "construct": "副线频率感知",
+            "construct": "任务2频率感知",
             "reverse": false,
             "required": true,
             "order": 2,
@@ -799,9 +799,9 @@ export const formalQuestionnaireTemplate = {
           },
           {
             "code": "MC2-04",
-            "prompt": "你处理副线任务时，是否倾向于将多条新闻一起处理或一起交给副线 AI？",
+            "prompt": "你处理任务2时，是否倾向于将多条新闻一起处理或一起交给任务2 AI？",
             "type": "single",
-            "construct": "副线批处理倾向",
+            "construct": "任务2批处理倾向",
             "reverse": false,
             "required": true,
             "order": 3,
@@ -887,7 +887,7 @@ export const formalQuestionnaireTemplate = {
         "items": [
           {
             "code": "POST-A-01",
-            "prompt": "我在填写尽调表时主要考虑 B 能否直接使用。",
+            "prompt": "我在填写任务表时主要考虑 B 能否直接使用。",
             "type": "scale",
             "construct": "下游导向",
             "reverse": false,
@@ -944,7 +944,7 @@ export const formalQuestionnaireTemplate = {
         "items": [
           {
             "code": "POST-B-01",
-            "prompt": "我通常会在最终判断前查看上游尽调信息。",
+            "prompt": "我通常会在最终判断前查看上游角色A信息。",
             "type": "scale",
             "construct": "查看 A 倾向",
             "reverse": false,

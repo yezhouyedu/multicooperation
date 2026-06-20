@@ -1223,7 +1223,7 @@ export class ExperimentService {
       select: { id: true, sessionId: true },
     });
     if (!plan || plan.sessionId !== synced.session.id) {
-      throw new NotFoundException('副线题目不存在');
+      throw new NotFoundException('任务2题目不存在');
     }
 
     // Check if already answered by this participant (idempotent per participant).
@@ -1270,7 +1270,7 @@ export class ExperimentService {
       select: { id: true, sessionId: true, releasedAt: true },
     });
     if (!plan || plan.sessionId !== synced.session.id) {
-      throw new NotFoundException('副线题目不存在');
+      throw new NotFoundException('任务2题目不存在');
     }
 
     const now = new Date();
@@ -1310,7 +1310,7 @@ export class ExperimentService {
 
     const now = new Date();
     if (task.aDeadlineAt && now < task.aDeadlineAt) {
-      throw new BadRequestException('5 分钟窗口尚未结束，请继续完成尽调表');
+      throw new BadRequestException('5 分钟窗口尚未结束，请继续完成任务表');
     }
     await this.prisma.taskAssignment.update({
       where: { id: taskId },
@@ -1525,10 +1525,10 @@ export class ExperimentService {
         const isParticipantA = participantId === pairing.participantAId;
         if (isParticipantA) {
           if (!practiceTask.aUnlockedForBAt && !segmentTimedOut) {
-            throw new BadRequestException('尽调员测试轮尚未结束');
+            throw new BadRequestException('角色A测试轮尚未结束');
           }
         } else if (!practiceTask.bCompletedAt && !segmentTimedOut) {
-          throw new BadRequestException('投资经理测试轮尚未结束');
+          throw new BadRequestException('角色B测试轮尚未结束');
         }
       }
 
@@ -2850,8 +2850,8 @@ export class ExperimentService {
           totalArchived: 0,
           nextScheduledAt: null as string | null,
           notificationPulse: null,
-          pendingLabel: '待处理事宜',
-          tickerMessage: '您有新事项入库，请尽快处理',
+          pendingLabel: '任务2',
+          tickerMessage: '任务2有新题目，请及时处理',
         },
       };
     }
@@ -2884,8 +2884,8 @@ export class ExperimentService {
           totalArchived: 0,
           nextScheduledAt: null,
           notificationPulse: null,
-          pendingLabel: '待处理事宜',
-          tickerMessage: '您有新事项入库，请尽快处理',
+          pendingLabel: '任务2',
+          tickerMessage: '任务2有新题目，请及时处理',
         },
       };
     }
@@ -2905,8 +2905,8 @@ export class ExperimentService {
           totalArchived: 0,
           nextScheduledAt: null,
           notificationPulse: null,
-          pendingLabel: '待处理事项',
-          tickerMessage: '您有新事项入库，请尽快处理',
+          pendingLabel: '任务2',
+          tickerMessage: '任务2有新题目，请及时处理',
         },
       };
     }
@@ -2980,8 +2980,8 @@ export class ExperimentService {
         totalArchived: archivedUnansweredCount,
         nextScheduledAt: nextPlan?.scheduledAt?.toISOString() ?? null,
         notificationPulse,
-        pendingLabel: '待处理事宜',
-        tickerMessage: '您有新事项入库，请尽快处理',
+        pendingLabel: '任务2',
+        tickerMessage: '任务2有新题目，请及时处理',
       },
     };
   }
@@ -3225,30 +3225,21 @@ export class ExperimentService {
         return { type: 'break', message: blocks.aiUpgradeBreakNotice };
       }
     }
-    if (session.runtimePhase === RuntimePhase.FORMAL_WORK) {
-      const currentAiLevel = this.getCurrentAiLevel(config, session.currentSegmentIndex, session);
-      const previousWorkSegment = session.currentSegmentIndex - 2;
-      const previousAiLevel =
-        previousWorkSegment >= 1 ? this.getCurrentAiLevel(config, previousWorkSegment, session) : currentAiLevel;
-      if (previousAiLevel === AiLevel.BASIC && currentAiLevel === AiLevel.ADVANCED) {
-        return { type: 'workspace', message: blocks.aiUpgradeWorkspaceNotice };
-      }
-    }
     return null;
   }
 
   private buildInstructionBlocks(value: unknown, experimentMode: string) {
     const defaults = {
       commonTitle: '开始前，请先阅读以下提示',
-      commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
-      roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
-      roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+      commonBody: '',
+      roleA: '',
+      roleB: '',
       manual: '',
       ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
-      side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
-      coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+      side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
+      coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
       aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
-      aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+      aiUpgradeWorkspaceNotice: '',
     };
     const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
     const blocks = Object.fromEntries(
@@ -3670,13 +3661,13 @@ export class ExperimentService {
           items: [
             {
               id: 'pq1',
-              prompt: '尽调员完成单家公司 5 分钟时，系统会如何处理？',
-              options: ['自动提交并解锁给投资经理', '继续无限作答直到手动提交'],
-              correctOption: '自动提交并解锁给投资经理',
+              prompt: '角色A完成单家公司 5 分钟时，系统会如何处理？',
+              options: ['自动提交并解锁给角色B', '继续无限作答直到手动提交'],
+              correctOption: '自动提交并解锁给角色B',
             },
             {
               id: 'pq2',
-              prompt: '投资经理在尽调员信息解锁前，是否可以先看自己的材料并写草稿？',
+              prompt: '角色B在角色A信息解锁前，是否可以先看自己的材料并写草稿？',
               options: ['可以', '不可以'],
               correctOption: '可以',
             },
@@ -3696,15 +3687,15 @@ export class ExperimentService {
           } as Prisma.InputJsonValue,
           instructionBlocks: {
             commonTitle: '开始前，请先阅读以下提示',
-            commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
-            roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
-            roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+            commonBody: '',
+            roleA: '',
+            roleB: '',
             manual: '',
             ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
-            side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
-            coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+            side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
+            coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
             aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
-            aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+            aiUpgradeWorkspaceNotice: '',
           } as Prisma.InputJsonValue,
           practiceDurationMinutes: 5,
           workDurationMinutes: 20,
@@ -3728,9 +3719,9 @@ export class ExperimentService {
           items: [
             {
               id: 'pq1',
-              prompt: '尽调员完成单家公司 5 分钟时，系统会如何处理？',
-              options: ['自动提交并解锁给投资经理', '继续无限作答直到手动提交'],
-              correctOption: '自动提交并解锁给投资经理',
+              prompt: '角色A完成单家公司 5 分钟时，系统会如何处理？',
+              options: ['自动提交并解锁给角色B', '继续无限作答直到手动提交'],
+              correctOption: '自动提交并解锁给角色B',
             },
           ] as Prisma.InputJsonValue,
           isActive: true,

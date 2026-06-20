@@ -2,11 +2,11 @@
 
 > [English](README.en.md) | 中文
 
-一个基于"尽调员—投资经理"协作场景的全栈实验平台，用于研究 AI 辅助下的人机协作行为。
+一个基于 A/B 协作场景的全栈实验平台，用于研究 AI 辅助下的人机协作行为。
 
 ## 项目简介
 
-本平台支持双人协作实验：一名参与者扮演"尽调员"（负责尽职调查），另一名扮演"投资经理"（负责投资决策）。系统通过随机化角色分配、公司顺序、AI 升级时机、副线任务提醒频率和合作叙事等实验变量，支持多种实验条件的交叉研究。
+本平台支持双人协作实验：两名参与者被随机分配为 A / B，并在任务1、任务2与 AI 辅助条件下完成协作判断。系统通过随机化角色分配、公司顺序、AI 升级时机、任务2提醒频率和合作叙事等实验变量，支持多种实验条件的交叉研究。
 
 ### 核心功能
 
@@ -14,18 +14,18 @@
 - **统一运行态与阶段引擎**：基于 SSE 的实时状态推送，支持自动阶段切换、倒计时、A 信息解锁
 - **A/B 主工作台三区**：材料区（支持 txt/docx/pdf/xlsx 混合阅读）、答题区（结构化表单）、AI 区（支持流式输出、Markdown、图片上传）
 - **草稿/快照/恢复系统**：跨工作段内容冻结与自动恢复
-- **AI 上下文系统**：基础版/高级版 AI、主线/副线隔离、分公司隔离、按阶段隔离
-- **副线任务系统**：900 题题库、continuous/batch 提醒频率、neutral_info/coop_narrative 叙事组别
+- **AI 上下文系统**：基础版/高级版 AI、任务1/任务2隔离、分公司隔离、按阶段隔离
+- **任务2系统**：900 题题库、continuous/batch 提醒频率、neutral_info/coop_narrative 叙事组别
 - **admin 管理后台**：实验模式切换（实验 1/2/3）、材料管理、题库导入、导出任务
-- **变量记录与服务器导出**：A/B 分目录归档、事件/内容/AI/副线/问卷/段前指导语完整记录、zip 导出包 + 动态自检
+- **变量记录与服务器导出**：A/B 分目录归档、事件/内容/AI/任务2/问卷/段前指导语完整记录、zip 导出包 + 动态自检
 
 ### 实验 1/2/3
 
 | 实验 | 随机变量 | 固定变量 |
 |------|----------|----------|
-| 实验 1：AI 能力升级 | `upgradeCohort`（early/late） | 副线 continuous + 中性叙事 |
-| 实验 2：副线提醒频率 | `sideDispatchMode`（continuous/batch） | 基础 AI + 中性叙事 |
-| 实验 3：合作叙事 | `narrativeGroup`（coop/neutral）+ 主题顺序 | 基础 AI + continuous 副线 |
+| 实验 1：AI 能力升级 | `upgradeCohort`（early/late） | 任务2 continuous + 中性叙事 |
+| 实验 2：任务2提醒频率 | `sideDispatchMode`（continuous/batch） | 基础 AI + 中性叙事 |
+| 实验 3：合作叙事 | `narrativeGroup`（coop/neutral）+ 主题顺序 | 基础 AI + continuous 任务2 |
 
 ## 技术栈
 
@@ -127,7 +127,7 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -
 | [问卷流程方案.md](02_specs/03_execution/问卷流程方案.md) | 正式问卷流程与保存口径 |
 | [段前指导语方案.md](02_specs/03_execution/段前指导语方案.md) | 正式工作段前阅读材料流程 |
 | [变量记录与服务器导出方案.md](02_specs/04_pre_deploy/变量记录与服务器导出方案.md) | 变量记录设计 |
-| [时间戳变量保存方案.md](02_specs/04_pre_deploy/时间戳变量保存方案.md) | 主线/副线/AI 等待时间戳变量 |
+| [时间戳变量保存方案.md](02_specs/04_pre_deploy/时间戳变量保存方案.md) | 任务1/任务2/AI 等待时间戳变量 |
 | [数据库文件夹手册.md](02_specs/04_pre_deploy/数据库文件夹手册.md) | 导出包阅读指南 |
 | [命令运行清单.md](02_specs/05_server_deploy/命令运行清单.md) | 服务器运维命令 |
 

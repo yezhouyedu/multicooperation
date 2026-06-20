@@ -55,7 +55,7 @@ export default function WorkspaceBFeedbackPage() {
     <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
       <div className="flex h-full flex-col">
         <SessionTopbar
-          roleLabel="投资经理"
+          roleLabel="B"
           currentLabel={runtime?.currentTask?.company?.name ?? '当前项目'}
           stageLabel="当前阶段"
           countdownLabel="--:--"

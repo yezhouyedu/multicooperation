@@ -67,15 +67,15 @@ const DEFAULT_EXPERIMENT_MODE_SETTINGS = {
 
 const DEFAULT_INSTRUCTION_BLOCKS = {
   commonTitle: '开始前，请先阅读以下提示',
-  commonBody: '本实验会先完成测试题和测试轮，再进入正式任务。请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。',
-  roleA: '你需要阅读材料、记录关键信息，并整理出供投资经理使用的尽调内容。',
-  roleB: '你需要综合自有材料、尽调信息和自己的判断，完成投资决策并给出反馈。',
+  commonBody: '',
+  roleA: '',
+  roleB: '',
   manual: '',
   ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
-  side_reminder: '正式任务中，待处理事宜会按系统安排进入队列。请在主线任务与待处理事宜之间合理分配注意力。',
-  coop_narrative: '正式任务中，待处理事宜可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
+  side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
+  coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
   aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
-  aiUpgradeWorkspaceNotice: '当前 AI 辅助功能已升级。',
+  aiUpgradeWorkspaceNotice: '',
 };
 
 @Injectable()

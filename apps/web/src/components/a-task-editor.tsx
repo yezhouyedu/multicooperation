@@ -287,13 +287,13 @@ export function ATaskEditor({
       <div className="rounded-lg border border-[#e2e5ea] bg-white px-8 py-7 shadow-sm">
         <div className="space-y-6">
           <div>
-            <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">A端尽调表</h2>
+            <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">A端任务表</h2>
             <div className="mt-6 space-y-1 text-[13px] leading-7 text-[#4e5969]">
               <div className="font-semibold text-[#1d2129]">填写说明</div>
               <div>1. 仅依据给定材料填写，不要使用材料之外的知识进行推测。</div>
               <div>2. A.1“基础数值摘录区”只填写材料中可直接提取的数值信息；如确实找不到，填写“材料未包含”。不允许重复用于 A.2。</div>
               <div>3. A.2“材料线索记录区”按材料顺序填写。每读完一份材料，判断是否发现与投资判断有关的机会线索或风险线索。</div>
-              <div>4. A.3“给投资经理的总体交接备注”为可选项，用于填写跨材料关联提示、可信度说明、建议优先核验事项，或尚未坐实但值得注意的线索。</div>
+              <div>4. A.3“给B的总体交接备注”为可选项，用于填写跨材料关联提示、可信度说明、建议B优先核验事项，或尚未坐实但值得注意的线索。</div>
             </div>
           </div>
 
@@ -441,9 +441,9 @@ export function ATaskEditor({
 
           <section className="space-y-3">
             <div>
-              <h3 className="text-[16px] font-bold">四、A.3 给投资经理的总体交接备注</h3>
+              <h3 className="text-[16px] font-bold">四、A.3 给B的总体交接备注</h3>
               <p className="mt-1 text-[13px] leading-6 text-[#4e5969]">
-                本栏为可选项。若你认为某些线索需要投资经理特别核验、不同材料之间存在口径差异、某项风险或机会可能影响最终判断，可在此简要提醒。没有特别需要提醒的内容选留空。
+                本栏为可选项。若你认为某些线索需要B特别核验、不同材料之间存在口径差异、某项风险或机会可能影响最终判断，可在此简要提醒B。没有特别需要提醒的内容选留空。
               </p>
             </div>
             <DocTable>
@@ -489,8 +489,29 @@ export function ATaskEditor({
               </tbody>
             </DocTable>
             <p className="text-[12px] leading-6 text-[#86909c]">
-              提示：请优先完成 A.1 基础数值摘录区和 A.2 材料线索记录区；A.3 仅在你认为有必要提醒投资经理时填写。
+              提示：请优先完成 A.1 基础数值摘录区和 A.2 材料线索记录区；A.3 仅在你认为有必要提醒 B 时填写。
             </p>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-[16px] font-bold">五、绩效说明</h3>
+            <div className="space-y-3 rounded-lg border border-[#dde1e7] bg-[#f8fafc] px-4 py-4 text-[13px] leading-7 text-[#4e5969]">
+              <div>
+                <div className="font-semibold text-[#1d2129]">你的个人绩效按你完成的公司累计，主要来自A.1和A.2。</div>
+                <p>A.1基础数值摘录中，每填对一个基础数值可得分。</p>
+                <p>A.2材料线索记录中，每正确判断一份材料是否存在机会线索或风险线索可得分。选择“有”时，证据片段与材料内容相关可加分。</p>
+              </div>
+              <div>
+                <div className="font-semibold text-[#1d2129]">以下情形会扣除相应绩效分：</div>
+                <p>把材料中不存在的机会或风险标为“有”；</p>
+                <p>证据片段与所填机会或风险明显无关。</p>
+              </div>
+              <p>A.3总体交接备注不直接计入A个人绩效，但可能帮助B完成公司判断任务，从而提高团队绩效。</p>
+              <div>
+                <div className="font-semibold text-[#1d2129]">团队绩效提醒</div>
+                <p>团队绩效只计算B完整提交的公司。B最终投资建议是否正确、重要机会和重要风险是否覆盖、普通机会和普通风险数量是否准确，会影响团队绩效。</p>
+              </div>
+            </div>
           </section>
         </div>
       </div>

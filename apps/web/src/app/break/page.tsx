@@ -70,7 +70,7 @@ export default function BreakPage() {
   return (
     <main className="flex h-screen flex-col bg-gradient-to-br from-[#f0f4f8] via-[#f5f7fa] to-[#e8edf2] text-[#1d2129]">
       <SessionTopbar
-        roleLabel={runtime?.assignedRole === 'A' ? '尽调员' : '投资经理'}
+        roleLabel={runtime?.assignedRole === 'A' ? 'A' : 'B'}
         currentLabel="休息问卷"
         stageLabel="休息剩余时间"
         countdownLabel={countdownLabel}

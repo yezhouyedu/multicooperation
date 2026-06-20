@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
 function formatRoleLabel(role: string | null) {
-  if (role === 'A') return '尽调员';
-  if (role === 'B') return '投资经理';
+  if (role === 'A') return 'A';
+  if (role === 'B') return 'B';
   return '等待随机分配';
 }
 

@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
 function formatRoleLabel(role: 'A' | 'B') {
-  return role === 'A' ? '尽调员' : '投资经理';
+  return role === 'A' ? 'A' : 'B';
 }
 
 export default function ReadyClientPage() {

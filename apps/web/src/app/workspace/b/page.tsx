@@ -224,13 +224,13 @@ export default function WorkspaceBPage() {
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息尚未解锁</div>
-      <div>你可以先阅读自己的材料、填写投资判断并使用 AI。尽调信息解锁后，这里会显示对应内容。</div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息尚未解锁</div>
+      <div>你可以先阅读自己的材料、填写投资判断并使用 AI。A信息解锁后，这里会显示对应内容。</div>
     </div>
   ) : !runtime.bHasViewedAInfo ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">尽调信息已送达</div>
-      <div className="mb-5 max-w-md leading-7">你现在可以查看尽调员提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息已送达</div>
+      <div className="mb-5 max-w-md leading-7">你现在可以查看A提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
       <div className="mb-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-[#1e80ff]">
         上游使用的AI为 {aAiLevelLabel}
       </div>
@@ -239,7 +239,7 @@ export default function WorkspaceBPage() {
         onClick={() => void openDiligenceInfo()}
         className="rounded-lg bg-[#1e80ff] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-600"
       >
-        查看尽调信息
+        查看A信息
       </button>
     </div>
   ) : (
@@ -302,7 +302,7 @@ export default function WorkspaceBPage() {
     <main className="fixed inset-0 overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <SessionTopbar
-          roleLabel="投资经理"
+          roleLabel="B"
           currentLabel={company?.name ?? '当前项目'}
           stageLabel={isPractice ? '测试轮剩余时间' : '当前阶段剩余时间'}
           countdownLabel={countdownLabel}
@@ -326,7 +326,7 @@ export default function WorkspaceBPage() {
           {!company || !runtime?.currentTask ? (
             <div className="flex h-full flex-col items-center justify-center rounded-xl border border-[#e5e6eb] bg-white text-sm text-[#86909c] shadow-sm">
               <div className="mb-2 text-base font-bold text-[#1d2129]">当前没有待处理项目</div>
-              <div>你仍然可以处理副线事项。</div>
+              <div>你仍然可以处理任务2。</div>
             </div>
           ) : (
             <WorkbenchLayout
@@ -348,7 +348,7 @@ export default function WorkspaceBPage() {
                   prependItems={[
                     {
                       key: 'diligence-info',
-                      label: '尽调信息',
+                      label: 'A信息',
                       content: diligenceTabContent,
                     },
                   ]}
@@ -365,18 +365,18 @@ export default function WorkspaceBPage() {
                           {runtime.aiUpgradeNotice.message}
                         </span>
                       ) : null}
-                      <span>尽调信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
+                      <span>A信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
                       {runtime.aInfoUnlocked ? (
-                        <span>尽调信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
+                        <span>A信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
                       ) : (
-                        <span>尽调信息状态：等待解锁</span>
+                        <span>A信息状态：等待解锁</span>
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={() => router.push('/workspace/b-feedback')}
                       disabled={!runtime.bCanSubmit}
-                      title={!runtime.aInfoUnlocked ? '等待尽调信息解锁后才能提交' : undefined}
+                      title={!runtime.aInfoUnlocked ? '等待A信息解锁后才能提交' : undefined}
                       className="shrink-0 rounded-md bg-[#28a745] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       提交并填写反馈

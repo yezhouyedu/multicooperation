@@ -2175,3 +2175,23 @@
 - 本地：后端 build 已在 `fe9f1c0` 后通过，前端 build 已在 `1e7c057` 后通过。
 - GitHub：`fe9f1c0`、`1e7c057` 已 push 到 `main`。
 - 线上：server 已部署到 `fe9f1c0`，web 已部署到 `1e7c057`；`https://aiseek.tech/api/health` 返回 `ok`。
+### 2026-06-20 最终材料、A/B 表单、指导语与前台文案收口
+
+**背景**：师兄给出最终版公司材料库、A/B 作答区 Word 与开篇指导语 Word，需要在上线前统一内容源、前台弱专业化文案和 admin 指导语积木边界。
+
+**本轮实现**：
+- 最终材料库审查通过：`00_start_materials/原始材料/正式` 为 `P01-P36` 共 36 家正式公司，`测试轮` 为 `P37` 共 1 家测试轮公司；每家公司均为 A 材料 5 份、B 材料 5 份、共享材料 1 份、研究者材料 1 份。
+- 修复材料导入器本地 root 定位：`CASE_LIBRARY_ROOT` 未设置时会从当前工作目录向上查找项目根目录的 `00_start_materials/原始材料`，避免 dev server 从 `apps/server` 启动时扫错目录。
+- 本地 admin 材料 overview/import 验收通过：overview 返回总计 37、formal 36、practice 1、practiceCode `P37`、异常材料计数 0；import 成功导入 37 家，最后一项为 `company-library-practice-p37`。
+- A 作答区按 `A端尽调表_参与者可见版v4.docx` 更新：标题改为 `A端任务表`，交接备注改为“给 B”，补充 v4 绩效说明与团队绩效提醒。
+- B 作答区按 `B端投资判断表_参与者可见版v3.docx` 更新：来源选项改为 `自有材料 / 上游提取信息 / 上游备注 / 上游材料`，兼容旧草稿中的旧来源值；新增普通机会数量、普通风险数量字段；补充最终投资建议填写规则和绩效说明。
+- 参与者前台文案收口：可见页面统一使用 `A/B` 与 `任务1/任务2`，不再显示旧的“尽调员 / 投资经理 / 主线 / 副线”口径；admin 和导出内部字段不做语义重命名。
+- `/instruction` 改为固定排版页面：正文来自通用指导语 + 当前角色 A/B 指导语；admin 指导语积木只保留实验条件块和 `aiUpgradeBreakNotice`，不再维护通用/角色指导语和 AI 升级工作台提示。
+- 后端默认指导语块、测试题/问卷可见文案、AI 场景提示和任务2 runtime 文案同步改为新口径。
+- 文档同步：更新 `README.md`、`APP_FLOW.md`、`admin材料库上传手册.md`、`BACKEND_STRUCTURE.md`、`变量实现自检表.md`，明确最终材料 P01-P37、开篇指导语来源、任务2测试轮为 0、教学题仅前端演示。
+
+**本地验收**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
+- 前台参与者页面扫描未发现旧口径残留：`尽调员 / 投资经理 / 主线 / 副线 / 待处理事宜 / 上游尽调 / 尽调表 / 尽调信息`。

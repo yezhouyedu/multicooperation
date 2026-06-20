@@ -37,7 +37,7 @@ function buildSteps(role: 'A' | 'B'): Step[] {
       title: '填写表单',
       detail:
         role === 'A'
-          ? '右侧是尽调表，请在这里整理并填写你对公司的分析。'
+          ? '右侧是任务表，请在这里整理并填写你对公司的分析。'
           : '右侧是投资判断表，请在这里填写你的投资决策。',
       eventType: 'task_acknowledge',
       anchor: 'task-panel',
@@ -53,16 +53,16 @@ function buildSteps(role: 'A' | 'B'): Step[] {
     },
     {
       key: 'sidetask_open',
-      title: '副线任务',
-      detail: '除了主线任务，你还会收到副线任务。请点击顶部入口查看。',
+      title: '任务2',
+      detail: '除了任务1，你还会收到任务2。请点击顶部入口查看。',
       eventType: 'sidetask_open',
       anchor: 'sidetask-toggle',
       requireAction: true,
     },
     {
       key: 'sidetask_answer',
-      title: '副线作答',
-      detail: '请在副线任务中选择一个答案，体验副线答题流程。',
+      title: '任务2作答',
+      detail: '请在任务2中选择一个答案，体验任务2答题流程。',
       eventType: 'sidetask_answer',
       anchor: 'sidetask-option',
       requireAction: true,
@@ -85,14 +85,14 @@ function getOverviewContent(role: 'A' | 'B') {
       title: '欢迎进入测试轮',
       sections: [
         {
-          heading: '你的角色是尽调员',
-          text: '你需要负责查看材料、整理关键信息，并填写尽调表。',
+          heading: '你的角色是A',
+          text: '你需要负责查看材料、整理关键信息，并填写任务表。',
         },
         {
           heading: '工作台布局',
           items: [
             '左侧是材料区，用于查看公司相关资料',
-            '右上是答题区，用于填写尽调内容',
+            '右上是答题区，用于填写A内容',
             '右下是 AI 区，可辅助你整理信息和分析问题',
           ],
         },
@@ -101,15 +101,15 @@ function getOverviewContent(role: 'A' | 'B') {
           items: [
             '测试轮先只做一家公司',
             '正式实验中每家公司有固定工作时长',
-            '尽调员的尽调表会在 5 分钟后自动提交',
+            '角色A的任务表会在 5 分钟后自动提交',
           ],
         },
         {
-          heading: '副线任务',
+          heading: '任务2',
           items: [
-            '除了主线任务，你还会收到副线任务',
+            '除了任务1，你还会收到任务2',
             '顶部会提示“您有新事项入库，请尽快处理”',
-            '请合理安排时间处理主线和副线',
+            '请合理安排时间处理任务1和任务2',
           ],
         },
       ],
@@ -120,8 +120,8 @@ function getOverviewContent(role: 'A' | 'B') {
     title: '欢迎进入测试轮',
     sections: [
       {
-        heading: '你的角色是投资经理',
-        text: '你需要结合自有材料、尽调员信息和自己的判断做出投资决策。',
+        heading: '你的角色是B',
+        text: '你需要结合自有材料、A信息和自己的判断做出投资决策。',
       },
       {
         heading: '工作台布局',
@@ -136,15 +136,15 @@ function getOverviewContent(role: 'A' | 'B') {
         items: [
           '测试轮先只做一家公司',
           '正式实验中每家公司有固定工作时长',
-          '尽调员提交后，你可以查看其尽调信息',
+          '角色A提交后，你可以查看角色A提交的信息',
         ],
       },
       {
-        heading: '副线任务',
+        heading: '任务2',
         items: [
-          '除了主线任务，你还会收到副线任务',
+          '除了任务1，你还会收到任务2',
           '顶部会提示“您有新事项入库，请尽快处理”',
-          '请合理安排时间处理主线和副线',
+          '请合理安排时间处理任务1和任务2',
         ],
       },
     ],
@@ -302,7 +302,7 @@ export function PracticeTutorialOverlay({
           <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">教学引导已完成</div>
           <div className="mb-3 text-xl font-semibold text-[#1d2129]">下一步正式进入测试轮</div>
           <div className="text-sm leading-7 text-[#4e5969]">
-            请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区、AI 区和副线任务功能。
+            请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区、AI 区和任务2功能。
           </div>
           <div className="mt-5 flex justify-end">
             <button

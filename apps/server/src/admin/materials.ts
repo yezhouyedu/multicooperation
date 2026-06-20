@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'fs';
 import { randomUUID } from 'crypto';
-import { extname, join, relative, resolve } from 'path';
+import { dirname, extname, join, relative, resolve } from 'path';
 import { storagePath } from '../storage-paths';
 
 export type MaterialKind = 'txt' | 'docx' | 'pdf' | 'xlsx';
@@ -87,10 +87,21 @@ type CaseManifest = {
 export const MATERIALS_STORAGE_ROOT = storagePath('materials');
 // CASE_LIBRARY_ROOT: 生产环境通过环境变量覆盖，本地开发时自动定位到项目根目录下的 00_start_materials
 export const CASE_LIBRARY_ROOT = process.env.CASE_LIBRARY_ROOT
-  || resolve(process.cwd(), '00_start_materials', '原始材料');
+  || resolveDefaultCaseLibraryRoot();
 export const FORMAL_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '正式');
 export const PRACTICE_CASE_LIBRARY_ROOT = resolve(CASE_LIBRARY_ROOT, '测试轮');
 const BASELINE_P01_DIR = resolve(CASE_LIBRARY_ROOT, 'P01');
+
+function resolveDefaultCaseLibraryRoot() {
+  let current = process.cwd();
+  while (true) {
+    const candidate = resolve(current, '00_start_materials', '原始材料');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) return candidate;
+    current = parent;
+  }
+}
 
 export function ensureMaterialsStorageRoot() {
   mkdirSync(MATERIALS_STORAGE_ROOT, { recursive: true });

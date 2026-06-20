@@ -77,7 +77,7 @@ export default function PracticeQuizPage() {
   return (
     <main className="flex h-screen flex-col bg-[#f0f2f5] text-[#1d2129]">
       <SessionTopbar
-        roleLabel={runtime?.assignedRole === 'A' ? '尽调员' : '投资经理'}
+        roleLabel={runtime?.assignedRole === 'A' ? 'A' : 'B'}
         currentLabel="测试题"
         stageLabel="当前阶段"
         countdownLabel="--:--"

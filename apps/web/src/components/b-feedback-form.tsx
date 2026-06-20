@@ -277,7 +277,7 @@ export function BFeedbackForm({
       </div>
 
       <section className="space-y-3">
-        <div className="font-semibold text-gray-800">Q1. 是否希望将本次反馈发送给尽调员？</div>
+        <div className="font-semibold text-gray-800">Q1. 是否希望将本次反馈发送给A？</div>
         <div className="flex gap-3">
           <Radio name="q1" value="是" current={q1} onChange={(v) => setQ1(v as '是' | '否')} />
           <Radio name="q1" value="否" current={q1} onChange={(v) => setQ1(v as '是' | '否')} />
@@ -285,7 +285,7 @@ export function BFeedbackForm({
       </section>
 
       <section className="space-y-3">
-        <div className="font-semibold text-gray-800">Q2. 是否愿意向尽调员表达感谢或认可？</div>
+        <div className="font-semibold text-gray-800">Q2. 是否愿意向A表达感谢或认可？</div>
         <div className="flex gap-3">
           <Radio name="q2" value="是" current={q2} onChange={(v) => setQ2(v as '是' | '否')} />
           <Radio name="q2" value="否" current={q2} onChange={(v) => setQ2(v as '是' | '否')} />
@@ -293,7 +293,7 @@ export function BFeedbackForm({
       </section>
 
       <section className="space-y-3">
-        <div className="font-semibold text-gray-800">Q3. 尽调信息对你完成初步判断的帮助程度？</div>
+        <div className="font-semibold text-gray-800">Q3. A信息对你完成初步判断的帮助程度？</div>
         <div className="grid grid-cols-2 gap-2">
           {Q3_OPTIONS.map((opt) => (
             <Radio key={opt} name="q3" value={opt} current={q3} onChange={setQ3} />
@@ -302,7 +302,7 @@ export function BFeedbackForm({
       </section>
 
       <section className="space-y-3">
-        <div className="font-semibold text-gray-800">Q4. 尽调信息主要缺少哪类内容？</div>
+        <div className="font-semibold text-gray-800">Q4. A信息主要缺少哪类内容？</div>
         <div className="grid grid-cols-2 gap-2">
           {Q4_OPTIONS.map((opt) => (
             <Radio key={opt} name="q4" value={opt} current={q4} onChange={setQ4} />
