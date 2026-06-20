@@ -2205,3 +2205,8 @@
 - 线上最终材料已上传到 `/opt/multi-cooperation/00_start_materials/原始材料`，生产 admin overview 返回 total 37、formal 36、practice 1、practiceCode `P37`、badMaterialCount 0。
 - 线上 admin import 成功：totalImported 37，最后一项为 `company-library-practice-p37`。
 - HTTPS smoke：`/admin`、`/login`、`/instruction`、`/api/health` 均返回 200。
+
+**2026-06-20 追补：测试轮公司池清理**
+- 复查发现生产数据库中残留旧 `company-library-practice-p01`，且 `sortOrder=1`，新 session 初始化时会优先取到 P01，导致测试轮没有使用最终版 `P37`。
+- 根因不是源材料库：线上 admin library overview 已确认当前源材料库为 formal 36、practice 1，practiceCode `P37`；问题在数据库旧导入记录未退出 practice 池。
+- 修复 `importCaseLibrary()`：导入当前源材料库后，将所有不在本次源材料库里的 `company-library-*` 旧公司从 `formal/practice` 降级为 `legacy`，保留历史记录但不再参与正式轮或测试轮分配。

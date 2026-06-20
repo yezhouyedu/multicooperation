@@ -676,6 +676,8 @@ export class AdminService {
       imported.push(baseCompany.id);
     }
 
+    await this.archiveStaleLibraryCompanies(imported);
+
     return {
       ok: true,
       importedCompanyIds: imported,
@@ -684,6 +686,16 @@ export class AdminService {
       formalRootDir: FORMAL_CASE_LIBRARY_ROOT,
       practiceRootDir: PRACTICE_CASE_LIBRARY_ROOT,
     };
+  }
+
+  private async archiveStaleLibraryCompanies(activeCompanyIds: string[]) {
+    await this.prisma.company.updateMany({
+      where: {
+        id: { startsWith: 'company-library-', notIn: activeCompanyIds },
+        usage: { in: ['formal', 'practice'] },
+      },
+      data: { usage: 'legacy' },
+    });
   }
 
   async initSessionTasks(sessionCode: string) {
