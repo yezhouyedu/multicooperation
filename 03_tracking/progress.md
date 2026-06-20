@@ -1,5 +1,56 @@
 # progress.md
 
+### 2026-06-20 指导语页面 UI 美化
+
+**背景**：用户反馈指导语页面（`/instruction`）的 UI 和文字排版太丑，需要全面优化视觉体验。
+
+**本轮实现**：
+
+#### 页面布局优化
+1. **背景渐变**：从纯色 `#f0f2f5` 改为渐变 `from-[#f8fafc] to-[#f0f2f5]`
+2. **顶部导航升级**：新增 AI 图标 logo，半透明背景 + backdrop-blur
+3. **主卡片阴影**：从 `var(--shadow-elevated)` 改为 `0 4px 24px rgba(0,0,0,0.06)`，更柔和
+4. **安全提示**：底部新增"你的作答数据将被严格保密，仅用于学术研究"
+
+#### 头部区域重做
+1. **渐变背景**：`from-[#f8fafc] to-[#f0f9ff]`，带装饰性圆形背景
+2. **标签增强**：蓝色圆点 + "实验说明"标签
+3. **角色卡片**：新增 `RoleCard` 组件，显示"任务1 · 材料处理与信息提取"或"任务2 · 综合判断与投资决策"
+4. **文案优化**：角色显示从"A/B"改为"任务1/任务2"
+
+#### 内容区域重构
+1. **分隔线**：使用 `divide-y divide-[#f0f2f5]` 替代 `border-t`
+2. **图标增强**：每个 section 新增图标（📋💰⚖️📝🎯💡）
+3. **段落样式**：
+   - 公式/数据行：蓝色背景 + 📌 图标
+   - 定义类内容：左侧蓝色边框 + 灰色背景
+   - 普通文本：正常显示
+4. **FlowList 重做**：蓝色圆形序号 + 灰色卡片背景
+
+#### 按钮区域优化
+1. **左侧提示**：新增信息图标 + 安全提示
+2. **按钮增强**：
+   - 渐变阴影 `shadow-lg shadow-[#1e80ff]/25`
+   - hover 阴影加深
+   - 加载状态 spinner 动画
+   - 箭头图标 + hover 动画
+
+#### 角色文案同步
+- A 角色：从"你在本实验中是 A"改为"你在本实验中是任务1"
+- B 角色：从"你在本实验中是 B"改为"你在本实验中是任务2"
+- 相关引用同步更新（A→任务1，B→任务2）
+
+**本地验证**：
+- `corepack pnpm --filter web build` 通过（23 个页面全部生成）。
+
+**GitHub**：
+- commit `0e48f00 指导语页面UI美化：视觉层次+角色卡片+内容分组+按钮增强` 已 push 到 `main`。
+
+**线上部署**：
+- 通过 `scripts/deploy/upload-git-archive.ps1 -Service web -AllowDirty` 上传并部署。
+- `https://aiseek.tech/instruction` 返回 200。
+- 4 个容器（postgres/server/web/nginx）全部运行正常。
+
 ### 2026-06-17 admin 轻量门禁与稳健性设计吸收
 
 **本轮变更**：
@@ -2210,3 +2261,4 @@
 - 复查发现生产数据库中残留旧 `company-library-practice-p01`，且 `sortOrder=1`，新 session 初始化时会优先取到 P01，导致测试轮没有使用最终版 `P37`。
 - 根因不是源材料库：线上 admin library overview 已确认当前源材料库为 formal 36、practice 1，practiceCode `P37`；问题在数据库旧导入记录未退出 practice 池。
 - 修复 `importCaseLibrary()`：导入当前源材料库后，将所有不在本次源材料库里的 `company-library-*` 旧公司从 `formal/practice` 降级为 `legacy`，保留历史记录但不再参与正式轮或测试轮分配。
+- 继续修复 session 初始化口径：正式公司池严格使用 `usage = formal`，测试轮公司池严格使用 `usage = practice`，不再用 `usage !== practice` 或 P01 fallback；admin 公司列表过滤 `legacy`，避免旧 P01 在材料预览页继续出现。

@@ -320,9 +320,8 @@ export class AdminService {
   }
 
   async getCompanies() {
-    await this.ensureBaselineCompanyIfMissing();
     const list = await this.prisma.company.findMany({ orderBy: { sortOrder: 'asc' } });
-    const usable = list.filter((company) => this.isUsableCompany(company));
+    const usable = list.filter((company) => company.usage !== 'legacy' && this.isUsableCompany(company));
     return {
       ok: true,
       companies: usable.map((company) => this.serializeCompany(company)),
@@ -703,9 +702,8 @@ export class AdminService {
     if (!session) return { ok: false, error: 'session not found' };
     await this.prisma.taskAssignment.deleteMany({ where: { sessionId: session.id } });
 
-    await this.ensureBaselineCompanyIfMissing();
     const companies = (await this.prisma.company.findMany({ orderBy: { sortOrder: 'asc' } })).filter((company) => this.isUsableCompany(company));
-    const formalCompanies = companies.filter((company) => (company.usage ?? 'formal') !== 'practice');
+    const formalCompanies = companies.filter((company) => (company.usage ?? 'formal') === 'formal');
     const practiceCompanies = companies.filter((company) => (company.usage ?? 'formal') === 'practice');
     if (formalCompanies.length === 0) {
       throw new BadRequestException('No usable companies with uploaded materials are available');

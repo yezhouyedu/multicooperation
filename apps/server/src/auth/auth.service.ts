@@ -249,7 +249,7 @@ export class AuthService {
     const experimentSnapshot = this.buildExperimentSnapshot(config);
     const companies = await tx.company.findMany({ orderBy: { sortOrder: 'asc' } });
     const practiceCompanies = companies.filter((company) => company.usage === 'practice');
-    const formalCompanies = companies.filter((company) => company.usage !== 'practice');
+    const formalCompanies = companies.filter((company) => company.usage === 'formal');
     const companySequenceSeed = this.generateSeed();
     const shuffled = this.shuffleWithSeed(formalCompanies, companySequenceSeed);
     const companySequenceSnapshot = shuffled.map((company, index) => ({
@@ -260,7 +260,7 @@ export class AuthService {
 
     await tx.taskAssignment.deleteMany({ where: { sessionId } });
 
-    const practiceCompany = practiceCompanies[0] ?? companies.find((company) => company.id === 'company-p01-baseline') ?? null;
+    const practiceCompany = practiceCompanies[0] ?? null;
     if (practiceCompany) {
       await tx.taskAssignment.create({
         data: {
