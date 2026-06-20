@@ -2262,3 +2262,4 @@
 - 根因不是源材料库：线上 admin library overview 已确认当前源材料库为 formal 36、practice 1，practiceCode `P37`；问题在数据库旧导入记录未退出 practice 池。
 - 修复 `importCaseLibrary()`：导入当前源材料库后，将所有不在本次源材料库里的 `company-library-*` 旧公司从 `formal/practice` 降级为 `legacy`，保留历史记录但不再参与正式轮或测试轮分配。
 - 继续修复 session 初始化口径：正式公司池严格使用 `usage = formal`，测试轮公司池严格使用 `usage = practice`，不再用 `usage !== practice` 或 P01 fallback；admin 公司列表过滤 `legacy`，避免旧 P01 在材料预览页继续出现。
+- 线上清理结果：执行删除前 PostgreSQL 备份 `/opt/multi-cooperation/backups/20260620-215412-delete-p01-legacy/postgres.sql`；删除引用旧 P01 的测试 session `TGWF5L`、`UN8PNN`，并删除 `company-library-practice-p01` 与 `company-p01-baseline`。清理后生产数据库为 `formal=36`、`practice=1`，唯一 practice 为 `company-library-practice-p37 / 浦芯存储`。
