@@ -2195,3 +2195,12 @@
 - `corepack pnpm --filter server build` 通过。
 - `corepack pnpm --filter web build` 通过。
 - 前台参与者页面扫描未发现旧口径残留：`尽调员 / 投资经理 / 主线 / 副线 / 待处理事宜 / 上游尽调 / 尽调表 / 尽调信息`。
+
+**GitHub 与线上验收**：
+- GitHub：提交 `eb5c379 收口最终材料与前台文案` 已 push 到 `main`。
+- 生产配置补丁：提交 `0161b0d 挂载生产源材料目录` 已 push 到 `main`，为 server 容器增加 `./00_start_materials:/app/00_start_materials:ro`，保证 admin 导入读取宿主机源材料库。
+- 线上部署：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署到 `https://aiseek.tech`，`postgres/server/web/nginx` 四容器运行，server healthy。
+- 线上导入前备份完成：PostgreSQL dump、`multi-cooperation_server_storage` volume 和原源材料目录备份到 `/opt/multi-cooperation/backups/20260620-190138-final-materials`。
+- 线上最终材料已上传到 `/opt/multi-cooperation/00_start_materials/原始材料`，生产 admin overview 返回 total 37、formal 36、practice 1、practiceCode `P37`、badMaterialCount 0。
+- 线上 admin import 成功：totalImported 37，最后一项为 `company-library-practice-p37`。
+- HTTPS smoke：`/admin`、`/login`、`/instruction`、`/api/health` 均返回 200。
