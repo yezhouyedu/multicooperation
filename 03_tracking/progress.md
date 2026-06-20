@@ -1,106 +1,12 @@
 # progress.md
 
-### 2026-06-20 neat-freak 文档一致性整理
-
-**背景**：最终材料、指导语、任务2与前台弱专业化文案已经完成多轮上线前收口，需要把仍会误导后续开发的 Markdown 规格同步到当前真相源。
-
-**本轮整理**：
-- 更新 `PRD.md`：当前阶段改为 2026-06-20 口径，参与者前台为 `A/B` 与 `任务1/任务2`，材料池为正式 `P01-P36`、测试轮 `P37`，B 公司分配为 locked pool / PreA / 空窗动态逻辑。
-- 更新前端规格：`A_B_WORKBENCH_UI.md`、`FRONTEND_GUIDELINES.md`、`SIDETASK_PANEL_SPEC.md`、`VARIABLES.md` 中的旧“待处理事宜 / 您有新事项入库 / 副线”参与者入口口径改为当前 `任务2` 口径。
-- 更新后端与执行规格：`BACKEND_STRUCTURE.md`、`SIDETASK_REBUILD_SPEC.md`、`IMPLEMENTATION_PLAN.md`、`admin材料库上传手册.md` 改为当前 A/B、任务2、P37 测试轮、测试轮真实任务2为 0、教学题前端临时注入的口径。
-- 更新变量与导出手册：`变量记录与服务器导出方案.md`、`数据库文件夹手册.md` 中同步练习轮任务2为 0、教学演示题不进入正式任务2变量；`displayRole` 保持导出兼容中文标签说明，不伪装成前台展示字段。
-
-**自检**：
-- 已过滤 `03_tracking` 历史记录后扫描当前 specs / README，未发现仍把“测试轮 P01 fallback”“practice 副线计划”“待处理事宜”作为当前实现口径的条目。
-
-### 2026-06-20 指导语页面 UI 重做（严格按原始文档 + 排版增强）
-
-**背景**：用户反馈指导语页面 UI 太丑，且指出三个关键问题：
-1. 风格上不要花里胡哨（各种图标），把精力放在排版文字上
-2. 内容上文字一点也不能动，必须完全按照原始文档
-3. 编号要从一开始，实验流程块不能漏掉
-
-**原始文档来源**：
-- `00_start_materials/原始材料/指导语/通用指导语.docx`
-- `00_start_materials/原始材料/指导语/角色A指导语 .docx`
-- `00_start_materials/原始材料/指导语/角色B指导语.docx`
-
-**本轮实现**：
-
-#### 文字内容（严格保持原样）
-- 通用指导语：任务介绍、报酬说明、任务1/任务2说明、机会/风险判断说明
-- 角色A指导语：角色A说明、三类内容（基础数值摘录、材料线索记录、交接备注）
-- 角色B指导语：角色B说明、四类内容（重要机会风险、普通数量、综合判断、最终建议）
-- **一个字都没有改**，完全按照 docx 原文
-
-#### UI 设计原则
-1. **去图标化**：移除所有 📋💰⚖️📝🎯💡 等花哨图标
-2. **专注排版**：把精力放在文字层次、间距、可读性上
-3. **简洁风格**：不使用渐变背景、装饰性圆形、卡片式段落
-4. **统一规范**：符合 `FRONTEND_GUIDELINES.md` 的设计系统
-
-#### 关键修复
-1. **实验流程默认内容**：后端 `experimentFlow` 为空时，使用默认内容："实验开始后，你将先完成测试题和测试轮..."
-2. **动态编号**：始终从"一"开始，依次为一、二、三、四、五
-3. **角色标签**：显示为"当前角色：角色A/角色B"
-
-#### 排版增强（不出彩但舒服）
-1. **实验流程**：蓝色圆角背景框 `border-[#e8f3ff] bg-[#f4f9ff]`，突出显示
-2. **报酬公式**：蓝色背景框 `border-blue-100 bg-blue-50/60`，公式醒目
-3. **提示信息**：左侧蓝色竖线 `border-l-2 border-l-[#1e80ff]`，弱化提示
-4. **机会/风险定义**：灰色背景卡片 + 蓝色圆点，定义清晰
-5. **角色首句**：加粗 `font-semibold text-[#1d2129]`，角色突出
-6. **角色A三类内容**：左侧灰色竖线缩进，结构清晰
-7. **角色B四类内容**：灰色背景卡片 + 蓝色编号，编号醒目
-8. **额外提示**：黄色背景框 `border-[#fef3c7] bg-[#fffbeb]`，特殊提示
-
-**本地验证**：
-- `corepack pnpm --filter web build` 通过（23 个页面全部生成）。
-
-**GitHub**：
-- commit `3c0db43 指导语页面：实验流程默认内容+动态编号+排版增强` 已 push 到 `main`。
-
-**线上部署**：
-- 通过 `scripts/deploy/upload-git-archive.ps1 -Service web -AllowDirty` 上传并部署。
-- `https://aiseek.tech/instruction` 返回 200。
-- 4 个容器（postgres/server/web/nginx）全部运行正常。
-
-### 2026-06-17 admin 轻量门禁与稳健性设计吸收
-
-**本轮变更**：
-- `/admin` 新增轻量密码门禁，密码为 `20260617`；界面复用参与者登录页卡片风格并改为“管理后台密码”文案。
-- 新增/更新 `02_specs/06_resilience/RESILIENCE_DESIGN.md`，吸收 xiaomimimo 的 SSE 重连、网络状态、轮询兜底、IndexedDB、本地保存队列建议。
-- 稳健性方案同步补充后端层口径：关键 POST 幂等、状态机防重复推进、草稿 revision、防旧请求覆盖、备份恢复演练。
-
-**注意**：当前 admin 门禁是前端轻量保护，用于避免普通访问者直接打开后台；若后续要防 API 直连，需要继续增加后端 admin guard 或 Nginx Basic Auth。
-
-### 2026-06-17 HTTPS 域名入口部署完成
-
-**结果**：`https://aiseek.tech` 已作为线上正式入口跑通，`www.aiseek.tech` 统一跳转到裸域名，`/api` 由 Nginx 反代到后端。
-
-**线上已完成**：
-- 证书文件已部署到服务器 `/etc/multi-cooperation/certs`，私钥权限为 `600 root:root`，未进入 git。
-- 服务器 `/opt/multi-cooperation/.env.production` 已切换为 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api`。
-- `compose.production.yml` 中的 `nginx` 容器已上线，80 / 443 均已绑定，容器状态 healthy。
-- `web` 已用 HTTPS API 地址重新构建，线上静态 chunk 检查未发现旧 `49.233.203.108:3001` API 地址。
-
-**验证结果**：
-- `https://aiseek.tech/api/health` 返回 200。
-- `https://aiseek.tech/admin` 返回 200。
-- `https://aiseek.tech/login` 返回 200。
-- `http://aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
-- `https://www.aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
-- 服务器内 `curl --resolve aiseek.tech:443:127.0.0.1 https://aiseek.tech/api/health` 返回 200。
-
-**后续收口建议**：HTTPS 稳定观察后，可以在腾讯云安全组关闭公网 3000 / 3001，只保留 80 / 443 / 22。关闭前建议再做一轮完整实验 smoke，尤其检查 SSE、AI 图片上传、变量导出是否都能经 `/api` 代理正常工作。
-
-## 当前阶段
+## 早期启动摘要（历史，不代表当前阶段）
 
 - 2026-06-05：已回正副线变量 A 口径：continuous / batch 操纵的是提醒频率，不再操纵题目实际到达节奏；后端题目到达统一为 30 秒一条，前端提醒频率按模式区分。
 
 阶段 2.6：母版级前端复刻 + 副线任务真实逻辑 + AI 兼容层稳定化
 
-## 已完成
+### 当时已完成
 
 - 确认本项目资料统一存放在：`E:\Own_program\multi cooperation`
 - 已创建 monorepo 根文件：`package.json`、`pnpm-workspace.yaml`
@@ -130,7 +36,7 @@
 - 已确定按方案 B 推进：Next.js + NestJS + PostgreSQL + 前后端分离 + monorepo
 - 已确定第一阶段范围：本地先跑起“进入 → 配对 → 指导语 → A/B 页面骨架”的最小闭环
 
-## 正在进行
+### 当时正在进行
 
 - 重组 `02_specs` 目录结构，按“总览 / 前端 / 后端 / 执行验收”分层。
 - 准备把当前阶段从“最小链路闭环”切换到“A/B 工作台产品化重构”。
@@ -139,7 +45,7 @@
 - 用户已完成第一轮页面验收，并明确提出三个新的分任务：副线任务区功能改善、LeetCode 风格 UI 精修、AI 区真实接入与输入能力梳理。
 - 已重新确认：当前顶部功能条仍残留调试信息，不符合用户界面定位；副线区当前仍是静态卡片，尚未进入真实任务流形态。
 
-## 下一步
+### 当时下一步
 
 - 先完成 `02_specs` 文档重组后的引用修正与 README 导航，避免后续路径混乱。
 - 在 `02_specs\01_frontend\` 下补前端细化规格，优先新增：`A_B_WORKBENCH_UI.md`、`AI_PANEL_SPEC.md`，必要时再补 `SIDETASK_PANEL_SPEC.md`。
@@ -162,7 +68,7 @@
 - 继续增强 `/ai/chat` 的 provider 兼容解析，优先稳定文本；图片输入按 Gemini / OpenAI-compatible 实际能力渐进兼容。
 - 在本轮 UI / 副线 / AI 三块都基本收口后，再进入项目的下一分任务。
 
-## 当前卡点
+### 当时卡点
 
 - Windows 下全局 pnpm shim 受权限影响，当前先用 `corepack pnpm` 直接调用
 - PostgreSQL 基础环境已建过并曾跑通，但后续若再次遇到本地环境异常，应按当前实际运行状态单独复核，不再沿用旧卡点描述
@@ -170,7 +76,7 @@
 - `react-resizable-panels` 路线已确认不是本轮最终方案；相关 API 误判与类型不匹配问题已作为教训沉淀，当前前端基线以 4.23 修好的稳定三区布局为准。
 - 项目此前未启用 Git；现已在根目录初始化本地 Git 仓库并补充 `.gitignore`
 
-## 已知原则
+### 已知原则
 
 - 文档第一，代码第二
 - 审问 → 文档 → 代码
@@ -1906,6 +1812,16 @@
 - 如需继续使用服务器直连 GitHub，需要配置稳定 GitHub 网络、deploy key 或 token；当前不再依赖此路线。
 - 更完整的长期方案是 GitHub Actions 或 self-hosted runner：Codex 只负责 push，CI 负责构建和部署。
 - 正式实验前仍需补自动备份与恢复演练，部署链路稳定不等于数据安全闭环完成。
+
+### 2026-06-17 admin 轻量门禁与稳健性设计吸收
+
+**本轮变更**：
+- `/admin` 新增轻量密码门禁，密码为 `20260617`；界面复用参与者登录页卡片风格并改为“管理后台密码”文案。
+- 新增/更新 `02_specs/06_resilience/RESILIENCE_DESIGN.md`，吸收 xiaomimimo 的 SSE 重连、网络状态、轮询兜底、IndexedDB、本地保存队列建议。
+- 稳健性方案同步补充后端层口径：关键 POST 幂等、状态机防重复推进、草稿 revision、防旧请求覆盖、备份恢复演练。
+
+**注意**：当前 admin 门禁是前端轻量保护，用于避免普通访问者直接打开后台；若后续要防 API 直连，需要继续增加后端 admin guard 或 Nginx Basic Auth。
+
 ### 2026-06-17 正式问卷接入：三章实验问卷 V1.1、Admin 配置与导出更新
 
 **背景**：用户确认招募问卷后续单独外发，不放入系统；师兄 HTML 只作为题目来源，不复用其中计时、预览、样式、论文来源和内部备注。平台需要提取纯问卷题目，接入现有前端风格，并在后端、数据库导出、admin 配置和文档中形成完整口径。
@@ -2021,6 +1937,27 @@
 - 服务器 `.env.production` 需要设置 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api` 后重新构建 web。
 - 验证入口为 `https://aiseek.tech`、`https://aiseek.tech/api/health`、`http://aiseek.tech` 跳转、`https://www.aiseek.tech` 跳转。
 - HTTPS 稳定后，建议再把安全组中的公网 3000 / 3001 关闭，只保留 80 / 443 / 22。
+
+### 2026-06-17 HTTPS 域名入口部署完成
+
+**结果**：`https://aiseek.tech` 已作为线上正式入口跑通，`www.aiseek.tech` 统一跳转到裸域名，`/api` 由 Nginx 反代到后端。
+
+**线上已完成**：
+- 证书文件已部署到服务器 `/etc/multi-cooperation/certs`，私钥权限为 `600 root:root`，未进入 git。
+- 服务器 `/opt/multi-cooperation/.env.production` 已切换为 `NEXT_PUBLIC_SERVER_BASE_URL=https://aiseek.tech/api`。
+- `compose.production.yml` 中的 `nginx` 容器已上线，80 / 443 均已绑定，容器状态 healthy。
+- `web` 已用 HTTPS API 地址重新构建，线上静态 chunk 检查未发现旧 `49.233.203.108:3001` API 地址。
+
+**验证结果**：
+- `https://aiseek.tech/api/health` 返回 200。
+- `https://aiseek.tech/admin` 返回 200。
+- `https://aiseek.tech/login` 返回 200。
+- `http://aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
+- `https://www.aiseek.tech` 返回 301 到 `https://aiseek.tech/`。
+- 服务器内 `curl --resolve aiseek.tech:443:127.0.0.1 https://aiseek.tech/api/health` 返回 200。
+
+**后续收口建议**：HTTPS 稳定观察后，可以在腾讯云安全组关闭公网 3000 / 3001，只保留 80 / 443 / 22。关闭前建议再做一轮完整实验 smoke，尤其检查 SSE、AI 图片上传、变量导出是否都能经 `/api` 代理正常工作。
+
 ### 2026-06-17 段前指导语流程 + 导出字段 + HTTPS smoke 计划接入
 
 **背景**：师兄提供 `段前指导语文本与第三章叙事随机机制说明_V0.2.md`，要求在正式三段工作段前加入强制阅读材料页，并与实验 3 的合作叙事副线主题保持一致；同时保留既有问卷流程，段 3 后继续进入常规问卷和最终长问卷。
@@ -2277,3 +2214,68 @@
 - 修复 `importCaseLibrary()`：导入当前源材料库后，将所有不在本次源材料库里的 `company-library-*` 旧公司从 `formal/practice` 降级为 `legacy`，保留历史记录但不再参与正式轮或测试轮分配。
 - 继续修复 session 初始化口径：正式公司池严格使用 `usage = formal`，测试轮公司池严格使用 `usage = practice`，不再用 `usage !== practice` 或 P01 fallback；admin 公司列表过滤 `legacy`，避免旧 P01 在材料预览页继续出现。
 - 线上清理结果：执行删除前 PostgreSQL 备份 `/opt/multi-cooperation/backups/20260620-215412-delete-p01-legacy/postgres.sql`；删除引用旧 P01 的测试 session `TGWF5L`、`UN8PNN`，并删除 `company-library-practice-p01` 与 `company-p01-baseline`。清理后生产数据库为 `formal=36`、`practice=1`，唯一 practice 为 `company-library-practice-p37 / 浦芯存储`。
+
+### 2026-06-20 指导语页面 UI 重做（严格按原始文档 + 排版增强）
+
+**背景**：用户反馈指导语页面 UI 太丑，且指出三个关键问题：
+1. 风格上不要花里胡哨（各种图标），把精力放在排版文字上
+2. 内容上文字一点也不能动，必须完全按照原始文档
+3. 编号要从一开始，实验流程块不能漏掉
+
+**原始文档来源**：
+- `00_start_materials/原始材料/指导语/通用指导语.docx`
+- `00_start_materials/原始材料/指导语/角色A指导语 .docx`
+- `00_start_materials/原始材料/指导语/角色B指导语.docx`
+
+**本轮实现**：
+
+#### 文字内容（严格保持原样）
+- 通用指导语：任务介绍、报酬说明、任务1/任务2说明、机会/风险判断说明
+- 角色A指导语：角色A说明、三类内容（基础数值摘录、材料线索记录、交接备注）
+- 角色B指导语：角色B说明、四类内容（重要机会风险、普通数量、综合判断、最终建议）
+- **一个字都没有改**，完全按照 docx 原文
+
+#### UI 设计原则
+1. **去图标化**：移除所有 📋💰⚖️📝🎯💡 等花哨图标
+2. **专注排版**：把精力放在文字层次、间距、可读性上
+3. **简洁风格**：不使用渐变背景、装饰性圆形、卡片式段落
+4. **统一规范**：符合 `FRONTEND_GUIDELINES.md` 的设计系统
+
+#### 关键修复
+1. **实验流程默认内容**：后端 `experimentFlow` 为空时，使用默认内容："实验开始后，你将先完成测试题和测试轮..."
+2. **动态编号**：始终从"一"开始，依次为一、二、三、四、五
+3. **角色标签**：显示为"当前角色：角色A/角色B"
+
+#### 排版增强（不出彩但舒服）
+1. **实验流程**：蓝色圆角背景框 `border-[#e8f3ff] bg-[#f4f9ff]`，突出显示
+2. **报酬公式**：蓝色背景框 `border-blue-100 bg-blue-50/60`，公式醒目
+3. **提示信息**：左侧蓝色竖线 `border-l-2 border-l-[#1e80ff]`，弱化提示
+4. **机会/风险定义**：灰色背景卡片 + 蓝色圆点，定义清晰
+5. **角色首句**：加粗 `font-semibold text-[#1d2129]`，角色突出
+6. **角色A三类内容**：左侧灰色竖线缩进，结构清晰
+7. **角色B四类内容**：灰色背景卡片 + 蓝色编号，编号醒目
+8. **额外提示**：黄色背景框 `border-[#fef3c7] bg-[#fffbeb]`，特殊提示
+
+**本地验证**：
+- `corepack pnpm --filter web build` 通过（23 个页面全部生成）。
+
+**GitHub**：
+- commit `3c0db43 指导语页面：实验流程默认内容+动态编号+排版增强` 已 push 到 `main`。
+
+**线上部署**：
+- 通过 `scripts/deploy/upload-git-archive.ps1 -Service web -AllowDirty` 上传并部署。
+- `https://aiseek.tech/instruction` 返回 200。
+- 4 个容器（postgres/server/web/nginx）全部运行正常。
+
+### 2026-06-20 neat-freak 文档一致性整理
+
+**背景**：最终材料、指导语、任务2与前台弱专业化文案已经完成多轮上线前收口，需要把仍会误导后续开发的 Markdown 规格同步到当前真相源。
+
+**本轮整理**：
+- 更新 `PRD.md`：当前阶段改为 2026-06-20 口径，参与者前台为 `A/B` 与 `任务1/任务2`，材料池为正式 `P01-P36`、测试轮 `P37`，B 公司分配为 locked pool / PreA / 空窗动态逻辑。
+- 更新前端规格：`A_B_WORKBENCH_UI.md`、`FRONTEND_GUIDELINES.md`、`SIDETASK_PANEL_SPEC.md`、`VARIABLES.md` 中的旧“待处理事宜 / 您有新事项入库 / 副线”参与者入口口径改为当前 `任务2` 口径。
+- 更新后端与执行规格：`BACKEND_STRUCTURE.md`、`SIDETASK_REBUILD_SPEC.md`、`IMPLEMENTATION_PLAN.md`、`admin材料库上传手册.md` 改为当前 A/B、任务2、P37 测试轮、测试轮真实任务2为 0、教学题前端临时注入的口径。
+- 更新变量与导出手册：`变量记录与服务器导出方案.md`、`数据库文件夹手册.md` 中同步练习轮任务2为 0、教学演示题不进入正式任务2变量；`displayRole` 保持导出兼容中文标签说明，不伪装成前台展示字段。
+
+**自检**：
+- 已过滤 `03_tracking` 历史记录后扫描当前 specs / README，未发现仍把“测试轮 P01 fallback”“practice 副线计划”“待处理事宜”作为当前实现口径的条目。
