@@ -129,10 +129,11 @@ export type RuntimeState = {
   experimentSnapshot: Record<string, unknown> | null;
   instructionBlocks: {
     commonTitle: string;
-    commonBody: string;
-    roleA: string;
-    roleB: string;
-    manual: string;
+      commonBody: string;
+      roleA: string;
+      roleB: string;
+      experimentFlow: string;
+      manual: string;
     ai_upgrade: string;
     side_reminder: string;
     coop_narrative: string;

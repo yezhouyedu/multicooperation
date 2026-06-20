@@ -120,7 +120,7 @@ flowchart TD
 - `/instruction` 页面标题为“开始前，请先阅读以下提示”。
 - 页面正文由固定内容组成：`00_start_materials/原始材料/指导语/通用指导语.docx` + 当前角色对应的 `角色A指导语 .docx` 或 `角色B指导语.docx`。
 - Admin 的指导语积木不再维护通用指导语和 A/B 角色指导语；这些文本由代码中的固定页面排版承载，避免多个 page 的指导语块混在一起。
-- Admin 仍保留实验条件块：`manual`、`ai_upgrade`、`side_reminder`、`coop_narrative`，以及实验 1 需要的 `aiUpgradeBreakNotice`。
+- Admin 仍保留开篇页的 `experimentFlow` 实验流程块、实验条件块：`manual`、`ai_upgrade`、`side_reminder`、`coop_narrative`，以及实验 1 需要的 `aiUpgradeBreakNotice`。
 - `aiUpgradeWorkspaceNotice` 不再作为工作台额外提示使用；工作台只通过 `aiseek / aiseek pro` badge 表达 AI 能力差异。
 
 ### 4.3 指导语后的同步准备页

@@ -77,6 +77,7 @@ type InstructionBlocks = {
   commonBody: string;
   roleA: string;
   roleB: string;
+  experimentFlow: string;
   manual: string;
   ai_upgrade: string;
   side_reminder: string;
@@ -1043,10 +1044,11 @@ function ConfigTab() {
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-1 font-bold text-[#1d2129]">指导语积木</div>
         <div className="mb-4 text-xs leading-5 text-[#86909c]">
-          开篇通用指导语和 A/B 角色说明已固定为正式 Word 版本；这里仅保留实验条件提示和 AI 升级休息页提示。
+            开篇通用指导语和 A/B 角色说明已固定为正式 Word 版本；这里保留可配置的实验流程、实验条件提示和 AI 升级休息页提示。
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {([
+            ['experimentFlow', '实验流程'],
             ['manual', '手动/通用条件块'],
             ['ai_upgrade', '实验 1 条件块'],
             ['side_reminder', '实验 2 条件块'],
