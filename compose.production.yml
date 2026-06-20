@@ -38,6 +38,7 @@ services:
       STORAGE_ROOT: ${STORAGE_ROOT:-/app/storage}
     volumes:
       - server_storage:/app/storage
+      - ./00_start_materials:/app/00_start_materials:ro
     ports:
       - "${SERVER_PUBLIC_PORT:-3001}:3001"
     healthcheck:
