@@ -36,6 +36,8 @@ services:
       OPENAI_ADVANCED_MODEL: ${OPENAI_ADVANCED_MODEL:-}
       CASE_LIBRARY_ROOT: ${CASE_LIBRARY_ROOT:-/app/00_start_materials/原始材料}
       STORAGE_ROOT: ${STORAGE_ROOT:-/app/storage}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_TOKEN_SECRET: ${ADMIN_TOKEN_SECRET:-}
     volumes:
       - server_storage:/app/storage
       - ./00_start_materials:/app/00_start_materials:ro
