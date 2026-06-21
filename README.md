@@ -145,8 +145,9 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -
 
 ### Admin security
 
-/admin now uses backend authentication. The default password comes from ADMIN_PASSWORD and is currently 20260617.
+/admin uses backend authentication. The password must be provided by `ADMIN_PASSWORD`; there is no public default password.
 
 - Local: set ADMIN_PASSWORD=your_new_password in the server env file and restart server.
 - Production: edit /opt/multi-cooperation/.env.production, set ADMIN_PASSWORD=your_new_password, then redeploy/restart server.
 - The frontend does not hardcode the password; existing admin tokens become invalid after changing the password.
+- If a password has ever appeared in committed documentation, rotate the real production `ADMIN_PASSWORD` immediately.

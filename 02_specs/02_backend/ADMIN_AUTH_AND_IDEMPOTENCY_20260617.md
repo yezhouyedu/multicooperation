@@ -5,7 +5,7 @@ Status: implemented on 2026-06-17.
 ## Admin Auth
 
 - Public entry: `POST /admin/auth/login`.
-- Password source: `ADMIN_PASSWORD`; default is `20260617`.
+- Password source: `ADMIN_PASSWORD`; there is no hardcoded/public default.
 - Token: HMAC bearer token, default 12 hour TTL.
 - Token secret: `ADMIN_TOKEN_SECRET` if set; otherwise follows `ADMIN_PASSWORD`.
 - Protected controllers: `AdminController` and `SideTaskAdminController`.
@@ -16,6 +16,7 @@ Changing the password:
 - Local: set `ADMIN_PASSWORD=your_new_password` in the server env and restart server.
 - Production: edit `/opt/multi-cooperation/.env.production`, set `ADMIN_PASSWORD=your_new_password`, then redeploy/restart server.
 - Existing tokens become invalid when the password changes unless `ADMIN_TOKEN_SECRET` is manually kept unchanged.
+- If any real password has appeared in committed docs or logs, rotate production `ADMIN_PASSWORD` immediately.
 
 ## Idempotency
 

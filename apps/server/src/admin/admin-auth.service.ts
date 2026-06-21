@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 
@@ -60,7 +60,11 @@ export class AdminAuthService {
   }
 
   private getPassword() {
-    return this.config.get<string>('ADMIN_PASSWORD') || '20260617';
+    const password = this.config.get<string>('ADMIN_PASSWORD')?.trim();
+    if (!password) {
+      throw new InternalServerErrorException('ADMIN_PASSWORD is not configured');
+    }
+    return password;
   }
 
   private getSecret() {

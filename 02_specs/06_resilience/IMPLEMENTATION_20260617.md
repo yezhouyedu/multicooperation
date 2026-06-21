@@ -4,7 +4,7 @@
 
 ## Implemented
 
-- Admin backend auth: `POST /admin/auth/login`; password from `ADMIN_PASSWORD`, default `20260617`.
+- Admin backend auth: `POST /admin/auth/login`; password from `ADMIN_PASSWORD`; there is no hardcoded/public default.
 - Admin API guard: `AdminController` and `SideTaskAdminController` are protected by bearer token.
 - Token design: HMAC token, default 12 hour TTL, default signing secret follows `ADMIN_PASSWORD`; changing password invalidates old tokens.
 - SSE resilience: server emits `id` and `retry`, keeps a short in-memory replay cache, and supports replay by `Last-Event-ID` or `lastEventId` query.
@@ -33,6 +33,8 @@ sudo bash scripts/deploy/deploy-prod.sh server
 ```
 
 If only `ADMIN_PASSWORD` changes, web does not need a rebuild because the password is not hardcoded in the frontend.
+
+Security note: if any real admin password has appeared in committed docs or logs, rotate production `ADMIN_PASSWORD` immediately and restart the server so old tokens are invalidated.
 
 ## Deferred
 
