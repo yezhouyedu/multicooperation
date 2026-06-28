@@ -2293,3 +2293,9 @@
 
 **文档同步**：
 - 更新 `APP_FLOW.md`、`PRD.md`、`BACKEND_STRUCTURE.md`、`VARIABLES.md`、`数据库文件夹手册.md`：明确 locked pool / PreA 只决定 B 拿到哪家公司，不决定是否立刻开放；B 的开放门槛由自己的 5 分钟窗口 `bCanSubmitAt` 决定。
+
+**验收与部署**：
+- 本地验收：`corepack pnpm --filter server build` 通过；`corepack pnpm --filter web build` 通过；`git diff --check` 无空白错误。
+- GitHub：提交 `872d769 修复AI体验与B端五分钟门槛` 已 push 到 `main`。
+- 线上部署：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传并部署 commit `872d769`；生产 `postgres/server/web/nginx` 四容器运行，server healthy。
+- HTTPS smoke：`https://aiseek.tech/api/health` 返回 ok；`/admin` 返回 200；admin 密码登录成功并可读取 sessions；`/workspace/b` 返回 200。
