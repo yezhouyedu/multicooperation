@@ -17,6 +17,12 @@ function normalizeText(value: unknown) {
   return String(value ?? '').trim().toLowerCase();
 }
 
+function safeSectionTitle(title: string | undefined) {
+  const value = title?.trim();
+  if (!value || value.includes('????') || value.includes('\\u')) return '问卷';
+  return value;
+}
+
 function shouldShowFollowup(item: QuestionnaireItem, value: AnswerValue | undefined) {
   if (!item.followup || value === undefined) return false;
   const answer = Array.isArray(value) ? value.map(normalizeText).join(' / ') : normalizeText(value);
@@ -40,7 +46,10 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
   const [answers, setAnswers] = useState<QuestionnaireAnswers>({});
   const [followups, setFollowups] = useState<Record<string, string>>({});
   const sections = useMemo(
-    () => (questionnaire.sections?.length ? questionnaire.sections : [{ title: questionnaire.title, items: questionnaire.items }]),
+    () =>
+      questionnaire.sections?.length
+        ? questionnaire.sections.map((section) => ({ ...section, title: safeSectionTitle(section.title) }))
+        : [{ title: safeSectionTitle(questionnaire.title), items: questionnaire.items }],
     [questionnaire.items, questionnaire.sections, questionnaire.title],
   );
   const allItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);

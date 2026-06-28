@@ -137,6 +137,7 @@ export class ExperimentService {
   private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
   private readonly sessionEventCache = new Map<string, SessionStreamEnvelope[]>();
   private nextSessionEventId = 1;
+  private readonly bCompanyReviewWindowMs = 5 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -645,6 +646,7 @@ export class ExperimentService {
     const questionnaireSubmitted = participantId
       ? this.hasSubmittedQuestionnaire(session, participantId, activeQuestionnaire?.segmentIndex ?? session.currentSegmentIndex)
       : false;
+    const bAccessReady = this.isBAccessReady(roleTask);
 
     return {
       ok: true,
@@ -663,6 +665,7 @@ export class ExperimentService {
             aUnlockedForBAt: roleTask.aUnlockedForBAt,
             bViewedAInfoAt: roleTask.bViewedAInfoAt,
             bViewedAMaterialsAt: roleTask.bViewedAMaterialsAt,
+            bCanSubmitAt: roleTask.bCanSubmitAt,
             bCompletedAt: roleTask.bCompletedAt,
             aAiLevelAtWindow: roleTask.aAiLevelAtWindow,
             bPreAAiLevel: roleTask.bPreAAiLevel,
@@ -672,10 +675,10 @@ export class ExperimentService {
         : null,
       taskRemainingSeconds:
         assignedRole === ParticipantRole.A && roleTask ? this.getRemainingSeconds(roleTask.aDeadlineAt) : null,
-      aInfoUnlocked: Boolean(roleTask?.aUnlockedForBAt),
+      aInfoUnlocked: assignedRole === ParticipantRole.B ? bAccessReady : Boolean(roleTask?.aUnlockedForBAt),
       bHasViewedAInfo: Boolean(roleTask?.bViewedAInfoAt),
       bHasViewedAMaterials: Boolean(roleTask?.bViewedAMaterialsAt),
-      bCanSubmit: Boolean(roleTask?.aUnlockedForBAt) && !roleTask?.bCompletedAt,
+      bCanSubmit: bAccessReady && !roleTask?.bCompletedAt,
       isIdle: !roleTask,
       isFrozen: Boolean(roleTask?.frozenAt),
       isPreA: assignedRole === ParticipantRole.B && Boolean(roleTask && !roleTask.aSubmittedAt),
@@ -1072,13 +1075,13 @@ export class ExperimentService {
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
+    this.assertBAccessReady(task, '查看A信息');
 
     const now = new Date();
     const updated = await this.prisma.taskAssignment.update({
       where: { id: task.id },
       data: {
         bViewedAInfoAt: task.bViewedAInfoAt ?? now,
-        bCanSubmitAt: task.bCanSubmitAt ?? now,
       },
     });
 
@@ -1102,6 +1105,7 @@ export class ExperimentService {
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 材料尚未解锁');
+    this.assertBAccessReady(task, '查看A原始材料');
 
     const now = new Date();
     const updated = await this.prisma.taskAssignment.update({
@@ -1317,6 +1321,10 @@ export class ExperimentService {
       data: {
         aSubmittedAt: task.aSubmittedAt ?? now,
         aUnlockedForBAt: task.aUnlockedForBAt ?? now,
+        bCanSubmitAt:
+          task.bCanSubmitAt && task.bCanSubmitAt > now
+            ? task.bCanSubmitAt
+            : (task.bCanSubmitAt ?? now),
         bPostAAiLevel: task.bPostAAiLevel ?? this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
         crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({
           ...task,
@@ -1344,6 +1352,7 @@ export class ExperimentService {
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
     if (task.bCompletedAt) return { ok: true, taskId, duplicate: true };
+    this.assertBAccessReady(task, '提交');
 
     const result = await this.prisma.$transaction(async (tx) => {
       await tx.taskAssignment.update({
@@ -1635,7 +1644,10 @@ export class ExperimentService {
             data: {
               aSubmittedAt: snapshotAt,
               aUnlockedForBAt: snapshotAt,
-              bCanSubmitAt: snapshotAt,
+              bCanSubmitAt:
+                currentATask.bCanSubmitAt && currentATask.bCanSubmitAt > snapshotAt
+                  ? currentATask.bCanSubmitAt
+                  : (currentATask.bCanSubmitAt ?? snapshotAt),
               bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
               crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
               aRemainingSeconds: 0,
@@ -1779,7 +1791,10 @@ export class ExperimentService {
         data: {
           aSubmittedAt: snapshotAt,
           aUnlockedForBAt: snapshotAt,
-          bCanSubmitAt: snapshotAt,
+          bCanSubmitAt:
+            currentATask.bCanSubmitAt && currentATask.bCanSubmitAt > snapshotAt
+              ? currentATask.bCanSubmitAt
+              : (currentATask.bCanSubmitAt ?? snapshotAt),
           bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
           aRemainingSeconds: 0,
@@ -3096,16 +3111,20 @@ export class ExperimentService {
       const pick = Math.floor(this.seededRandom(seed) * pool.length);
       const picked = pool[pick];
       const assignedAt = new Date();
+      const bCanSubmitAt = this.bReviewReadyAt(assignedAt);
       await tx.taskAssignment.update({
         where: { id: picked.id },
         data: {
           bSequenceIndex: nextSeq,
+          bCanSubmitAt,
           bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel,
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...picked, bPostAAiLevel: picked.bPostAAiLevel ?? aiLevel }),
         },
       });
       await this.appendBAssignmentLog(tx, sessionId, {
         assignedAt: assignedAt.toISOString(),
+        bCanSubmitAt: bCanSubmitAt.toISOString(),
+        bReviewWindowSeconds: this.bCompanyReviewWindowMs / 1000,
         taskAssignmentId: picked.id,
         chosenTaskAssignmentId: picked.id,
         chosenCompanyId: picked.companyId,
@@ -3128,16 +3147,20 @@ export class ExperimentService {
 
     if (preaCandidate) {
       const assignedAt = new Date();
+      const bCanSubmitAt = this.bReviewReadyAt(assignedAt);
       await tx.taskAssignment.update({
         where: { id: preaCandidate.id },
         data: {
           bSequenceIndex: nextSeq,
+          bCanSubmitAt,
           bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel,
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({ ...preaCandidate, bPreAAiLevel: preaCandidate.bPreAAiLevel ?? aiLevel }),
         },
       });
       await this.appendBAssignmentLog(tx, sessionId, {
         assignedAt: assignedAt.toISOString(),
+        bCanSubmitAt: bCanSubmitAt.toISOString(),
+        bReviewWindowSeconds: this.bCompanyReviewWindowMs / 1000,
         taskAssignmentId: preaCandidate.id,
         chosenTaskAssignmentId: preaCandidate.id,
         chosenCompanyId: preaCandidate.companyId,
@@ -3258,6 +3281,20 @@ export class ExperimentService {
   private getRemainingSeconds(endsAt?: Date | null) {
     if (!endsAt) return null;
     return Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / 1000));
+  }
+
+  private bReviewReadyAt(assignedAt: Date) {
+    return new Date(assignedAt.getTime() + this.bCompanyReviewWindowMs);
+  }
+
+  private isBAccessReady(task?: Pick<TaskAssignment, 'aUnlockedForBAt' | 'bCanSubmitAt'> | null, now = new Date()) {
+    return Boolean(task?.aUnlockedForBAt && task?.bCanSubmitAt && task.bCanSubmitAt <= now);
+  }
+
+  private assertBAccessReady(task: Pick<TaskAssignment, 'aUnlockedForBAt' | 'bCanSubmitAt'>, action: string) {
+    if (!task.bCanSubmitAt || task.bCanSubmitAt > new Date()) {
+      throw new BadRequestException(`当前公司需处理满 5 分钟后才能${action}`);
+    }
   }
 
   private async getPracticeTimerEndsAt(sessionId: string, participantId: string) {
@@ -3555,7 +3592,7 @@ export class ExperimentService {
     const items = sections.flatMap((section) => section.items);
     return {
       id: template.id,
-      title: kind === 'segment_survey' ? `\u5de5\u4f5c\u6bb5 ${context.workSegment ?? ''} \u540e\u95ee\u5377` : root.postSurvey.title,
+      title: kind === 'segment_survey' ? `工作段 ${context.workSegment ?? ''} 后问卷` : root.postSurvey.title,
       kind,
       templateVersion: root.version,
       experimentMode: context.mode,

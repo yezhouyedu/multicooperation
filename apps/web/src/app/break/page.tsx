@@ -9,6 +9,12 @@ import { useEffect, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
+function safeQuestionnaireTitle(title: string | undefined, fallback: string) {
+  const value = title?.trim();
+  if (!value || value.includes('????') || value.includes('\\u')) return fallback;
+  return value;
+}
+
 export default function BreakPage() {
   const router = useRouter();
   const { bootstrap, runtime, loading, countdownLabel, refresh, connectionStatus, pendingDraftCount } = useSessionRuntime();
@@ -66,6 +72,7 @@ export default function BreakPage() {
   // 判断问卷类型，显示不同图标
   const questionnaireIcon = questionnaire?.kind === 'post_survey' ? '📋' : '📊';
   const stageLabel = questionnaire?.kind === 'post_survey' ? '最终问卷' : '工作段后问卷';
+  const displayTitle = safeQuestionnaireTitle(questionnaire?.title, stageLabel);
 
   return (
     <main className="flex h-screen flex-col bg-gradient-to-br from-[#f0f4f8] via-[#f5f7fa] to-[#e8edf2] text-[#1d2129]">
@@ -89,7 +96,7 @@ export default function BreakPage() {
               {questionnaireIcon}
             </div>
             <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-[#1e80ff]">休息阶段</div>
-            <div className="text-2xl font-bold text-[#1d2129]">{questionnaire?.title ?? stageLabel}</div>
+            <div className="text-2xl font-bold text-[#1d2129]">{displayTitle}</div>
           </div>
 
           {/* 倒计时卡片 */}

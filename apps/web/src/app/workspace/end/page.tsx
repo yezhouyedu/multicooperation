@@ -7,6 +7,12 @@ import { useEffect, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
+function safeQuestionnaireTitle(title: string | undefined, fallback: string) {
+  const value = title?.trim();
+  if (!value || value.includes('????') || value.includes('\\u')) return fallback;
+  return value;
+}
+
 export default function ExperimentEndPage() {
   const { bootstrap, runtime, loading, refresh } = useSessionRuntime();
   const [recorded, setRecorded] = useState(false);
@@ -63,7 +69,9 @@ export default function ExperimentEndPage() {
             style={{ boxShadow: 'var(--shadow-elevated)' }}
           >
             <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">最后问卷</div>
-            <div className="mb-6 text-2xl font-semibold text-[#1d2129]">{questionnaire.title}</div>
+            <div className="mb-6 text-2xl font-semibold text-[#1d2129]">
+              {safeQuestionnaireTitle(questionnaire.title, '最终问卷')}
+            </div>
             <QuestionnaireForm
               questionnaire={questionnaire}
               submitting={submitting}

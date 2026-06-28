@@ -59,6 +59,7 @@ export type RuntimeTask = {
   aUnlockedForBAt: string | null;
   bViewedAInfoAt: string | null;
   bViewedAMaterialsAt: string | null;
+  bCanSubmitAt: string | null;
   bCompletedAt: string | null;
   aAiLevelAtWindow: 'BASIC' | 'ADVANCED' | null;
   bPreAAiLevel: 'BASIC' | 'ADVANCED' | null;

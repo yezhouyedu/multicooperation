@@ -38,7 +38,7 @@
 - `aCompanyRemainingSeconds`
 - `aInfoUnlockedAt`
 - `bOpenedAInfoAt`
-- `bCanSubmitAt`
+- `bCanSubmitAt`：B 被分配当前公司后满 5 分钟的开放时刻；B 查看 A 信息、解锁 A 原始材料和提交都以此作为门槛之一
 - `aSubmittedAt`
 - `bCompletedAt`
 - `taskFrozenAt`
@@ -135,6 +135,6 @@
 ## 6. 当前明确约束
 - 角色来源不是 admin 上传字段，也不是“先来固定 A、后来固定 B”；而是先按进入顺序成组，再在组内随机分配
 - 公司顺序按 session 固定随机、无放回
-- B 是否“看过 A 信息”仅作为行为记录口径，不再作为提交门槛
+- B 是否“看过 A 信息”仅作为行为记录口径，不再作为提交门槛；真正提交门槛是 A 已提交且 B 当前公司的 `bCanSubmitAt <= now`
 - 副线已完成累计只在当前工作段内有效
 - 本轮不为截图功能设计变量口径

@@ -116,8 +116,10 @@
 - 5 分钟内不能提前提交
 - 到点后系统自动提交
 - 自动提交时解锁给 B
-- B 可在解锁前先看自己的材料、写草稿、用 AI
-- B 解锁后可直接提交
+- B 可在开放前先看自己的材料、写草稿、用 AI
+- B 每次被分配公司时写入 `bCanSubmitAt = assignedAt + 5min`
+- `view-a-info`、`view-a-materials`、`b-complete` 必须同时校验 A 已提交和 `bCanSubmitAt <= now`；locked pool / PreA 只决定分配哪家公司，不决定是否立刻开放
+- B 开放后可直接提交
 - 是否点击过“查看 A 信息”不再作为提交门槛，但仍要记录行为
 - A 提交后，B 可分别解锁 A 任务表和 A 原始材料；二者是独立变量。
 - 点击任意 A 原始材料解锁入口会一次性解锁全部 A 原始材料，并记录 `bViewedAMaterialsAt`。

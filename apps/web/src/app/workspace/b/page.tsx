@@ -59,6 +59,13 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
   };
 }
 
+function formatRemainingTime(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds} 秒`;
+  return `${minutes} 分 ${String(seconds).padStart(2, '0')} 秒`;
+}
+
 const metricLabels: { key: keyof NormalizedADraft['metrics']; label: string }[] = [
   { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
   { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
@@ -90,6 +97,7 @@ export default function WorkspaceBPage() {
   );
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'main');
   const [activeSidebarKey, setActiveSidebarKey] = useState<string | undefined>(undefined);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const redirectPath =
     !loading && !bootstrap
@@ -117,6 +125,11 @@ export default function WorkspaceBPage() {
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath);
   }, [redirectPath, router]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const materials = runtime?.currentTask?.company?.materials ?? [];
@@ -210,6 +223,15 @@ export default function WorkspaceBPage() {
     [aMaterials, runtime?.bHasViewedAMaterials],
   );
   const isPractice = runtime?.phase === 'practice';
+  const bReadyAtMs = runtime?.currentTask?.bCanSubmitAt ? new Date(runtime.currentTask.bCanSubmitAt).getTime() : null;
+  const bRemainingSeconds = bReadyAtMs ? Math.max(0, Math.ceil((bReadyAtMs - nowMs) / 1000)) : 0;
+  const aHasSubmitted = Boolean(runtime?.currentTask?.aUnlockedForBAt);
+  const bReviewGateMessage =
+    aHasSubmitted && bRemainingSeconds > 0
+      ? `A信息已生成；当前公司还需处理 ${formatRemainingTime(bRemainingSeconds)} 后可查看A信息、A原始材料并提交。`
+      : aHasSubmitted
+        ? '当前公司需处理满 5 分钟后可查看A信息、A原始材料并提交。'
+        : 'A信息尚未生成。你可以先阅读自己的材料、填写判断并使用 AI。';
   const aiBadge = runtime ? (
     <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
       {runtime.aiLevel === 'ADVANCED' ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro' : runtime.aiDisplayNames?.basic ?? 'aiseek'}
@@ -224,8 +246,8 @@ export default function WorkspaceBPage() {
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息尚未解锁</div>
-      <div>你可以先阅读自己的材料、填写投资判断并使用 AI。A信息解锁后，这里会显示对应内容。</div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息暂不可查看</div>
+      <div>{bReviewGateMessage}</div>
     </div>
   ) : !runtime.bHasViewedAInfo ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
@@ -340,7 +362,7 @@ export default function WorkspaceBPage() {
                   lockedMaterialMessage={
                     runtime.aInfoUnlocked
                       ? '点击任意一个 A 原始材料的解锁按钮后，本公司的全部 A 原始材料都会解锁并记录首次查看时间。'
-                      : 'A 提交并到达 5 分钟窗口后，A 原始材料才可解锁。'
+                      : bReviewGateMessage
                   }
                   onUnlockMaterialGroup={runtime.aInfoUnlocked ? () => void openAMaterials() : undefined}
                   activeItemKey={activeSidebarKey}
@@ -365,18 +387,18 @@ export default function WorkspaceBPage() {
                           {runtime.aiUpgradeNotice.message}
                         </span>
                       ) : null}
-                      <span>A信息解锁后即可提交。你可以先阅读材料并填写投资判断。</span>
+                      <span>{runtime.bCanSubmit ? '当前公司已满 5 分钟，可以查看A信息并提交。' : bReviewGateMessage}</span>
                       {runtime.aInfoUnlocked ? (
                         <span>A信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
                       ) : (
-                        <span>A信息状态：等待解锁</span>
+                        <span>A信息状态：暂不可查看</span>
                       )}
                     </div>
                     <button
                       type="button"
                       onClick={() => router.push('/workspace/b-feedback')}
                       disabled={!runtime.bCanSubmit}
-                      title={!runtime.aInfoUnlocked ? '等待A信息解锁后才能提交' : undefined}
+                      title={!runtime.bCanSubmit ? bReviewGateMessage : undefined}
                       className="shrink-0 rounded-md bg-[#28a745] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       提交并填写反馈

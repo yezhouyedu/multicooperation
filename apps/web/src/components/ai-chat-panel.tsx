@@ -95,7 +95,7 @@ function ThinkingIndicator({ active }: { active: boolean }) {
 
 function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
   return (
-    <div className={`max-w-none break-words text-sm ${isUser ? 'text-white' : 'text-[#334155]'}`}>
+    <div className={`max-w-none select-text break-words text-sm ${isUser ? 'text-white' : 'text-[#334155]'}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -225,8 +225,9 @@ export function AiChatPanel({
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [copiedMessage, setCopiedMessage] = useState<{ id: string; kind: 'selection' | 'message' } | null>(null);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [slowStreamingMessageId, setSlowStreamingMessageId] = useState<string | null>(null);
   const [lastSubmittedText, setLastSubmittedText] = useState('');
   const [lastSubmittedAttachments, setLastSubmittedAttachments] = useState<string[]>([]);
   const [followUpTarget, setFollowUpTarget] = useState<FollowUpTarget | null>(null);
@@ -257,6 +258,16 @@ export function AiChatPanel({
     if (!messageList) return;
     messageList.scrollTop = messageList.scrollHeight;
   }, [messages, sending, streamingMessageId]);
+
+  useEffect(() => {
+    if (!streamingMessageId) {
+      setSlowStreamingMessageId(null);
+      return;
+    }
+    setSlowStreamingMessageId(null);
+    const timer = window.setTimeout(() => setSlowStreamingMessageId(streamingMessageId), 10000);
+    return () => window.clearTimeout(timer);
+  }, [streamingMessageId]);
 
   useEffect(() => {
     async function loadHistory() {
@@ -411,14 +422,14 @@ export function AiChatPanel({
         }),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'AI 请求失败';
-      setError(message);
+      const message = err instanceof Error && err.message ? err.message : 'AI 请求失败';
+      setError(`AI 生成失败，请稍后重试或点击重新生成。${message ? `（${message}）` : ''}`);
       setMessages((prev) =>
         prev.map((item) =>
           item.id === assistantMessageId
             ? {
                 ...item,
-                text: '## 请求失败\n- 本次回复未成功生成\n- 可以点击“重新生成”或“重试”再试一次',
+                text: '## AI生成失败\n- 本次回复未成功生成\n- 可以点击“重新生成”或下方“重试”再试一次',
               }
             : item,
         ),
@@ -457,10 +468,26 @@ export function AiChatPanel({
     void handleFiles(imageFiles);
   }
 
+  function getSelectedTextInMessage(messageId: string) {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim();
+    if (!selection || !selectedText || selection.rangeCount === 0) return '';
+    const container = document.querySelector(`[data-ai-message-id="${messageId}"]`);
+    if (!container) return '';
+    const range = selection.getRangeAt(0);
+    return container.contains(range.commonAncestorContainer) || range.intersectsNode(container) ? selectedText : '';
+  }
+
   async function copyMessage(text: string, messageId: string) {
-    await navigator.clipboard.writeText(text);
-    setCopiedMessageId(messageId);
-    window.setTimeout(() => setCopiedMessageId((current) => (current === messageId ? null : current)), 1200);
+    const selectedText = getSelectedTextInMessage(messageId);
+    const copyText = selectedText || text;
+    const kind = selectedText ? 'selection' : 'message';
+    await navigator.clipboard.writeText(copyText);
+    setCopiedMessage({ id: messageId, kind });
+    window.setTimeout(
+      () => setCopiedMessage((current) => (current?.id === messageId && current.kind === kind ? null : current)),
+      1200,
+    );
   }
 
   function startFollowUp(message: Message) {
@@ -492,6 +519,7 @@ export function AiChatPanel({
           {messages.map((message, index) => {
             const previousUser = message.role === 'assistant' ? messages[index - 1] : null;
             const isStreaming = streamingMessageId === message.id;
+            const showSlowNotice = slowStreamingMessageId === message.id;
             const showThinking = isStreaming && !message.text;
             return (
               <div
@@ -508,10 +536,11 @@ export function AiChatPanel({
                   {message.role === 'user' ? '我' : 'AI'}
                 </div>
                 <div
+                  data-ai-message-id={message.id}
                   className={`max-w-[85%] rounded-3xl p-4 text-sm leading-relaxed shadow-sm ${
                     message.role === 'user'
                       ? `${accentClass.bubble} rounded-tr-md border text-white`
-                      : 'rounded-tl-md border border-[#e5e6eb] bg-white/96 text-gray-700 backdrop-blur-sm'
+                      : 'select-text rounded-tl-md border border-[#e5e6eb] bg-white/96 text-gray-700 backdrop-blur-sm'
                   }`}
                 >
                   {message.attachments?.length ? (
@@ -538,6 +567,11 @@ export function AiChatPanel({
 
                   {showThinking ? <ThinkingIndicator active /> : null}
                   {message.text ? <MarkdownMessage text={message.text} isUser={message.role === 'user'} /> : null}
+                  {showSlowNotice ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                      AI 正在生成，可能需要较长时间，请先继续阅读材料或填写任务表。
+                    </div>
+                  ) : null}
 
                   {message.role === 'assistant' ? (
                     <MessageActions
@@ -550,8 +584,10 @@ export function AiChatPanel({
                     />
                   ) : null}
 
-                  {copiedMessageId === message.id ? (
-                    <div className="mt-2 text-xs text-[#1e80ff]">已复制</div>
+                  {copiedMessage?.id === message.id ? (
+                    <div className="mt-2 text-xs text-[#1e80ff]">
+                      {copiedMessage.kind === 'selection' ? '已复制选中内容' : '已复制本条回复'}
+                    </div>
                   ) : null}
                 </div>
               </div>
