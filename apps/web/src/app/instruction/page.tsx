@@ -260,21 +260,7 @@ export default function InstructionPage() {
   async function handleStart() {
     if (!participantId || !sessionCode) return;
     setStarting(true);
-    try {
-      const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/ready-practice`, {
-        method: 'POST',
-        headers: idempotencyHeaders(`ready-practice:${sessionCode}:${participantId}`, {
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({ participantId }),
-      });
-      if (!response.ok) {
-        throw new Error('failed to mark practice readiness');
-      }
-      router.push('/ready?target=practice');
-    } finally {
-      setStarting(false);
-    }
+    router.push('/instruction/task-preview');
   }
 
   const activeModeText = runtime?.instructionBlocks?.activeModeText ?? '';
@@ -311,7 +297,7 @@ export default function InstructionPage() {
                 <div>
                   <h1 className="text-[22px] font-semibold text-[#1d2129]">开始前，请先阅读以下提示</h1>
                   <p className="mt-2 text-[14px] leading-6 text-[#86909c]">
-                    下面内容会帮助你了解实验流程、计分方式和当前任务。阅读完成后进入测试题。
+                    下面内容会帮助你了解实验流程、计分方式和当前任务。阅读完成后进入任务表阅读页。
                   </p>
                 </div>
                 {role ? (
@@ -370,7 +356,7 @@ export default function InstructionPage() {
                 disabled={starting || !role || !sessionCode || !participantId}
                 className="h-10 rounded-lg bg-[#1e80ff] px-8 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
               >
-                {starting ? '正在进入测试题...' : '我已阅读，开始测试题'}
+                {starting ? '正在进入下一步...' : '我已阅读，进行下一步'}
               </button>
             </footer>
           </div>
