@@ -12,6 +12,13 @@ function formatSeconds(seconds: number) {
   return `${safe} 秒`;
 }
 
+function workSegmentLabel(segment?: number | null) {
+  if (segment === 1) return '即将进入第一个工作段';
+  if (segment === 2) return '即将进入第二个工作段';
+  if (segment === 3) return '即将进入第三个工作段';
+  return '即将进入工作段';
+}
+
 export default function PreSegmentInstructionPage() {
   const router = useRouter();
   const { bootstrap, runtime, loading, refresh } = useSessionRuntime();
@@ -114,7 +121,7 @@ export default function PreSegmentInstructionPage() {
 
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <section className="w-full max-w-3xl rounded-xl border border-[#eaecf0] bg-white p-8" style={{ boxShadow: 'var(--shadow-elevated)' }}>
-          <div className="mb-2 text-sm font-medium text-[#86909c]">正式任务第 {instruction?.workSegment ?? '-'} 段前</div>
+          <div className="mb-2 text-sm font-medium text-[#86909c]">{workSegmentLabel(instruction?.workSegment)}</div>
           <h1 className="text-2xl font-semibold text-[#1d2129]">阅读材料</h1>
 
           <div className="mt-6 rounded-lg border border-[#e5e6eb] bg-[#f7f8fa] p-5 text-[16px] leading-8 text-[#1d2129]">

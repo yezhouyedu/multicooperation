@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
 type NormalizedADraft = {
-  metrics: Record<string, string>;
+  metricRows: { label: string; value: string }[];
   materialClues: {
     materialName: string;
     opportunityStatus: '' | 'HAS' | 'NONE';
@@ -31,6 +31,17 @@ type NormalizedADraft = {
 function normalizeADraft(payload: unknown): NormalizedADraft {
   const data = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
   const metrics = (data.metrics && typeof data.metrics === 'object' ? data.metrics : {}) as Record<string, string>;
+  const metricRows =
+    metrics.indicator || metrics.content
+      ? [{ label: metrics.indicator || '未填写指标', value: metrics.content || '' }]
+      : metricLabels.map((metric) => ({
+          label: metric.label,
+          value:
+            metrics[metric.key] ??
+            (metric.key === 'totalAssetsOrYear' ? metrics.latestTotalAssets : undefined) ??
+            (metric.key === 'revenueOrSampleCount' ? metrics.latestRevenue : undefined) ??
+            '',
+        }));
   const materialClues = Array.isArray(data.materialClues)
     ? data.materialClues.map((item) => {
         const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
@@ -45,14 +56,7 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
     : [];
 
   return {
-    metrics: {
-      totalAssetsOrYear: metrics.totalAssetsOrYear ?? metrics.latestTotalAssets ?? '',
-      revenueOrSampleCount: metrics.revenueOrSampleCount ?? metrics.latestRevenue ?? '',
-      subsidiaryOrPolicyCount: metrics.subsidiaryOrPolicyCount ?? '',
-      foundingYearOrApplicationCount: metrics.foundingYearOrApplicationCount ?? '',
-      employeesOrCoverageCount: metrics.employeesOrCoverageCount ?? '',
-      shareCapitalOrPeerSampleCount: metrics.shareCapitalOrPeerSampleCount ?? '',
-    },
+    metricRows,
     materialClues,
     noteTypes: Array.isArray(data.noteTypes) ? data.noteTypes.map(String) : [],
     handoffMemo: String(data.handoffMemo ?? ''),
@@ -66,7 +70,7 @@ function formatRemainingTime(totalSeconds: number) {
   return `${minutes} 分 ${String(seconds).padStart(2, '0')} 秒`;
 }
 
-const metricLabels: { key: keyof NormalizedADraft['metrics']; label: string }[] = [
+const metricLabels = [
   { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
   { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
   { key: 'subsidiaryOrPolicyCount', label: '子公司数量 / 政策文件数量' },
@@ -272,10 +276,10 @@ export default function WorkspaceBPage() {
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
         <div className="mb-2 font-medium text-[#1d2129]">基础数值摘录</div>
         <div className="grid gap-x-4 gap-y-1 md:grid-cols-2">
-          {metricLabels.map((metric) => (
-            <div key={metric.key}>
+          {diligenceDraft.metricRows.map((metric) => (
+            <div key={metric.label}>
               <span className="text-[#86909c]">{metric.label}：</span>
-              <span>{diligenceDraft.metrics[metric.key] || '未填写'}</span>
+              <span>{metric.value || '未填写'}</span>
             </div>
           ))}
         </div>

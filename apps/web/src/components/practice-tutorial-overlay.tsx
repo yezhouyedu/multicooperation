@@ -38,7 +38,7 @@ function buildSteps(role: 'A' | 'B'): Step[] {
       detail:
         role === 'A'
           ? '右侧是任务表，请在这里整理并填写你对公司的分析。'
-          : '右侧是投资判断表，请在这里填写你的投资决策。',
+          : '右侧是任务表，请在这里整理并填写你对公司的分析。',
       eventType: 'task_acknowledge',
       anchor: 'task-panel',
       requireAction: false,

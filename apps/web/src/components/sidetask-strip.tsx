@@ -177,30 +177,38 @@ export function SideTaskStrip({
     el.style.left = '100%';
   }, [pendingCount]);
 
-  // Play one ticker pass for each server-side notification pulse.
+  // Record server-side notification pulses, but do not depend on them for the ticker animation.
   useEffect(() => {
     const pulse = sideTaskConfig.notificationPulse;
     if (!pulse || handledPulseIdsRef.current.has(pulse.id)) return;
     handledPulseIdsRef.current.add(pulse.id);
 
-    if (expanded || pendingCount === 0) {
-      const el = tickerRef.current;
-      if (el) el.style.display = 'none';
-      void reportNotified(pulse.planIds, pulse, false);
-      return;
-    }
+    void reportNotified(pulse.planIds, pulse, !expanded && realPendingCount > 0);
+  }, [expanded, realPendingCount, reportNotified, sideTaskConfig.notificationPulse]);
 
+  // Keep the visible ticker moving whenever there are real pending tasks.
+  useEffect(() => {
     const el = tickerRef.current;
     if (!el) return;
 
     cancelAnimationFrame(rafRef.current);
-    activeRef.current = true;
-    void reportNotified(pulse.planIds, pulse, true);
+    if (expanded || realPendingCount === 0) {
+      activeRef.current = false;
+      el.style.display = 'none';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-50%)';
+      el.style.left = '100%';
+      return;
+    }
 
-    const SCROLL = sideTaskConfig.scrollDurationSec * 1000;
+    cancelAnimationFrame(rafRef.current);
+    activeRef.current = true;
+
+    const SCROLL = Math.max(1, sideTaskConfig.scrollDurationSec) * 1000;
     const HOLD = sideTaskConfig.holdSec * 1000;
     const FADE = sideTaskConfig.fadeSec * 1000;
-    const TOTAL = SCROLL + HOLD + FADE;
+    const PAUSE = Math.max(1, sideTaskConfig.pauseSec) * 1000;
+    const TOTAL = SCROLL + HOLD + FADE + PAUSE;
 
     el.style.display = '';
     el.style.position = 'absolute';
@@ -214,23 +222,22 @@ export function SideTaskStrip({
 
     function tick(now: number) {
       if (!activeRef.current) return;
-      const e = now - t0;
+      const e = (now - t0) % TOTAL;
 
       if (e < SCROLL) {
-        el!.style.left = `${100 * (1 - e / SCROLL)}%`;
+        el!.style.left = `${100 - 200 * (e / SCROLL)}%`;
         el!.style.opacity = '1';
         rafRef.current = requestAnimationFrame(tick);
       } else if (e < SCROLL + HOLD) {
-        el!.style.left = '0%';
+        el!.style.left = '-100%';
         el!.style.opacity = '1';
         rafRef.current = requestAnimationFrame(tick);
       } else if (e < TOTAL) {
-        el!.style.left = '0%';
-        el!.style.opacity = String(1 - (e - SCROLL - HOLD) / FADE);
+        el!.style.left = '-100%';
+        el!.style.opacity = e < SCROLL + HOLD + FADE
+          ? String(1 - (e - SCROLL - HOLD) / Math.max(1, FADE))
+          : '0';
         rafRef.current = requestAnimationFrame(tick);
-      } else {
-        el!.style.display = 'none';
-        activeRef.current = false;
       }
     }
 
@@ -242,11 +249,10 @@ export function SideTaskStrip({
     };
   }, [
     expanded,
-    pendingCount,
-    reportNotified,
+    realPendingCount,
     sideTaskConfig.fadeSec,
     sideTaskConfig.holdSec,
-    sideTaskConfig.notificationPulse,
+    sideTaskConfig.pauseSec,
     sideTaskConfig.scrollDurationSec,
   ]);
 

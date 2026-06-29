@@ -7,14 +7,6 @@ import { recordTimestampEvent } from '@/lib/timestamp-events';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type MetricKey =
-  | 'totalAssetsOrYear'
-  | 'revenueOrSampleCount'
-  | 'subsidiaryOrPolicyCount'
-  | 'foundingYearOrApplicationCount'
-  | 'employeesOrCoverageCount'
-  | 'shareCapitalOrPeerSampleCount';
-
 type MaterialClueRow = {
   materialName: string;
   opportunityStatus: '' | 'HAS' | 'NONE';
@@ -24,7 +16,7 @@ type MaterialClueRow = {
 };
 
 type AEditorData = {
-  metrics?: Partial<Record<MetricKey, string>>;
+  metrics?: Record<string, string | undefined>;
   materialClues?: MaterialClueRow[];
   noteTypes?: string[];
   handoffMemo?: string;
@@ -43,15 +35,6 @@ type Props = {
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 const MAX_EVIDENCE_LENGTH = 30;
-
-const metricDefinitions: { key: MetricKey; label: string }[] = [
-  { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
-  { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
-  { key: 'subsidiaryOrPolicyCount', label: '子公司数量 / 政策文件数量' },
-  { key: 'foundingYearOrApplicationCount', label: '成立年份 / 下游应用类别数量' },
-  { key: 'employeesOrCoverageCount', label: '员工人数 / 覆盖区域数量' },
-  { key: 'shareCapitalOrPeerSampleCount', label: '总股本数 / 可比公司样本数量' },
-];
 
 const noteTypeOptions = ['跨材料关联提示', '可信度说明', '核验建议', '模糊线索/需谨慎判断', '留空'] as const;
 
@@ -72,19 +55,15 @@ function buildDefaultRows(company?: CompanyData | null): MaterialClueRow[] {
 
 function normalizeData(value: unknown, company?: CompanyData | null) {
   const data = (value && typeof value === 'object' ? value : {}) as AEditorData;
-  const metrics = (data.metrics && typeof data.metrics === 'object' ? data.metrics : {}) as Record<string, string | undefined>;
+  const metrics = data.metrics && typeof data.metrics === 'object' ? data.metrics : {};
   const defaultRows = buildDefaultRows(company);
   const sourceRows = Array.isArray(data.materialClues) ? data.materialClues : [];
 
   return {
     metrics: {
-      totalAssetsOrYear: metrics.totalAssetsOrYear ?? metrics.latestTotalAssets ?? '',
-      revenueOrSampleCount: metrics.revenueOrSampleCount ?? metrics.latestRevenue ?? '',
-      subsidiaryOrPolicyCount: metrics.subsidiaryOrPolicyCount ?? '',
-      foundingYearOrApplicationCount: metrics.foundingYearOrApplicationCount ?? '',
-      employeesOrCoverageCount: metrics.employeesOrCoverageCount ?? '',
-      shareCapitalOrPeerSampleCount: metrics.shareCapitalOrPeerSampleCount ?? '',
-    } satisfies Record<MetricKey, string>,
+      indicator: metrics.indicator ?? metrics.starIndicator ?? '',
+      content: metrics.content ?? metrics.starContent ?? '',
+    },
     materialClues: defaultRows.map((row, index) => ({
       materialName: sourceRows[index]?.materialName || row.materialName,
       opportunityStatus: sourceRows[index]?.opportunityStatus ?? '',
@@ -250,7 +229,7 @@ export function ATaskEditor({
     return () => window.clearTimeout(timer);
   }, [disabled, form, isDirty, sessionCode, taskId]);
 
-  function updateMetric(key: MetricKey, value: string) {
+  function updateMetric(key: 'indicator' | 'content', value: string) {
     setForm((prev) => ({ ...prev, metrics: { ...prev.metrics, [key]: value } }));
     touch();
   }
@@ -321,7 +300,7 @@ export function ATaskEditor({
             <div>
               <h3 className="text-[16px] font-bold">二、A.1 基础数值摘录区</h3>
               <p className="mt-1 text-[13px] leading-6 text-[#4e5969]">
-                请填写材料2中的基础数值和数值单位，如【指标：人数|内容：5人】。无需自行计算复杂指标，不要做正常/异常判断。
+                材料2中有若干指标，请填写标记*号的指标及其内容，如【指标：人数|内容：5人】。无需自行计算复杂指标，不要做正常/异常判断。
               </p>
             </div>
             <DocTable>
@@ -330,20 +309,26 @@ export function ATaskEditor({
                   <Th className="w-[280px]">指标</Th>
                   <Th>内容</Th>
                 </tr>
-                {metricDefinitions.map((metric) => (
-                  <tr key={metric.key}>
-                    <Td>{metric.label}</Td>
-                    <Td>
-                      <input
-                        value={form.metrics[metric.key]}
-                        onChange={(event) => updateMetric(metric.key, event.target.value)}
-                        disabled={disabled}
-                        placeholder="如无则填写“材料未包含”"
-                        className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#b0b7c3] disabled:opacity-60"
-                      />
-                    </Td>
-                  </tr>
-                ))}
+                <tr>
+                  <Td>
+                    <input
+                      value={form.metrics.indicator}
+                      onChange={(event) => updateMetric('indicator', event.target.value)}
+                      disabled={disabled}
+                      placeholder="例：总资产"
+                      className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#4e5969] disabled:opacity-60"
+                    />
+                  </Td>
+                  <Td>
+                    <input
+                      value={form.metrics.content}
+                      onChange={(event) => updateMetric('content', event.target.value)}
+                      disabled={disabled}
+                      placeholder="例：2亿元"
+                      className="w-full border-none bg-transparent px-0 py-0 text-[13px] outline-none focus:bg-[#fafbff] placeholder:text-[#4e5969] disabled:opacity-60"
+                    />
+                  </Td>
+                </tr>
               </tbody>
             </DocTable>
           </section>
