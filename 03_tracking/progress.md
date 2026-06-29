@@ -2313,3 +2313,11 @@
 
 **材料库检查**：
 - 本地新版材料库结构校验通过：正式 `P01-P36` 共 36 家，测试轮 `P37` 共 1 家；每家公司仍为 A 5 份、B 5 份、shared 1 份、research 至少 1 份，未发现顶层异常目录或缺失文件。
+
+**本地与线上验收**：
+- 本地构建通过：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
+- GitHub：提交并推送 `cfbee6b 更新A表v5与任务2滚动` 到 `main`。
+- 线上代码部署：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署 commit `cfbee6b`；生产 `postgres/server/web/nginx` 容器运行正常，`server` 与 `nginx` 为 healthy。
+- 线上材料同步：将本地 `00_start_materials/原始材料/正式` 与 `测试轮` 上传到 `/opt/multi-cooperation/00_start_materials/原始材料`；导入前备份 PostgreSQL dump、`multi-cooperation_server_storage` volume 和旧源材料目录到 `/opt/multi-cooperation/backups/material-update-20260629-145631`。
+- 线上材料导入：admin library overview 导入前后均为 total 37、formal 36、practice 1、practiceCode `P37`、结构异常 0；admin import 成功，`totalImported=37`，最后一项为 `company-library-practice-p37`。
+- HTTPS smoke：`https://aiseek.tech/api/health`、`/admin`、`/instruction`、`/pre-segment-instruction`、`/practice`、`/workspace/a`、`/workspace/b` 均返回 200。
