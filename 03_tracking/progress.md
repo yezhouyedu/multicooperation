@@ -2321,3 +2321,15 @@
 - 线上材料同步：将本地 `00_start_materials/原始材料/正式` 与 `测试轮` 上传到 `/opt/multi-cooperation/00_start_materials/原始材料`；导入前备份 PostgreSQL dump、`multi-cooperation_server_storage` volume 和旧源材料目录到 `/opt/multi-cooperation/backups/material-update-20260629-145631`。
 - 线上材料导入：admin library overview 导入前后均为 total 37、formal 36、practice 1、practiceCode `P37`、结构异常 0；admin import 成功，`totalImported=37`，最后一项为 `company-library-practice-p37`。
 - HTTPS smoke：`https://aiseek.tech/api/health`、`/admin`、`/instruction`、`/pre-segment-instruction`、`/practice`、`/workspace/a`、`/workspace/b` 均返回 200。
+
+### 2026-06-29 任务2提醒频率操纵修正
+
+**背景**：复查任务2滚动修复时发现，上一版前端“只要有未处理任务2就循环滚动”的兜底逻辑会弱化实验 2 的 continuous / batch 提醒频率操纵，需要回到既定口径。
+
+**修正**：
+- continuous：后台按既定节奏释放题目；每出现未提醒过的新任务2时生成 `continuous_arrival` pulse，前端收到 pulse 后滚动一次。
+- batch：后台按同样节奏释放题目；每到 admin 配置的 batch 窗口时检查当前未作答任务2数量，若大于 0 则生成 `batch_window` pulse，前端收到 pulse 后滚动一次。
+- 前端滚动条不再因为 `pendingCount > 0` 无限循环；`notificationPulse` 是唯一视觉提醒触发源。面板展开时仍记录通知 exposure，但提醒不可见，符合“正在任务2区处理时提醒看不见也无妨”的口径。
+
+**验证**：
+- 本地构建通过：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。

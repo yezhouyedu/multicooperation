@@ -177,38 +177,28 @@ export function SideTaskStrip({
     el.style.left = '100%';
   }, [pendingCount]);
 
-  // Record server-side notification pulses, but do not depend on them for the ticker animation.
-  useEffect(() => {
-    const pulse = sideTaskConfig.notificationPulse;
-    if (!pulse || handledPulseIdsRef.current.has(pulse.id)) return;
-    handledPulseIdsRef.current.add(pulse.id);
-
-    void reportNotified(pulse.planIds, pulse, !expanded && realPendingCount > 0);
-  }, [expanded, realPendingCount, reportNotified, sideTaskConfig.notificationPulse]);
-
-  // Keep the visible ticker moving whenever there are real pending tasks.
-  useEffect(() => {
+  const hideTicker = useCallback(() => {
+    activeRef.current = false;
+    cancelAnimationFrame(rafRef.current);
     const el = tickerRef.current;
     if (!el) return;
+    el.style.display = 'none';
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-50%)';
+    el.style.left = '100%';
+  }, []);
 
-    cancelAnimationFrame(rafRef.current);
-    if (expanded || realPendingCount === 0) {
-      activeRef.current = false;
-      el.style.display = 'none';
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(-50%)';
-      el.style.left = '100%';
-      return;
-    }
+  const playTickerOnce = useCallback(() => {
+    const el = tickerRef.current;
+    if (!el) return;
 
     cancelAnimationFrame(rafRef.current);
     activeRef.current = true;
 
     const SCROLL = Math.max(1, sideTaskConfig.scrollDurationSec) * 1000;
-    const HOLD = sideTaskConfig.holdSec * 1000;
-    const FADE = sideTaskConfig.fadeSec * 1000;
-    const PAUSE = Math.max(1, sideTaskConfig.pauseSec) * 1000;
-    const TOTAL = SCROLL + HOLD + FADE + PAUSE;
+    const HOLD = Math.max(0, sideTaskConfig.holdSec) * 1000;
+    const FADE = Math.max(0, sideTaskConfig.fadeSec) * 1000;
+    const TOTAL = SCROLL + HOLD + FADE;
 
     el.style.display = '';
     el.style.position = 'absolute';
@@ -222,7 +212,7 @@ export function SideTaskStrip({
 
     function tick(now: number) {
       if (!activeRef.current) return;
-      const e = (now - t0) % TOTAL;
+      const e = now - t0;
 
       if (e < SCROLL) {
         el!.style.left = `${100 - 200 * (e / SCROLL)}%`;
@@ -234,27 +224,43 @@ export function SideTaskStrip({
         rafRef.current = requestAnimationFrame(tick);
       } else if (e < TOTAL) {
         el!.style.left = '-100%';
-        el!.style.opacity = e < SCROLL + HOLD + FADE
-          ? String(1 - (e - SCROLL - HOLD) / Math.max(1, FADE))
-          : '0';
+        el!.style.opacity = String(1 - (e - SCROLL - HOLD) / Math.max(1, FADE));
         rafRef.current = requestAnimationFrame(tick);
+      } else {
+        hideTicker();
       }
     }
 
     rafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      activeRef.current = false;
-      cancelAnimationFrame(rafRef.current);
-    };
   }, [
-    expanded,
-    realPendingCount,
+    hideTicker,
     sideTaskConfig.fadeSec,
     sideTaskConfig.holdSec,
-    sideTaskConfig.pauseSec,
     sideTaskConfig.scrollDurationSec,
   ]);
+
+  // Server notificationPulse is the visual reminder trigger:
+  // continuous = one pulse when new items arrive; batch = one pulse at the configured batch window.
+  useEffect(() => {
+    const pulse = sideTaskConfig.notificationPulse;
+    if (!pulse || handledPulseIdsRef.current.has(pulse.id)) return;
+    handledPulseIdsRef.current.add(pulse.id);
+
+    void reportNotified(pulse.planIds, pulse, !expanded && realPendingCount > 0);
+
+    if (!expanded && realPendingCount > 0) {
+      playTickerOnce();
+    } else {
+      hideTicker();
+    }
+  }, [expanded, hideTicker, playTickerOnce, realPendingCount, reportNotified, sideTaskConfig.notificationPulse]);
+
+  useEffect(() => {
+    if (!expanded && realPendingCount > 0) {
+      return;
+    }
+    hideTicker();
+  }, [expanded, hideTicker, realPendingCount]);
 
   // Auto-select first unanswered when opening
   useEffect(() => {

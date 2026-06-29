@@ -3018,9 +3018,9 @@ export class ExperimentService {
       const notified = plan.exposureLogs.some((log) => log.eventType === 'side_task_notified');
       return !answered && !notified;
     });
-    if (pendingUnnotified.length === 0) return null;
 
     if (input.dispatchMode !== 'batch' || input.segmentIndex === 0) {
+      if (pendingUnnotified.length === 0) return null;
       const newest = pendingUnnotified[pendingUnnotified.length - 1];
       return {
         id: `continuous:${input.segmentIndex}:${newest.id}`,
@@ -3040,16 +3040,17 @@ export class ExperimentService {
 
     const windowEnd = new Date(segmentStarts.getTime() + currentWindow * triggerSec * 1000);
     const windowStart = new Date(windowEnd.getTime() - triggerSec * 1000);
-    const windowPlans = pendingUnnotified.filter(
-      (plan) => plan.scheduledAt && plan.scheduledAt <= windowEnd,
-    );
-    if (windowPlans.length === 0) return null;
+    const pendingInWindow = input.plans.filter((plan) => {
+      const answered = plan.exposureLogs.some((log) => log.eventType === 'side_task_answered');
+      return !answered && plan.scheduledAt && plan.scheduledAt <= windowEnd;
+    });
+    if (pendingInWindow.length === 0) return null;
 
     return {
       id: `batch:${input.segmentIndex}:${windowEnd.toISOString()}`,
       reason: 'batch_window',
-      planIds: windowPlans.map((plan) => plan.id),
-      newCount: windowPlans.length,
+      planIds: pendingInWindow.map((plan) => plan.id),
+      newCount: pendingInWindow.length,
       windowStart: windowStart.toISOString(),
       windowEnd: windowEnd.toISOString(),
     };
