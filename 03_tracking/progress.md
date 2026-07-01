@@ -2410,6 +2410,20 @@
 - 本轮是纯前端展示与交互改造，不改 AI 请求、不改时间戳事件、不改变量保存、不改导出结构。
 - 本地验证：`corepack pnpm --filter web build` 通过。
 
+### 2026-07-01 AI 回复阅读流复制体验二次改造
+
+**背景**：用户线上复测后反馈上一版 AI 区复制仍无明显改善，拖选多行文本时仍会出现断行、错行和选区不稳定。进一步判断问题不只是复制按钮逻辑，而是助手回复仍处在气泡式 flex 布局和自动滚动容器中；同时工作台支持拖拽改变 AI 区宽高，回复正文必须能随容器自然重排。
+
+**实现**：
+- 助手回复从气泡式卡片改为 `w-full min-w-0` 的文本阅读流，用户消息仍保留气泡样式，避免破坏对话区层次。
+- AI 正文继续使用 `ReactMarkdown`，但正文容器改为全宽 `article.ai-message-copy-surface`，工具按钮保留在正文外侧。
+- 文本换行从普通 `break-words` 改为 `overflow-wrap:anywhere`，代码块限制为 `max-w-full overflow-x-auto`，避免 AI 区宽度变窄时撑坏工作台。
+- 新增 `selectionchange` / `pointerup` 选择状态同步：当选区位于 AI 正文中时，不触发消息列表自动滚到底，降低流式输出或布局更新打断选区的概率。
+
+**边界**：
+- 本轮只改 `apps/web/src/components/ai-chat-panel.tsx`，不改 `WorkbenchLayout` 拖拽逻辑，不改 AI 请求、时间戳、变量记录、数据库或导出。
+- 本地验证：`corepack pnpm --filter web build` 通过。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看

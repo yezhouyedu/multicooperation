@@ -96,7 +96,7 @@ function ThinkingIndicator({ active }: { active: boolean }) {
 function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
   return (
     <div
-      className={`max-w-none cursor-text select-text break-words text-sm [user-select:text] ${
+      className={`max-w-none cursor-text select-text text-sm [overflow-wrap:anywhere] [user-select:text] ${
         isUser ? 'text-white' : 'text-[#334155]'
       }`}
     >
@@ -139,7 +139,7 @@ function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
             ),
           pre: ({ children }) => (
             <pre
-              className={`mb-2 overflow-x-auto rounded-2xl px-3 py-3 text-[12px] leading-6 ${
+              className={`mb-2 max-w-full overflow-x-auto rounded-2xl px-3 py-3 text-[12px] leading-6 ${
                 isUser ? 'bg-white/12 text-white' : 'bg-[#0f172a] text-slate-100'
               }`}
             >
@@ -266,13 +266,35 @@ export function AiChatPanel({
   }, [messages, sending, streamingMessageId]);
 
   useEffect(() => {
-    function endSelection() {
-      selectingTextRef.current = false;
+    function selectionIsInAiMessage() {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || !selection.toString()) return false;
+      const anchor = selection.anchorNode;
+      const focus = selection.focusNode;
+      const anchorElement = anchor instanceof Element ? anchor : anchor?.parentElement;
+      const focusElement = focus instanceof Element ? focus : focus?.parentElement;
+      return Boolean(
+        anchorElement?.closest('[data-ai-message-content-id]') ||
+          focusElement?.closest('[data-ai-message-content-id]'),
+      );
     }
+
+    function syncSelectionState() {
+      selectingTextRef.current = selectionIsInAiMessage();
+    }
+
+    function endSelection() {
+      window.setTimeout(syncSelectionState, 0);
+    }
+
+    document.addEventListener('selectionchange', syncSelectionState);
     window.addEventListener('mouseup', endSelection);
+    window.addEventListener('pointerup', endSelection);
     window.addEventListener('blur', endSelection);
     return () => {
+      document.removeEventListener('selectionchange', syncSelectionState);
       window.removeEventListener('mouseup', endSelection);
+      window.removeEventListener('pointerup', endSelection);
       window.removeEventListener('blur', endSelection);
     };
   }, []);
@@ -541,33 +563,36 @@ export function AiChatPanel({
             const isStreaming = streamingMessageId === message.id;
             const showSlowNotice = slowStreamingMessageId === message.id;
             const showThinking = isStreaming && !message.text;
+            const isUserMessage = message.role === 'user';
             return (
-              <div key={message.id} className={`flex items-start gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div key={message.id} className={`flex min-w-0 items-start gap-3 ${isUserMessage ? 'flex-row-reverse' : ''}`}>
                 <div
                   className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs shadow-sm ${
-                    message.role === 'user'
+                    isUserMessage
                       ? 'border border-gray-300 bg-white text-gray-500'
                       : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
                   }`}
                 >
-                  {message.role === 'user' ? '我' : 'AI'}
+                  {isUserMessage ? '我' : 'AI'}
                 </div>
                 <div
                   data-ai-message-id={message.id}
-                  className={`flex max-w-[85%] flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}
+                  className={`flex min-w-0 flex-col ${
+                    isUserMessage ? 'max-w-[85%] items-end' : 'w-full max-w-none items-start'
+                  }`}
                 >
                   <div
-                    className={`w-full rounded-3xl p-4 text-sm leading-relaxed shadow-sm ${
-                    message.role === 'user'
-                      ? `${accentClass.bubble} rounded-tr-md border text-white`
-                      : 'rounded-tl-md border border-[#e5e6eb] bg-white/96 text-gray-700 backdrop-blur-sm'
-                  }`}
+                    className={
+                      isUserMessage
+                        ? `w-full rounded-3xl rounded-tr-md border p-4 text-sm leading-relaxed text-white shadow-sm ${accentClass.bubble}`
+                        : 'w-full min-w-0 px-1 py-1 text-sm leading-relaxed text-gray-700'
+                    }
                   >
                   {message.attachments?.length ? (
                     <div className="mb-3 select-none">
                       <div
                         className={`mb-2 text-xs font-semibold ${
-                          message.role === 'user' ? 'text-white/85' : 'text-[#86909c]'
+                          isUserMessage ? 'text-white/85' : 'text-[#86909c]'
                         }`}
                       >
                         本轮参考图片
@@ -589,15 +614,20 @@ export function AiChatPanel({
                   {message.text ? (
                     <article
                       data-ai-message-content-id={message.id}
-                      className="ai-message-copy-surface cursor-text select-text [user-select:text]"
+                      className={`ai-message-copy-surface block min-w-0 cursor-text select-text [user-select:text] ${
+                        isUserMessage ? '' : 'w-full max-w-none'
+                      }`}
                       onMouseDown={() => {
+                        selectingTextRef.current = true;
+                      }}
+                      onPointerDown={() => {
                         selectingTextRef.current = true;
                       }}
                       onSelect={() => {
                         selectingTextRef.current = true;
                       }}
                     >
-                      <MarkdownMessage text={message.text} isUser={message.role === 'user'} />
+                      <MarkdownMessage text={message.text} isUser={isUserMessage} />
                     </article>
                   ) : null}
                   {showSlowNotice ? (
