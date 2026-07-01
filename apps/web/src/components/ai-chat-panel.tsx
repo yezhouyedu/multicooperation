@@ -180,6 +180,7 @@ function MessageActions({
       {onCopy ? (
         <button
           type="button"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={onCopy}
           className="rounded-full border border-[#d9dee7] bg-white px-3 py-1 text-[#4e5969] hover:bg-[#f7f8fa]"
         >
@@ -189,6 +190,7 @@ function MessageActions({
       {onRetry ? (
         <button
           type="button"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={onRetry}
           className="rounded-full border border-[#d9dee7] bg-white px-3 py-1 text-[#4e5969] hover:bg-[#f7f8fa]"
         >
@@ -198,6 +200,7 @@ function MessageActions({
       {onFollowUp ? (
         <button
           type="button"
+          onMouseDown={(event) => event.preventDefault()}
           onClick={onFollowUp}
           className="rounded-full border border-[#d9dee7] bg-white px-3 py-1 text-[#4e5969] hover:bg-[#f7f8fa]"
         >
@@ -241,6 +244,7 @@ export function AiChatPanel({
   const isDisabled = Boolean(disabledReason);
   const abortRef = useRef<AbortController | null>(null);
   const selectingTextRef = useRef(false);
+  const selectedAiTextRef = useRef<{ messageId: string; text: string } | null>(null);
 
   const accentClass = useMemo(
     () =>
@@ -266,21 +270,27 @@ export function AiChatPanel({
   }, [messages, sending, streamingMessageId]);
 
   useEffect(() => {
-    function selectionIsInAiMessage() {
+    function currentAiSelection() {
       const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0 || !selection.toString()) return false;
+      const text = selection?.toString().trim();
+      if (!selection || selection.rangeCount === 0 || !text) return null;
       const anchor = selection.anchorNode;
       const focus = selection.focusNode;
       const anchorElement = anchor instanceof Element ? anchor : anchor?.parentElement;
       const focusElement = focus instanceof Element ? focus : focus?.parentElement;
-      return Boolean(
-        anchorElement?.closest('[data-ai-message-content-id]') ||
-          focusElement?.closest('[data-ai-message-content-id]'),
-      );
+      const anchorContainer = anchorElement?.closest<HTMLElement>('[data-ai-message-content-id]');
+      const focusContainer = focusElement?.closest<HTMLElement>('[data-ai-message-content-id]');
+      if (!anchorContainer || !focusContainer || anchorContainer !== focusContainer) return null;
+      const messageId = anchorContainer.dataset.aiMessageContentId;
+      return messageId ? { messageId, text } : null;
     }
 
     function syncSelectionState() {
-      selectingTextRef.current = selectionIsInAiMessage();
+      const selected = currentAiSelection();
+      selectingTextRef.current = Boolean(selected);
+      if (selected) {
+        selectedAiTextRef.current = selected;
+      }
     }
 
     function endSelection() {
@@ -511,13 +521,16 @@ export function AiChatPanel({
   function getSelectedTextInMessage(messageId: string) {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
-    if (!selection || !selectedText || selection.rangeCount === 0) return '';
+    if (!selection || !selectedText || selection.rangeCount === 0) {
+      return selectedAiTextRef.current?.messageId === messageId ? selectedAiTextRef.current.text : '';
+    }
     const container = document.querySelector(`[data-ai-message-content-id="${messageId}"]`);
-    if (!container) return '';
+    if (!container) return selectedAiTextRef.current?.messageId === messageId ? selectedAiTextRef.current.text : '';
     const range = selection.getRangeAt(0);
     const anchorInside = selection.anchorNode ? container.contains(selection.anchorNode) : false;
     const focusInside = selection.focusNode ? container.contains(selection.focusNode) : false;
-    return anchorInside && focusInside && range.intersectsNode(container) ? selectedText : '';
+    if (anchorInside && focusInside && range.intersectsNode(container)) return selectedText;
+    return selectedAiTextRef.current?.messageId === messageId ? selectedAiTextRef.current.text : '';
   }
 
   async function copyMessage(text: string, messageId: string) {

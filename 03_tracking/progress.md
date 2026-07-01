@@ -2424,6 +2424,19 @@
 - 本轮只改 `apps/web/src/components/ai-chat-panel.tsx`，不改 `WorkbenchLayout` 拖拽逻辑，不改 AI 请求、时间戳、变量记录、数据库或导出。
 - 本地验证：`corepack pnpm --filter web build` 通过。
 
+### 2026-07-01 AI 复制选区缓存兜底
+
+**背景**：用户继续反馈 AI 正文拖选后蓝色选区约 1 秒后消失，导致点击复制时读不到当前浏览器 Selection。判断核心问题是原生选区会被焦点变化、滚动或组件更新清掉，复制逻辑不能只在按钮点击瞬间读取 `window.getSelection()`。
+
+**实现**：
+- 在 `selectionchange` 发生时，如果选区完整落在某条 AI 正文内，立即缓存 `{ messageId, text }`。
+- 复制按钮点击时先读取当前原生 Selection；若选区已经消失，则回退到同一条消息最近缓存的选中文本。
+- 复制、重新生成、继续追问按钮增加 `onMouseDown.preventDefault()`，避免按钮抢焦点时把原生选区提前清掉。
+
+**边界**：
+- 本轮仍是纯前端交互兜底，只改 `apps/web/src/components/ai-chat-panel.tsx`，不改变量记录、时间戳、AI 请求、数据库或导出。
+- 本地验证：`corepack pnpm --filter web build` 通过。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看
