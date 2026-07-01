@@ -345,6 +345,13 @@ export default function InstructionPage() {
                   </div>
                 </section>
               ) : null}
+
+              <section className="border-t border-[#f0f2f5] py-7">
+                <SectionHeader num={nextNum()} title="知情同意说明" />
+                <div className="rounded-lg border border-[#e8f3ff] bg-[#f4f9ff] px-5 py-4 text-[14px] leading-[2] text-[#4e5969]">
+                  本实验用于学术研究，所有数据仅用于学术研究和实验质量检查，研究报告中不会展示能够直接识别你个人身份的信息。本实验不评价你的个人能力，也不涉及真实投资建议。测试轮不计入正式绩效，正式任务中的绩效分会按统一规则折算为报酬。参加实验是自愿的，点击“我已阅读，进入下一步”，即表示你已阅读并理解以上说明，并同意参加本实验。
+                </div>
+              </section>
             </div>
 
             {/* 底部 */}

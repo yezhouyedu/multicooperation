@@ -1,10 +1,12 @@
 import { AiLevel, ExperimentPhase, Prisma, QuestionnaireTemplate } from '@prisma/client';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { basename, join } from 'path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
+import { basename, dirname, join, resolve } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CASE_LIBRARY_ROOT,
   FORMAL_CASE_LIBRARY_ROOT,
+  LibraryCaseDefinition,
   PRACTICE_CASE_LIBRARY_ROOT,
   StoredMaterialItem,
   buildMaterialPublicUrl,
@@ -596,6 +598,121 @@ export class AdminService {
       throw new NotFoundException('No case folders found in case library root');
     }
 
+    const imported = await this.importCaseDefinitions(cases, { archiveStale: true, backupReason: 'library-import' });
+
+    return {
+      ok: true,
+      importedCompanyIds: imported,
+      totalImported: imported.length,
+      rootDir: CASE_LIBRARY_ROOT,
+      formalRootDir: FORMAL_CASE_LIBRARY_ROOT,
+      practiceRootDir: PRACTICE_CASE_LIBRARY_ROOT,
+    };
+  }
+
+  async replaceLibraryFromUpload(input: {
+    files: Array<{ originalname: string; path: string }>;
+    mode: 'selected' | 'all';
+    companyIds?: string;
+    relativePaths?: string;
+  }) {
+    if (!input.files?.length) {
+      throw new BadRequestException('请先选择要上传的公司材料文件夹');
+    }
+
+    const companyIds = this.parseJsonArray(input.companyIds, 'companyIds');
+    const relativePaths = this.parseJsonArray(input.relativePaths, 'relativePaths');
+    if (relativePaths.length !== input.files.length) {
+      throw new BadRequestException('上传文件路径信息不完整，请重新选择文件夹上传');
+    }
+
+    const tempRoot = storagePath('tmp', `case-library-upload-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    mkdirSync(tempRoot, { recursive: true });
+    try {
+      for (let index = 0; index < input.files.length; index += 1) {
+        const relativePath = this.safeUploadRelativePath(relativePaths[index] || input.files[index].originalname);
+        const target = resolve(tempRoot, relativePath);
+        if (!target.startsWith(tempRoot)) {
+          throw new BadRequestException('上传路径包含非法目录');
+        }
+        mkdirSync(dirname(target), { recursive: true });
+        copyFileSync(input.files[index].path, target);
+      }
+
+      const importRoot = input.mode === 'all' ? this.findUploadedLibraryRoot(tempRoot) : tempRoot;
+      const definitions = scanCaseLibrary(importRoot);
+      this.assertUploadedCaseDefinitions(definitions);
+
+      if (input.mode === 'all') {
+        const imported = await this.importCaseDefinitions(definitions, { archiveStale: true, backupReason: 'upload-all' });
+        return {
+          ok: true,
+          mode: 'all',
+          importedCompanyIds: imported,
+          totalImported: imported.length,
+          cases: this.describeCaseDefinitions(definitions),
+        };
+      }
+
+      if (companyIds.length === 0) {
+        throw new BadRequestException('请选择要替换的公司');
+      }
+      const topFolders = this.topUploadedFolders(relativePaths);
+      if (topFolders.length !== companyIds.length) {
+        throw new BadRequestException(`已选择 ${companyIds.length} 家公司，但上传了 ${topFolders.length} 个公司文件夹，请一一对应后重试`);
+      }
+      if (definitions.length !== companyIds.length) {
+        throw new BadRequestException(`识别到 ${definitions.length} 个有效公司材料文件夹，与已选择公司数量不一致`);
+      }
+
+      const companies = await this.prisma.company.findMany({ where: { id: { in: companyIds } } });
+      if (companies.length !== companyIds.length) {
+        throw new BadRequestException('部分目标公司不存在，请刷新材料管理页后重试');
+      }
+      const companyById = new Map(companies.map((company) => [company.id, company as CompanyWithMaterials]));
+      const definitionsByFolder = new Map(definitions.map((definition) => [definition.folderName, definition]));
+      let remainingDefinitions = topFolders.map((folder) => definitionsByFolder.get(folder)).filter(Boolean) as LibraryCaseDefinition[];
+      if (remainingDefinitions.length !== companyIds.length) {
+        throw new BadRequestException('上传文件夹无法与扫描结果对应，请确认每个公司文件夹下有 case.json、participant 和 research');
+      }
+
+      const imported: string[] = [];
+      for (let index = 0; index < companyIds.length; index += 1) {
+        const company = companyById.get(companyIds[index]);
+        if (!company) throw new BadRequestException('目标公司不存在');
+        const matchedIndex = remainingDefinitions.findIndex((definition) =>
+          [definition.folderName, definition.caseCode, definition.roundLabel, definition.companyName]
+            .map((item) => item.trim().toLowerCase())
+            .includes((company.roundLabel || company.name).trim().toLowerCase()),
+        );
+        const [definition] = remainingDefinitions.splice(matchedIndex >= 0 ? matchedIndex : 0, 1);
+        await this.replaceExistingCompanyWithDefinition(company, definition, `upload-selected-${Date.now()}`);
+        imported.push(company.id);
+      }
+
+      return {
+        ok: true,
+        mode: 'selected',
+        importedCompanyIds: imported,
+        totalImported: imported.length,
+        cases: this.describeCaseDefinitions(definitions),
+      };
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+      for (const file of input.files) {
+        rmSync(file.path, { force: true });
+      }
+    }
+  }
+
+  private async importCaseDefinitions(
+    cases: LibraryCaseDefinition[],
+    options: { archiveStale: boolean; backupReason: string },
+  ) {
+    if (cases.length === 0) {
+      throw new NotFoundException('No case folders found in case library root');
+    }
+
     const imported: string[] = [];
     for (const definition of cases) {
       const companyId = this.buildLibraryCompanyId(definition.caseCode, definition.usage);
@@ -604,9 +721,7 @@ export class AdminService {
       })) as CompanyWithMaterials | null;
 
       if (existing) {
-        for (const current of normalizeMaterials(existing.materials)) {
-          removeStoredMaterial(existing.id, current.storageKey);
-        }
+        this.backupCompanyMaterials(existing, options.backupReason);
       }
 
       const baseCompany = existing
@@ -636,6 +751,12 @@ export class AdminService {
               sortOrder: definition.sortOrder,
             },
           });
+
+      if (existing) {
+        for (const current of normalizeMaterials(existing.materials)) {
+          removeStoredMaterial(existing.id, current.storageKey);
+        }
+      }
 
       const allMaterials = [...definition.participantMaterials, ...definition.researchMaterials];
       const participantPaths = new Set(definition.participantMaterials.map((item) => item.relativePath));
@@ -675,16 +796,11 @@ export class AdminService {
       imported.push(baseCompany.id);
     }
 
-    await this.archiveStaleLibraryCompanies(imported);
+    if (options.archiveStale) {
+      await this.archiveStaleLibraryCompanies(imported);
+    }
 
-    return {
-      ok: true,
-      importedCompanyIds: imported,
-      totalImported: imported.length,
-      rootDir: CASE_LIBRARY_ROOT,
-      formalRootDir: FORMAL_CASE_LIBRARY_ROOT,
-      practiceRootDir: PRACTICE_CASE_LIBRARY_ROOT,
-    };
+    return imported;
   }
 
   private async archiveStaleLibraryCompanies(activeCompanyIds: string[]) {
@@ -694,6 +810,155 @@ export class AdminService {
         usage: { in: ['formal', 'practice'] },
       },
       data: { usage: 'legacy' },
+    });
+  }
+
+  private parseJsonArray(value: string | undefined, fieldName: string) {
+    if (!value) return [];
+    try {
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) throw new Error('not array');
+      return parsed.map((item) => String(item));
+    } catch {
+      throw new BadRequestException(`${fieldName} 格式错误`);
+    }
+  }
+
+  private safeUploadRelativePath(value: string) {
+    const normalized = value
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .split('/')
+      .filter((segment) => segment && segment !== '.' && segment !== '..')
+      .join('/');
+    if (!normalized) throw new BadRequestException('上传文件路径为空');
+    return normalized;
+  }
+
+  private topUploadedFolders(paths: string[]) {
+    return Array.from(new Set(paths.map((path) => this.safeUploadRelativePath(path).split('/')[0]).filter(Boolean))).sort();
+  }
+
+  private findUploadedLibraryRoot(tempRoot: string) {
+    const candidates = [
+      tempRoot,
+      ...readdirSync(tempRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => join(tempRoot, entry.name)),
+    ];
+    for (const candidate of candidates) {
+      const names = new Set(
+        readdirSync(candidate, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name),
+      );
+      if (names.has('正式') || names.has('测试轮')) return candidate;
+    }
+    return tempRoot;
+  }
+
+  private assertUploadedCaseDefinitions(definitions: LibraryCaseDefinition[]) {
+    if (definitions.length === 0) {
+      throw new BadRequestException('未识别到有效公司材料文件夹，请检查目录结构');
+    }
+    const invalid = definitions
+      .map((definition) => {
+        const shared = definition.participantMaterials.filter((material) => material.participantRole === 'shared').length;
+        const diligence = definition.participantMaterials.filter((material) => material.participantRole === 'A').length;
+        const manager = definition.participantMaterials.filter((material) => material.participantRole === 'B').length;
+        const problems: string[] = [];
+        if (definition.participantMaterials.length === 0) problems.push('缺少 participant 材料');
+        if (diligence === 0) problems.push('缺少 participant/diligence A 材料');
+        if (manager === 0) problems.push('缺少 participant/manager B 材料');
+        if (shared === 0) problems.push('缺少 participant/shared 共享材料');
+        if (definition.researchMaterials.length === 0) problems.push('缺少 research 材料');
+        return problems.length ? `${definition.folderName}: ${problems.join('，')}` : null;
+      })
+      .filter(Boolean);
+    if (invalid.length > 0) {
+      throw new BadRequestException(`材料结构不符合要求：${invalid.join('；')}`);
+    }
+  }
+
+  private describeCaseDefinitions(definitions: LibraryCaseDefinition[]) {
+    return definitions.map((definition) => ({
+      folderName: definition.folderName,
+      caseCode: definition.caseCode,
+      companyName: definition.companyName,
+      usage: definition.usage,
+      participantMaterialCount: definition.participantMaterials.length,
+      diligenceMaterialCount: definition.participantMaterials.filter((material) => material.participantRole === 'A').length,
+      managerMaterialCount: definition.participantMaterials.filter((material) => material.participantRole === 'B').length,
+      sharedMaterialCount: definition.participantMaterials.filter((material) => material.participantRole === 'shared').length,
+      researchMaterialCount: definition.researchMaterials.length,
+    }));
+  }
+
+  private backupCompanyMaterials(company: CompanyWithMaterials, reason: string) {
+    const materials = normalizeMaterials(company.materials);
+    if (materials.length === 0) return;
+    const backupRoot = storagePath('material_backups', `${new Date().toISOString().replace(/[:.]/g, '-')}-${reason}`, company.id);
+    for (const material of materials) {
+      const source = storagePath('materials', company.id, material.storageKey);
+      if (!existsSync(source)) continue;
+      const target = join(backupRoot, material.storageKey);
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(source, target);
+    }
+  }
+
+  private async replaceExistingCompanyWithDefinition(
+    company: CompanyWithMaterials,
+    definition: LibraryCaseDefinition,
+    backupReason: string,
+  ) {
+    this.backupCompanyMaterials(company, backupReason);
+    for (const current of normalizeMaterials(company.materials)) {
+      removeStoredMaterial(company.id, current.storageKey);
+    }
+
+    const allMaterials = [...definition.participantMaterials, ...definition.researchMaterials];
+    const participantPaths = new Set(definition.participantMaterials.map((item) => item.relativePath));
+    const participantRoleByPath = new Map(
+      definition.participantMaterials.map((item) => [item.relativePath, item.participantRole] as const),
+    );
+    const materials: StoredMaterialItem[] = allMaterials.map((file, index) => {
+      const isParticipantMaterial = participantPaths.has(file.relativePath);
+      return createStoredMaterialItem({
+        companyId: company.id,
+        originalFilename: file.displayName,
+        displayName: file.displayName,
+        sourcePath: file.fullPath,
+        sortOrder: index,
+        metadata: {
+          audience: isParticipantMaterial ? 'participant' : 'research',
+          participantRole: isParticipantMaterial ? participantRoleByPath.get(file.relativePath) ?? 'shared' : null,
+          importRelativePath: file.relativePath,
+          importFolderName: definition.folderName,
+          importedFromLibrary: true,
+          uploadedReplacement: true,
+        },
+      });
+    });
+
+    const sourceMaterial =
+      materials.find((item) => item.metadata.importRelativePath === definition.autoFillSourceRelativePath) ?? null;
+    const researchProfile = sourceMaterial ? this.tryParseResearchProfile(company.id, sourceMaterial) : null;
+
+    await this.prisma.company.update({
+      where: { id: company.id },
+      data: {
+        name: definition.companyName,
+        roundLabel: definition.roundLabel,
+        sector: definition.sector,
+        summary: definition.summary,
+        usage: company.usage ?? definition.usage,
+        tags: definition.tags as never,
+        materials: materials as never,
+        autoFillSourceMaterialId: sourceMaterial?.id ?? null,
+        researchProfile: researchProfile as never,
+        sortOrder: company.sortOrder,
+      },
     });
   }
 

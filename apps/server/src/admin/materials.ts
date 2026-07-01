@@ -304,15 +304,18 @@ export function ensureBaselineP01Files() {
 export function scanCaseLibrary(rootDir = CASE_LIBRARY_ROOT): LibraryCaseDefinition[] {
   if (!existsSync(rootDir)) return [];
 
-  const formalCases = existsSync(FORMAL_CASE_LIBRARY_ROOT)
-    ? scanCaseRoot(FORMAL_CASE_LIBRARY_ROOT, 'formal')
+  const formalRoot = resolve(rootDir, '正式');
+  const practiceRoot = resolve(rootDir, '测试轮');
+
+  const formalCases = existsSync(formalRoot)
+    ? scanCaseRoot(formalRoot, 'formal')
     : scanCaseRoot(rootDir, 'formal', new Set(['正式', '测试轮']));
 
-  const practiceCases = existsSync(PRACTICE_CASE_LIBRARY_ROOT)
-    ? scanCaseRoot(PRACTICE_CASE_LIBRARY_ROOT, 'practice')
+  const practiceCases = existsSync(practiceRoot)
+    ? scanCaseRoot(practiceRoot, 'practice')
     : [];
 
-  if (practiceCases.length === 0) {
+  if (rootDir === CASE_LIBRARY_ROOT && practiceCases.length === 0) {
     const fallbackPractice = parseCaseFolder(BASELINE_P01_DIR, 'P01', 0, 'practice');
     if (fallbackPractice) {
       practiceCases.push(fallbackPractice);

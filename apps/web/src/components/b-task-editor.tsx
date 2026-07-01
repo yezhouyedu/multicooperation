@@ -120,7 +120,7 @@ function InfoPointSection({
     <section className="space-y-3">
       <div>
         <h3 className="text-[16px] font-bold">{title}</h3>
-        <p className="mt-1 text-[13px] leading-6 text-[#4e5969]">{hint}</p>
+        {hint ? <p className="mt-1 text-[13px] leading-6 text-[#4e5969]">{hint}</p> : null}
       </div>
       <label className="flex items-center gap-2 text-[13px] text-[#1d2129]">
         <input type="checkbox" checked={checked} onChange={(event) => onToggle(event.target.checked)} disabled={disabled} />
@@ -281,6 +281,8 @@ export function BTaskEditor({
       confidence: form.confidence,
       noObviousOpportunity: form.noObviousOpportunity,
       noObviousRisk: form.noObviousRisk,
+      ordinaryOpportunityCount: form.ordinaryOpportunityCount,
+      ordinaryRiskCount: form.ordinaryRiskCount,
     };
   }
 
@@ -336,10 +338,7 @@ export function BTaskEditor({
   }
 
   const profile = company?.researchProfile;
-  const companyCode = profile?.companyCode || company?.roundLabel || company?.name || '';
-  const industry = profile?.industry || company?.sector || '';
   const alias = profile?.alias || company?.name || '';
-  const summary = profile?.businessSummary || company?.summary || '';
   const opportunityCount = form.noObviousOpportunity ? 0 : form.opportunities.filter((item) => item.text.trim()).length;
   const riskCount = form.noObviousRisk ? 0 : form.risks.filter((item) => item.text.trim()).length;
 
@@ -348,7 +347,7 @@ export function BTaskEditor({
       <div className="rounded-lg border border-[#e2e5ea] bg-white px-8 py-7 shadow-sm">
         <div className="space-y-6">
           <div>
-            <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">B端投资判断表</h2>
+            <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">B端任务表</h2>
             <div className="mt-6 space-y-1 text-[13px] leading-7 text-[#4e5969]">
               <div className="font-semibold text-[#1d2129]">填写说明</div>
               <div>1. 仅依据当前可见的材料、AI 辅助结果和已解锁的信息填写；不要使用材料之外的知识进行推测。</div>
@@ -397,20 +396,8 @@ export function BTaskEditor({
             <DocTable>
               <tbody>
                 <tr>
-                  <Td className="w-[220px]">公司编号</Td>
-                  <Td>{companyCode}</Td>
-                </tr>
-                <tr>
-                  <Td>行业</Td>
-                  <Td>{industry || '待补充'}</Td>
-                </tr>
-                <tr>
-                  <Td>公司简称/匿名代号</Td>
+                  <Td className="w-[220px]">公司简称/匿名代号</Td>
                   <Td>{alias}</Td>
-                </tr>
-                <tr>
-                  <Td>业务简介</Td>
-                  <Td>{summary || '待补充'}</Td>
                 </tr>
               </tbody>
             </DocTable>
@@ -418,7 +405,7 @@ export function BTaskEditor({
 
           <InfoPointSection
             title="二、重要机会信息点枚举区（不用填写普通机会）"
-            hint="若未发现重要机会，可勾选对应选项；否则请至少填写一条。"
+            hint=""
             checked={form.noObviousOpportunity}
             checkedLabel="若未发现重要机会，可勾选此处：未发现重要机会。否则请至少填写一条。"
             rows={form.opportunities}
@@ -439,7 +426,7 @@ export function BTaskEditor({
 
           <InfoPointSection
             title="三、重要风险信息点枚举区（不用填写普通风险）"
-            hint="若未发现重要风险，可勾选对应选项；否则请至少填写一条。"
+            hint=""
             checked={form.noObviousRisk}
             checkedLabel="若未发现重要风险，可勾选此处：未发现重要风险。否则请至少填写一条。"
             rows={form.risks}

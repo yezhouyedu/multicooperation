@@ -236,6 +236,7 @@ export function AiChatPanel({
   const imageEnabled = aiLevel === 'ADVANCED';
   const isDisabled = Boolean(disabledReason);
   const abortRef = useRef<AbortController | null>(null);
+  const selectingTextRef = useRef(false);
 
   const accentClass = useMemo(
     () =>
@@ -256,8 +257,21 @@ export function AiChatPanel({
   useEffect(() => {
     const messageList = messageListRef.current;
     if (!messageList) return;
+    if (selectingTextRef.current || window.getSelection()?.toString()) return;
     messageList.scrollTop = messageList.scrollHeight;
   }, [messages, sending, streamingMessageId]);
+
+  useEffect(() => {
+    function endSelection() {
+      selectingTextRef.current = false;
+    }
+    window.addEventListener('mouseup', endSelection);
+    window.addEventListener('blur', endSelection);
+    return () => {
+      window.removeEventListener('mouseup', endSelection);
+      window.removeEventListener('blur', endSelection);
+    };
+  }, []);
 
   useEffect(() => {
     if (!streamingMessageId) {
@@ -472,10 +486,12 @@ export function AiChatPanel({
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
     if (!selection || !selectedText || selection.rangeCount === 0) return '';
-    const container = document.querySelector(`[data-ai-message-id="${messageId}"]`);
+    const container = document.querySelector(`[data-ai-message-content-id="${messageId}"]`);
     if (!container) return '';
     const range = selection.getRangeAt(0);
-    return container.contains(range.commonAncestorContainer) || range.intersectsNode(container) ? selectedText : '';
+    const anchorInside = selection.anchorNode ? container.contains(selection.anchorNode) : false;
+    const focusInside = selection.focusNode ? container.contains(selection.focusNode) : false;
+    return anchorInside && focusInside && range.intersectsNode(container) ? selectedText : '';
   }
 
   async function copyMessage(text: string, messageId: string) {
@@ -524,7 +540,7 @@ export function AiChatPanel({
             return (
               <div
                 key={message.id}
-                className={`flex items-start gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                className={`select-none flex items-start gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
                 <div
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs shadow-sm ${
@@ -566,7 +582,17 @@ export function AiChatPanel({
                   ) : null}
 
                   {showThinking ? <ThinkingIndicator active /> : null}
-                  {message.text ? <MarkdownMessage text={message.text} isUser={message.role === 'user'} /> : null}
+                  {message.text ? (
+                    <div
+                      data-ai-message-content-id={message.id}
+                      className="select-text"
+                      onMouseDown={() => {
+                        selectingTextRef.current = true;
+                      }}
+                    >
+                      <MarkdownMessage text={message.text} isUser={message.role === 'user'} />
+                    </div>
+                  ) : null}
                   {showSlowNotice ? (
                     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
                       AI 正在生成，可能需要较长时间，请先继续阅读材料或填写任务表。

@@ -9,18 +9,21 @@ import {
   Query,
   Res,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { mkdirSync } from 'fs';
 import { AdminService } from './admin.service';
 import { ExportService } from '../recording/export.service';
 import { storagePath } from '../storage-paths';
 import { AdminAuthGuard } from './admin-auth.guard';
 
 const TEMP_UPLOAD_DIR = storagePath('tmp');
+mkdirSync(TEMP_UPLOAD_DIR, { recursive: true });
 
 @Controller('admin')
 @UseGuards(AdminAuthGuard)
@@ -126,6 +129,26 @@ export class AdminController {
   @Post('companies/import-library')
   importCaseLibrary() {
     return this.adminService.importCaseLibrary();
+  }
+
+  @Post('companies/library/replace-upload')
+  @UseInterceptors(
+    FilesInterceptor('files', 1000, {
+      storage: diskStorage({
+        destination: TEMP_UPLOAD_DIR,
+      }),
+    }),
+  )
+  replaceLibraryFromUpload(
+    @UploadedFiles() files: Array<{ originalname: string; path: string }>,
+    @Body() body: { mode?: 'selected' | 'all'; companyIds?: string; relativePaths?: string },
+  ) {
+    return this.adminService.replaceLibraryFromUpload({
+      files,
+      mode: body.mode === 'all' ? 'all' : 'selected',
+      companyIds: body.companyIds,
+      relativePaths: body.relativePaths,
+    });
   }
 
   @Post('companies/:companyId/materials')

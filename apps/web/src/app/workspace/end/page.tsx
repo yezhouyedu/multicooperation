@@ -75,7 +75,7 @@ export default function ExperimentEndPage() {
             <QuestionnaireForm
               questionnaire={questionnaire}
               submitting={submitting}
-              submitLabel="提交最后问卷"
+              submitLabel="提交"
               onSubmit={handleSubmit}
             />
           </div>
@@ -89,9 +89,7 @@ export default function ExperimentEndPage() {
             <div className="mb-4 text-4xl">完成</div>
             <div className="mb-3 text-xl font-semibold text-[#1d2129]">实验已完成</div>
             <div className="mb-6 text-sm leading-relaxed text-[#86909c]">
-              感谢您的参与，您的所有作答已经记录完毕。
-              <br />
-              请向实验人员告知您已完成，然后关闭此页面。
+              感谢您的参与，您的所有作答已经记录完毕。请确认您在登录时填写的手机号是否绑定支付宝，实验人员将在两周内支付报酬。如果有疑问请及时联系实验人员。请向实验人员告知您已完成，然后关闭此页面。
             </div>
             <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-5 py-3 text-sm text-[#1e80ff]">
               您的贡献对我们的研究非常重要，谢谢！
