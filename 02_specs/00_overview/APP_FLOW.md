@@ -5,7 +5,7 @@
 > 1. 开篇指导语分两页：第一页为通用指导语 + 当前角色 A/B 指导语；第二页为当前角色任务表只读预览，双方 ready 后进入测试题，双方都通过后自动进入测试轮  
 > 2. 测试轮复用正式工作台结构，并在测试轮内完成教学引导  
 > 3. 最终材料库为正式 P01-P36、测试轮 P37，均通过 admin 材料导入落库  
-> 4. 参与者前台统一使用 A/B、任务1/任务2；正式任务第一页两端同时起跑，A 在 5 分钟到点后自动提交
+> 4. 参与者前台统一使用 A/B、任务1/任务2；正式任务第一页两端同时起跑，A 在 5 分钟到点后自动提交，B 对每家公司也有自己的 5 分钟开放窗口
 
 ---
 
@@ -93,7 +93,7 @@ flowchart TD
   - `bAssignmentMethod`
   - `bAssignmentLog`
 
-### 3.4 B B 的动态分配
+### 3.4 B 的动态分配
 
 - 正式轮里，B `B` 不要求与A永远同步拿到同一家公司
 - 当前代码对 `B` 使用 formal 公司池上的动态分配逻辑
@@ -458,9 +458,11 @@ Session 创建: 随机决定提醒频率 + 叙事组别 + 主题顺序
 - `/login`
 - `/waiting-room`
 - `/instruction`
+- `/instruction/task-preview`
 - `/practice-quiz`
 - `/ready`
 - `/practice`
+- `/pre-segment-instruction`
 - `/workspace/a`
 - `/workspace/b`
 - `/workspace/b-feedback`
@@ -477,37 +479,20 @@ stateDiagram-v2
     Login --> WaitingRoom
     WaitingRoom --> WaitingMatched : 两人配对完成
     WaitingMatched --> Instruction : 角色随机分配完成
-    Instruction --> PracticeReady : 本人点准备
-    PracticeReady --> Practice : 双方都已准备
+    Instruction --> TaskPreview : 本人完成开篇指导语第 1 页
+    TaskPreview --> PracticeReady : 本人完成任务表预览
+    PracticeReady --> PracticeQuiz : 双方都已准备
+    PracticeQuiz --> Practice : 双方都通过测试题
     Practice --> FormalReady : 本人点准备
-    FormalReady --> FormalWork1 : 双方都已准备
-    FormalWork1 --> Break1
-    Break1 --> FormalWork2
-    FormalWork2 --> Break2
-    Break2 --> FormalWork3
-    FormalWork3 --> End
-```
-## 2026-06-17 增补：段前指导语阶段
-
-正式实验流程在三个工作段前增加 `PRE_SEGMENT_INSTRUCTION` runtime 阶段，前端对应 `/pre-segment-instruction`：
-
-```text
-测试轮完成
-→ formal ready
-→ 段 1 前阅读材料
-→ 工作段 1
-→ 段 1 后问卷
-→ 休息
-→ 段 2 前阅读材料
-→ 工作段 2
-→ 段 2 后问卷
-→ 休息
-→ 段 3 前阅读材料
-→ 工作段 3
-→ 段 3 后问卷
-→ 最终长问卷
-→ 完成页
+    FormalReady --> PreSegment1 : 双方都已准备
+    PreSegment1 --> FormalWork1 : 双方完成段前阅读
+    FormalWork1 --> Break1 : 工作段 1 后问卷
+    Break1 --> PreSegment2 : 休息结束
+    PreSegment2 --> FormalWork2 : 双方完成段前阅读
+    FormalWork2 --> Break2 : 工作段 2 后问卷
+    Break2 --> PreSegment3 : 休息结束
+    PreSegment3 --> FormalWork3 : 双方完成段前阅读
+    FormalWork3 --> End : 工作段 3 后问卷 + 最终长问卷
 ```
 
-阅读材料页强制观看 15 秒，双方都点击继续后才启动对应工作段。该阶段不计入正式工作段时间，也不进入任务1 AI 或任务2 AI 上下文。
-
+段前阅读材料对应 runtime 阶段 `PRE_SEGMENT_INSTRUCTION`，前端路由为 `/pre-segment-instruction`。该页在正式工作段 1/2/3 前各出现一次，强制观看 15 秒，双方都点击继续后才启动对应工作段。该阶段不计入正式工作段时间，也不进入任务1 AI 或任务2 AI 上下文。

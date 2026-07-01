@@ -787,7 +787,7 @@
 
 **当前口径提醒**：
 
-- 参与者可见文案继续统一使用“尽调员 / 投资经理”，不向前台暴露 `A/B`
+- 当时参与者可见文案仍沿用专业角色称呼；该口径已被 2026-06-20 后的 A/B、任务1/任务2 前台口径替代
 - 正式轮的 B 动态分配策略继续保持现有正确实现：优先锁定池随机分配，池空再 fallback 到 A 当前在做公司（PreA）
 
 ### 2026-05-28 副线提醒频率澄清 + 文档同步 + admin 默认值
@@ -1816,7 +1816,7 @@
 ### 2026-06-17 admin 轻量门禁与稳健性设计吸收
 
 **本轮变更**：
-- `/admin` 新增轻量密码门禁，密码为 `20260617`；界面复用参与者登录页卡片风格并改为“管理后台密码”文案。
+- `/admin` 当时新增轻量密码门禁；界面复用参与者登录页卡片风格并改为“管理后台密码”文案。当前正式口径已升级为后端 `ADMIN_PASSWORD` 认证，公开文档不记录真实口令。
 - 新增/更新 `02_specs/06_resilience/RESILIENCE_DESIGN.md`，吸收 xiaomimimo 的 SSE 重连、网络状态、轮询兜底、IndexedDB、本地保存队列建议。
 - 稳健性方案同步补充后端层口径：关键 POST 幂等、状态机防重复推进、草稿 revision、防旧请求覆盖、备份恢复演练。
 
@@ -2038,49 +2038,49 @@
 - 过期关键词搜索已复查：未再发现“等待 ICP / 下一步 P1 / GitHub 拉取部署（推荐）/ 三容器 / 旧私钥路径 / 不存在运维文档路径”等误导性口径。
 - `git diff --check` 无实质错误，仅 Windows 换行提示。
 
-### 2026-06-17 Admin ??????? P0/P1 ??
+### 2026-06-17 Admin 强认证与稳健性 P0/P1 实现
 
-**??**??????? admin ????????/????? P0/P1???????????????????
+**背景**：收口 admin 访问控制与全流程稳健性，避免后台裸露、SSE 断线卡流程、草稿丢失和关键 POST 重复推进。
 
-**????**?
-- Admin ????????????????? `POST /admin/auth/login`????? `ADMIN_PASSWORD`??? `20260617`?`AdminController` ? `SideTaskAdminController` ?? bearer token guard ???
-- ?? admin ???????????????? token ?? `sessionStorage`?admin API ??? `Authorization: Bearer <token>`?401 ?? token ??????
-- ?? `IdempotencyRecord` ??????ready?????????????A/B ??/?????????? POST ?? `Idempotency-Key`?????????????
-- SSE ???? `id/retry`?????????? Last-Event-ID/lastEventId ????????????????? 5 ??? runtime ???
-- A ???B ???B feedback ?? IndexedDB ??????????????? pending queue??????? task/role/section ?????????
-- ??????? online/offline/reconnecting/polling ????????????????? beforeunload ?????? AI ?????????????
+**实现**：
+- Admin 改为服务端认证：新增 `POST /admin/auth/login`，密码来自服务端 `ADMIN_PASSWORD`；`AdminController` 与 `SideTaskAdminController` 统一加 bearer token guard。
+- 前端 admin 登录成功后把 token 存入 `sessionStorage`，admin API 统一携带 `Authorization: Bearer <token>`；401 时清 token 并回到登录页。
+- 新增 `IdempotencyRecord`，覆盖 ready、段前指导语、问卷提交、A/B 提交、查看 A 信息/材料、副线作答等关键 POST，避免重试或重复点击导致状态重复推进。
+- SSE 增加 `id/retry` 与短期事件缓存，支持 Last-Event-ID/lastEventId 回放；断连时前端进入 5 秒 runtime 轮询兜底。
+- A 表、B 表、B feedback 接入 IndexedDB 本地草稿缓存和 pending queue，按 task/role/section 合并最新保存请求，网络恢复后自动补传。
+- 顶栏显示 online/offline/reconnecting/polling 等网络状态；离线时保留本地编辑能力，并对提交和 AI 给出网络不可用提示。
 
-**??????**?
-- ???? server env ???? `ADMIN_PASSWORD=???`??? server?
-- ????? `/opt/multi-cooperation/.env.production` ? `ADMIN_PASSWORD=???`????/?? server??? token secret ?????????? token ???
+**修改密码方法**：
+- 本地在 server env 中设置 `ADMIN_PASSWORD=新密码`，然后重启 server。
+- 线上修改 `/opt/multi-cooperation/.env.production` 中的 `ADMIN_PASSWORD`，然后重启或重新部署 server；token secret 默认跟随密码，修改后旧 token 失效。
 
-**??**??? `02_specs/06_resilience/IMPLEMENTATION_20260617.md` ? `02_specs/02_backend/ADMIN_AUTH_AND_IDEMPOTENCY_20260617.md`???? `.env.production.example` ? README admin security ???
+**文档**：新增 `02_specs/06_resilience/IMPLEMENTATION_20260617.md` 与 `02_specs/02_backend/ADMIN_AUTH_AND_IDEMPOTENCY_20260617.md`，并同步 `.env.production.example` 与 README admin security 说明。
 
-### 2026-06-17 Admin ???????????
+### 2026-06-17 Admin 强认证与稳健性线上验收
 
-**????**?
-- `corepack pnpm --filter server prisma:generate` ???
-- `corepack pnpm --filter server build` ???
-- `corepack pnpm --filter web build` ???
+**本地构建**：
+- `corepack pnpm --filter server prisma:generate` 通过。
+- `corepack pnpm --filter server build` 通过。
+- `corepack pnpm --filter web build` 通过。
 
-**GitHub**?
-- ??????`fe43bc2 ??admin?????????`?? push ? `main`?
-- ?????????`b16076c ??????????`?? push ? `main`?
+**GitHub**：
+- 功能提交 `fe43bc2 加强admin认证与稳健性` 已 push 到 `main`。
+- 修复提交 `b16076c 修复稳健性构建问题` 已 push 到 `main`。
 
-**????**?
-- ?? `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` ???? git archive?
-- ????? `20260617180000_idempotency_records/migration.sql` ? BOM ?? Postgres ? `syntax error at or near "CREATE"`?server healthcheck ???
-- ??? migration ?????? BOM???????? `prisma migrate resolve --rolled-back 20260617180000_idempotency_records` ??? `migrate deploy`????????
-- ???? `sudo bash scripts/deploy/deploy-prod.sh all` ???`postgres/server/web/nginx` ??????server healthy?
+**线上部署**：
+- 通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传当前 git archive。
+- 首次部署时发现 `20260617180000_idempotency_records/migration.sql` 带 BOM，Postgres 报 `syntax error at or near "CREATE"`，server healthcheck 未通过。
+- 修复 migration 编码后，执行 `prisma migrate resolve --rolled-back 20260617180000_idempotency_records` 并重新 `migrate deploy`，迁移恢复正常。
+- 再次执行 `sudo bash scripts/deploy/deploy-prod.sh all` 后，`postgres/server/web/nginx` 均正常运行，server healthy。
 
-**HTTPS smoke**?
-- `https://aiseek.tech/api/health` ?? 200?
-- `https://aiseek.tech/admin` ?? 200?
-- ?? token ?? `https://aiseek.tech/api/admin/sessions` ?? 401?
-- `POST https://aiseek.tech/api/admin/auth/login` ?????? `20260617` ?????
-- ? bearer token ?? `https://aiseek.tech/api/admin/sessions` ??????? session count = 9?
+**HTTPS smoke**：
+- `https://aiseek.tech/api/health` 返回 200。
+- `https://aiseek.tech/admin` 返回 200。
+- 无 token 请求 `https://aiseek.tech/api/admin/sessions` 返回 401。
+- admin 登录成功。
+- 带 bearer token 请求 `https://aiseek.tech/api/admin/sessions` 成功返回 session 列表。
 
-**??**??????? `docker compose down -v`????? volume????????????
+**注意**：本轮没有执行 `docker compose down -v`，没有删除任何生产 volume。
 
 ### 2026-06-17 时间戳变量保存与导出 P0/P1 实现
 
@@ -2155,7 +2155,7 @@
 - 本地：`corepack pnpm --filter server prisma:generate`、`corepack pnpm --filter server build`、`corepack pnpm --filter web build` 均通过。
 - GitHub：提交 `ff174b3 收口测试轮与实验入口启停` 已 push 到 `main`。
 - 线上：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 上传 git archive 并部署 `postgres/server/web/nginx` 四容器；`https://aiseek.tech/api/health` 返回 `ok`。
-- admin smoke：`POST /api/admin/auth/login` 使用 `20260617` 成功；`GET /api/admin/participants` 返回 14 位被试。
+- admin smoke：`POST /api/admin/auth/login` 使用当时线上配置口令成功；`GET /api/admin/participants` 返回 14 位被试。
 - 实验启停 smoke：线上临时执行 `实验关闭` 后，第一位被试手机号登录返回 403；随后执行 `实验开始`，14 位被试均恢复 `isActive=true`。
 
 ### 2026-06-18 测试轮副线教学与真实任务隔离最终收口
@@ -2289,7 +2289,7 @@
 - AI 复制体验：AI 回复气泡支持稳定选中文字；点击“复制”时若选中了回复局部文本则复制选区，否则复制整条回复，并分别提示“已复制选中内容 / 已复制本条回复”。
 - B 端 5 分钟门槛：B 每次被分配公司时写入 `bCanSubmitAt = assignedAt + 5min`；`view-a-info`、`view-a-materials`、`b-complete` 均校验 A 已提交且 `bCanSubmitAt <= now`，API 直连也不能绕过。
 - B 页面提示：A 信息、A 原始材料、提交按钮统一显示“当前公司还需处理 X 后可查看/提交”的倒计时与禁用原因。
-- 问卷标题修复：后端段后问卷标题改为真实中文 `工作段 X 后问卷`；前端休息页、结束页和问卷 section 对空标题、`????`、字面量 `\u` 做兜底。
+- 问卷标题修复：后端段后问卷标题改为真实中文 `工作段 X 后问卷`；前端休息页、结束页和问卷 section 对空标题、连续问号乱码、字面量 `\u` 做兜底。
 
 **文档同步**：
 - 更新 `APP_FLOW.md`、`PRD.md`、`BACKEND_STRUCTURE.md`、`VARIABLES.md`、`数据库文件夹手册.md`：明确 locked pool / PreA 只决定 B 拿到哪家公司，不决定是否立刻开放；B 的开放门槛由自己的 5 分钟窗口 `bCanSubmitAt` 决定。
@@ -2307,7 +2307,7 @@
 **实现**：
 - A 任务表 A.1 按 v5 改为一行两列：`指标 / 内容`，说明改为“材料2中有若干指标，请填写标记*号的指标及其内容...”，默认示例通过 placeholder 显示“例：总资产 / 例：2亿元”。
 - B 工作台查看 A 信息时兼容新版 A.1 的 `metrics.indicator/content` 结构，同时保留旧六指标草稿的兼容显示。
-- 任务2滚动提示不再依赖 server `notificationPulse` 才播放；只要存在真实未处理任务2且面板未展开，顶部提示会按配置循环从右向左滚动，pulse 仅用于通知曝光记录。
+- 任务2滚动曾临时改为“存在真实未处理任务2且面板未展开就循环滚动”；该口径随后在“任务2提醒频率操纵修正”中回滚为当前真相源：前端只响应服务端 `notificationPulse`，continuous 每条新题提醒，batch 按 admin 窗口提醒。
 - 段前指导语左上角从“正式任务第 X 段前”改为“即将进入第一个/第二个/第三个工作段”。
 - 教学页 B 第二步从“右侧是投资判断表，请在这里填写你的投资决策。”改为“右侧是任务表，请在这里整理并填写你对公司的分析。”。
 
@@ -2333,7 +2333,7 @@
 
 **验证**：
 - 本地构建通过：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
-- GitHub：提交并推送 `058f4c4 收口指导语与材料管理` 到 `main`。
+- GitHub：提交并推送 `5fcc648 修正任务2提醒频率操纵` 到 `main`，后续用 `8115a52` 补充导出口径说明。
 - 线上：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署 commit `058f4c4`；生产 `postgres/server/web/nginx` 运行正常，server health OK。
 - HTTPS smoke：`https://aiseek.tech/api/health`、`/admin`、`/instruction`、`/workspace/end` 均返回 200；admin 登录后 `/admin/companies` 返回 37 家公司，首家公司为 `P01`。
 
@@ -2367,3 +2367,79 @@
 
 **验证**：
 - 本地构建通过：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
+
+### 2026-07-01 neat-freak 文档一致性收口
+
+**背景**：近期连续完成开篇任务表预览页、任务2提醒频率修正、A 表 v5、B 端 5 分钟门槛、AI 复制优化、admin 材料文件夹替换上传等改动，需要把仍停留在旧流程或旧措辞的 Markdown 合并到当前真相源。
+
+**整理**：
+- 更新 `APP_FLOW.md`：补齐 `/instruction/task-preview`、`/pre-segment-instruction` 路由和当前状态机，把段前指导语补丁融入状态机正文；修正 B 动态分配章节标题。
+- 更新 `PRD.md`：实验结构改为“开篇指导语第 1 页 -> 任务表预览第 2 页 -> 同步准备页 -> 测试题”，并明确正式阶段包含 3 次段前阅读、3 次段后问卷、2 个休息段和最终长问卷。
+- 更新 `SIDETASK_PANEL_SPEC.md` 与 `A_B_WORKBENCH_UI.md`：统一任务2提醒口径为服务端 `notificationPulse` 触发；continuous 每条新题提醒，batch 按 admin 窗口提醒；测试轮真实任务2为 0，教学演示题不进入正式变量。
+- 更新 `BACKEND_STRUCTURE.md`：同步开篇两页指导语、任务2 pulse 口径、admin 材料文件夹替换上传接口 `POST /admin/companies/library/replace-upload`。
+- 更新 `TUTORIAL_SPEC.md`、`admin材料库上传手册.md`、`README.md`：参与者口径统一为 A/B、任务1/任务2；README 补任务表预览页和 admin 材料替换上传，并保留 admin 密码只从 `ADMIN_PASSWORD` 读取、不在公开文档写真实密码的安全说明。
+
+**边界**：
+- 本轮只整理 Markdown，不改业务代码、不改导出结构、不执行线上部署。
+- `数据库文件夹手册.md` 本轮未改；最近功能不新增变量文件，也不改变 `variables.json`、`timestamps.json`、`side_tasks/` 结构。
+
+### 2026-07-01 progress 编码哨兵与启动 prompt 小修
+
+**背景**：复查发现 `progress.md` 曾再次出现局部乱码风险，需要把 `lessons.md` 中 2026-05-27 编码事故教训直接放到 `progress.md` 末尾形成固定提示；同时清理两个已无用的表单源 docx，并检查新对话启动口径。
+
+**整理**：
+- 在 `progress.md` 末尾新增固定提示，要求后续新增记录必须插在提示上方，提示永远保留在文件最后。
+- 固定提示明确禁止用 PowerShell `Add-Content`、`>>`、here-string 管道或 shell `echo/cat` 写中文 Markdown，优先使用 `apply_patch`；如必须脚本处理，需显式 UTF-8 并检查连续问号乱码和替换字符。
+- 删除 `03_tracking/a_form_source.docx` 与 `03_tracking/b_form_source.docx`，这两个文件已不再作为当前规格真相源。
+- 更新 `启动prompt.txt`：参与者前台口径改为 A/B 与任务1/任务2，补 B 每家公司自己的 5 分钟开放窗口、任务2 `notificationPulse` 提醒口径，并保留 HTTPS / git archive 部署路线。
+
+**边界**：
+- 本轮只改文档和删除无用 docx，不改业务代码、不执行本地构建、不执行线上部署。
+
+### 2026-07-01 AI 回复文本选择复制体验修复
+
+**背景**：用户反馈 AI 回复区从左到右或从右到左拖选文本时选区不稳定，多行选择容易断行、错行。复查发现旧结构在整条消息行外层使用 `select-none`，再在正文内层使用 `select-text`，同时复制按钮和提示也与正文处在同一气泡层级，容易干扰浏览器原生 Selection。
+
+**实现**：
+- 调整 `apps/web/src/components/ai-chat-panel.tsx` 的消息 DOM：移除包住正文的父级 `select-none`，只给头像、附件区、操作按钮和复制提示使用 `select-none`。
+- 将消息正文改成独立的 `article.ai-message-copy-surface` 文本岛，保留 `ReactMarkdown` 渲染，但正文区域统一 `select-text` / `user-select:text` / `cursor-text`。
+- 将复制、重新生成、继续追问按钮放在正文容器外侧，避免用户拖选多行正文时扫到按钮或工具栏。
+- 保留原有复制逻辑：如果当前选区完整落在该条 AI 正文内，则复制选中内容；否则复制整条回复。
+
+**边界**：
+- 本轮是纯前端展示与交互改造，不改 AI 请求、不改时间戳事件、不改变量保存、不改导出结构。
+- 本地验证：`corepack pnpm --filter web build` 通过。
+
+---
+
+## 末尾固定提示：写入 progress.md 前必须先看
+
+> 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
+
+### 为什么要保留
+
+2026-05-27 曾发生过 `progress.md` 编码损坏事件：使用 PowerShell `Add-Content` / here-string / `>>` 向中文 Markdown 追加内容，导致 UTF-8 文件混入 GBK/ANSI 字节，后续按 UTF-8 读取时出现乱码和 Unicode 替换字符（U+FFFD）。详细复盘见 `03_tracking/lessons.md` 的“2026-05-27 反思补充：progress.md 编码损坏事件”。
+
+### 强制写入规则
+
+- 严禁用 PowerShell `Add-Content`、`>>`、here-string 管道写入中文 `.md`。
+- 严禁用 shell `echo` / `cat <<EOF` 直接写中文 Markdown。
+- 优先用 `apply_patch` 做局部修改。
+- 如果必须脚本处理，使用 Python `Path.read_text(encoding='utf-8')` / `Path.write_text(..., encoding='utf-8')`，并确认不会把中文写成连续问号乱码。
+- 写完后必须检查：
+  - `git diff --check`
+  - 搜索连续问号乱码和 Unicode 替换字符
+  - 用 UTF-8 读取目标段落，确认中文正常。
+
+### 新记录插入位置
+
+新进度记录请插在本提示上方，例如：
+
+```text
+### 2026-XX-XX 新任务标题
+...
+
+---
+
+## 末尾固定提示：写入 progress.md 前必须先看
+```

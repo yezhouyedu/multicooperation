@@ -27,19 +27,21 @@
 - 文案从右向左滚动
 - 到左端后停留约 `5s`
 - 随后淡出约 `2s`
-- 再等待约 `30s` 后开始下一轮
+- 是否开始一轮滚动由服务端 `notificationPulse` 决定，不由前端单独按“待处理数大于 0”循环播放
 
 说明：
 
 - 这是当前前端统一口径
-- 具体实现由运行时配置驱动，但对外说明先保持这一版稳定文案
+- 具体提醒频率由运行时配置和服务端 pulse 驱动，前端只负责播放本次提醒
 
-### 2.3 到达触发
+### 2.3 到达与提醒触发
 
-- 前端监测到新的 `planId` 首次进入当前队列
-- 立即向服务端补发 `side_task_released`
-- 服务端用 `now()` 认定 `releasedAt`
-- 若断线恢复，前端按差集补发，服务端幂等处理
+- 题目实际到达节奏由服务端统一排期，continuous / batch 不改变题目真实到达速度。
+- 前端监测到新的 `planId` 首次进入当前队列时，向服务端补发 `side_task_released`；服务端用 `now()` 认定 `releasedAt`，并做幂等处理。
+- visual reminder 只看 `notificationPulse`：
+  - continuous：每个未提醒过的新任务2到达时，服务端生成 `continuous_arrival` pulse。
+  - batch：到达 admin 配置的 batch 窗口时，服务端检查当前未作答任务2数量；若大于 0，生成 `batch_window` pulse。
+- 前端收到 pulse 后滚动一次；如果任务2面板已经展开，仍记录提醒 exposure，但提醒不可见。
 
 ---
 

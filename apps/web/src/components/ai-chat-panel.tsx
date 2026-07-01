@@ -95,7 +95,11 @@ function ThinkingIndicator({ active }: { active: boolean }) {
 
 function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
   return (
-    <div className={`max-w-none select-text break-words text-sm ${isUser ? 'text-white' : 'text-[#334155]'}`}>
+    <div
+      className={`max-w-none cursor-text select-text break-words text-sm [user-select:text] ${
+        isUser ? 'text-white' : 'text-[#334155]'
+      }`}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -172,7 +176,7 @@ function MessageActions({
 }) {
   if (!visible) return null;
   return (
-    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+    <div className="mt-2 flex select-none flex-wrap gap-2 text-xs">
       {onCopy ? (
         <button
           type="button"
@@ -538,12 +542,9 @@ export function AiChatPanel({
             const showSlowNotice = slowStreamingMessageId === message.id;
             const showThinking = isStreaming && !message.text;
             return (
-              <div
-                key={message.id}
-                className={`select-none flex items-start gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
-              >
+              <div key={message.id} className={`flex items-start gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
                 <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs shadow-sm ${
+                  className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs shadow-sm ${
                     message.role === 'user'
                       ? 'border border-gray-300 bg-white text-gray-500'
                       : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
@@ -553,14 +554,17 @@ export function AiChatPanel({
                 </div>
                 <div
                   data-ai-message-id={message.id}
-                  className={`max-w-[85%] rounded-3xl p-4 text-sm leading-relaxed shadow-sm ${
+                  className={`flex max-w-[85%] flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}
+                >
+                  <div
+                    className={`w-full rounded-3xl p-4 text-sm leading-relaxed shadow-sm ${
                     message.role === 'user'
                       ? `${accentClass.bubble} rounded-tr-md border text-white`
-                      : 'select-text rounded-tl-md border border-[#e5e6eb] bg-white/96 text-gray-700 backdrop-blur-sm'
+                      : 'rounded-tl-md border border-[#e5e6eb] bg-white/96 text-gray-700 backdrop-blur-sm'
                   }`}
-                >
+                  >
                   {message.attachments?.length ? (
-                    <div className="mb-3">
+                    <div className="mb-3 select-none">
                       <div
                         className={`mb-2 text-xs font-semibold ${
                           message.role === 'user' ? 'text-white/85' : 'text-[#86909c]'
@@ -583,21 +587,25 @@ export function AiChatPanel({
 
                   {showThinking ? <ThinkingIndicator active /> : null}
                   {message.text ? (
-                    <div
+                    <article
                       data-ai-message-content-id={message.id}
-                      className="select-text"
+                      className="ai-message-copy-surface cursor-text select-text [user-select:text]"
                       onMouseDown={() => {
+                        selectingTextRef.current = true;
+                      }}
+                      onSelect={() => {
                         selectingTextRef.current = true;
                       }}
                     >
                       <MarkdownMessage text={message.text} isUser={message.role === 'user'} />
-                    </div>
+                    </article>
                   ) : null}
                   {showSlowNotice ? (
-                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+                    <div className="mt-3 select-none rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
                       AI 正在生成，可能需要较长时间，请先继续阅读材料或填写任务表。
                     </div>
                   ) : null}
+                  </div>
 
                   {message.role === 'assistant' ? (
                     <MessageActions
@@ -611,7 +619,7 @@ export function AiChatPanel({
                   ) : null}
 
                   {copiedMessage?.id === message.id ? (
-                    <div className="mt-2 text-xs text-[#1e80ff]">
+                    <div className="mt-2 select-none text-xs text-[#1e80ff]">
                       {copiedMessage.kind === 'selection' ? '已复制选中内容' : '已复制本条回复'}
                     </div>
                   ) : null}

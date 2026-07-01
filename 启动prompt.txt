@@ -44,7 +44,7 @@
 
 ## 2. 当前项目阶段，一句话理解
 
-这已经不是早期原型，而是一个围绕“尽调员 / 投资经理”协作实验的长期全栈实验平台。
+这已经不是早期原型，而是一个围绕 A/B 协作实验的长期全栈实验平台。内部、论文和历史材料中仍可能出现“尽调员 / 投资经理”“主线 / 副线”等旧称，但参与者前台当前统一显示为 A/B、任务1/任务2。
 
 当前阶段是：
 
@@ -55,7 +55,7 @@
 - 正式入口已经从裸 IP 继续推进到 HTTPS 域名：`https://aiseek.tech`，`/api/*` 通过 Nginx 反代到 server，`/admin` 通过 web 访问。
 - 生产 Docker Compose 当前包含 `postgres`、`server`、`web`、`nginx` 四类服务；Nginx 证书文件在服务器 `/etc/multi-cooperation/certs`，证书私钥不进 git。
 - 服务器部署优先使用本地 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 打包当前 git HEAD 上传，再在服务器运行 `scripts/deploy/deploy-prod.sh`；不要依赖服务器直接从 GitHub 私仓拉取。
-- HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排（含 SSE、AI、图片上传、副线、问卷、导出）通过后，再关闭公网 3000 / 3001，只留 80 / 443 / 22。
+- HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排（含 SSE、AI、图片上传、任务2、问卷、导出）通过后，再关闭公网 3000 / 3001，只留 80 / 443 / 22。
 - 正式问卷已经接入：段 1/2/3 后常规问卷 + 最终长问卷；招募问卷不进系统；旧“休息问卷模板”口径已废弃。
 - 正式工作段前新增段前指导语页：formal ready 后先进入段 1 前阅读材料，段 1/2 后问卷和休息结束后进入段 2/3 前阅读材料；强制观看 15 秒，双方完成后才启动对应工作段。
 - 段前指导语文本来自 `00_start_materials/第六次开会/段前指导语文本与第三章叙事随机机制说明_V0.2.md`；正式 specs 见 `02_specs/03_execution/段前指导语方案.md`。
@@ -83,31 +83,32 @@
 
 请按下面口径理解项目：
 
-- 参与者前台不要暴露 `A/B` 字母角色，统一使用“尽调员 / 投资经理”。
+- 参与者前台统一使用 `A/B` 字母角色，不再显示“尽调员 / 投资经理”。
+- 参与者前台统一使用“任务1 / 任务2”，不再显示“主线 / 副线”。
 - 系统不是“先来固定 A、后来固定 B”，而是先按进入顺序成组，再在组内随机分配角色。
 - 角色随机、公司顺序、实验模式随机结果都要可复现、可导出。
 - 正式公司顺序是 session 内共享 seed 随机顺序。
-- 尽调员按共享正式公司顺序推进。
-- 投资经理不是机械跟随固定顺序，而是在共享 formal 公司池上动态分配：
+- A 按共享正式公司顺序推进。
+- B 不是机械跟随固定顺序，而是在共享 formal 公司池上动态分配：
   1. 优先 locked pool：`A 已提交 && B 未完成 && B 未分配`
   2. 锁定池为空时 fallback 到 PreA 公司
   3. 都没有时进入空窗
-- 尽调员对单家公司 5 分钟内不能提前提交；5 分钟到点系统自动提交。
-- 投资经理可以提前看自己材料、写草稿、用 AI；尽调信息解锁后可以直接提交。
-- 是否点击过“查看尽调员信息”要记录，但不再作为提交门槛。
-- 测试轮固定默认变量：基础 AI、continuous 高频副线提醒、neutral_info 中性信息。
+- A 对单家公司 5 分钟内不能提前提交；5 分钟到点系统自动提交。
+- B 每接到一家公司都有自己的 5 分钟处理窗口；只有 A 已提交且 `bCanSubmitAt <= now` 后，B 才能查看 A 信息、解锁 A 原始材料和提交。
+- B 可以提前看自己材料、写草稿、用 AI；是否点击过“查看 A 信息”要记录，但不再作为提交门槛。
+- 测试轮固定默认变量：基础 AI、continuous 高频任务2提醒、neutral_info 中性信息。
 - 测试轮只是一家公司；测试轮到时或完成后进入正式阶段 ready，不直接进入正式工作段。
-- 正式工作段默认 20 分钟；休息段默认 5 分钟；尽调员单家公司窗口固定 5 分钟。
-- 副线任务系统已经是正式队列式系统，不是原型。
+- 正式工作段默认 20 分钟；休息段默认 5 分钟；A 单家公司窗口固定 5 分钟。
+- 任务2系统已经是正式队列式系统，不是原型。
 - continuous / batch 操纵的是提醒频率，不改变后台题目实际到达节奏。
-- 后台副线题目按计划连续进入队列；continuous 每条提醒，batch 按窗口合并提醒。
+- 后台任务2题目按计划连续进入队列；continuous 每条新题生成提醒 pulse，batch 按 admin 窗口检查待处理数后生成提醒 pulse。
 - AI 区已经支持 Markdown、流式输出、图片上传/粘贴、追问条。
 - AI 区标题栏会显示基础版 / 升级版 badge。
 - 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`。
 - 最终版公司材料库已经上线：正式公司 36 家，测试轮 1 家；正式公司每家公司总记录 12 份，其中参与者侧 11 份、研究员 1 份，单角色实际可见 6 份。
-- 最终版副线题库已经上线：active 900 条，V1.0 修订版，新字段完整。
+- 最终版任务2题库已经上线：active 900 条，V1.0 修订版，新字段完整。
 - admin 已支持实验 1/2/3 互斥模式卡片。
-- 变量保存模块第一期已经实现：事件、内容、AI 聊天、副线、图片附件、服务器导出 zip、自检表。
+- 变量保存模块第一期已经实现：事件、内容、AI 聊天、任务2、图片附件、服务器导出 zip、自检表。
 - 线上裸 IP P0 已跑通，HTTPS 域名入口已部署：`https://aiseek.tech`。
 - 线上 HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排仍是正式实验前收口事项。
 - 线上服务器使用 Docker Compose：`postgres`、`server`、`web`、`nginx` 四类容器。
@@ -122,7 +123,7 @@ admin 同一时间只能选择一种模式：
 
 - `manual`：手动 / 通用
 - `ai_upgrade`：实验 1，AI 能力升级
-- `side_reminder`：实验 2，副线提醒频率
+- `side_reminder`：实验 2，任务2提醒频率
 - `coop_narrative`：实验 3，合作叙事
 
 切换 admin 模式只影响新 session，旧 session 使用创建时保存的快照。
@@ -130,7 +131,7 @@ admin 同一时间只能选择一种模式：
 默认固定变量按师兄口径：
 
 - AI：基础版
-- 副线提醒：continuous 高频提醒
+- 任务2提醒：continuous 高频提醒
 - 叙事：neutral_info 中性信息
 
 实验 1：
@@ -138,7 +139,7 @@ admin 同一时间只能选择一种模式：
 - 随机 `upgradeCohort = early_upgrade / late_upgrade`
 - early：段 1 BASIC，段 2 ADVANCED，段 3 ADVANCED
 - late：段 1 BASIC，段 2 BASIC，段 3 ADVANCED
-- 固定副线和叙事，默认 `continuous + neutral_info`
+- 固定任务2提醒和叙事，默认 `continuous + neutral_info`
 
 实验 2：
 
@@ -149,7 +150,7 @@ admin 同一时间只能选择一种模式：
 
 - 随机 `narrativeGroup = coop_narrative / neutral_info`
 - 合作叙事组再随机主题顺序
-- 固定 AI 和副线，默认 `BASIC + continuous`
+- 固定 AI 和任务2提醒，默认 `BASIC + continuous`
 
 ---
 
@@ -181,11 +182,11 @@ participant 层保存个人事实：
 
 重点文件：
 
-- `variables.json`：核心 treatment、主线、AI、副线、问卷摘要。
+- `variables.json`：核心 treatment、任务1、AI、任务2、问卷摘要。
 - `answer_content.json`：每家公司答题区全文。
-- `ai_chat.jsonl`：每家公司主线 AI 聊天。
-- `side_responses.jsonl`：副线计划题 + 呈现 + 作答 + 正确率 + 反应时。
-- `side_events.jsonl`：副线释放、提醒、打开、作答事件。
+- `ai_chat.jsonl`：每家公司任务1 AI 聊天。
+- `side_responses.jsonl`：任务2计划题 + 呈现 + 作答 + 正确率 + 反应时。
+- `side_events.jsonl`：任务2释放、提醒、打开、作答事件。
 - `events/events.jsonl`：实验关键行为事件和 legacy progress。
 - `variable_implementation_summary.json`：导出包动态自检摘要。
 
