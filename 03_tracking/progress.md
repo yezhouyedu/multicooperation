@@ -2333,6 +2333,9 @@
 
 **验证**：
 - 本地构建通过：`corepack pnpm --filter server build`、`corepack pnpm --filter web build`。
+- GitHub：提交并推送 `058f4c4 收口指导语与材料管理` 到 `main`。
+- 线上：通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署 commit `058f4c4`；生产 `postgres/server/web/nginx` 运行正常，server health OK。
+- HTTPS smoke：`https://aiseek.tech/api/health`、`/admin`、`/instruction`、`/workspace/end` 均返回 200；admin 登录后 `/admin/companies` 返回 37 家公司，首家公司为 `P01`。
 
 ### 2026-06-29 开篇指导语新增任务表预览页
 
