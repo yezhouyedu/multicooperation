@@ -1,6 +1,6 @@
 'use client';
 
-import { ClipboardEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardEvent, KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { Camera } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -163,6 +163,12 @@ function MarkdownMessage({ text, isUser }: { text: string; isUser: boolean }) {
   );
 }
 
+const MemoizedMarkdownMessage = memo(
+  MarkdownMessage,
+  (prev, next) => prev.text === next.text && prev.isUser === next.isUser,
+);
+MemoizedMarkdownMessage.displayName = 'MemoizedMarkdownMessage';
+
 function MessageActions({
   visible,
   onCopy,
@@ -208,6 +214,134 @@ function MessageActions({
         </button>
       ) : null}
     </div>
+  );
+}
+
+type MessageRowProps = {
+  message: Message;
+  previousUser: Message | null;
+  isStreaming: boolean;
+  showSlowNotice: boolean;
+  copiedKind?: 'selection' | 'message';
+  isDisabled: boolean;
+  bubbleClass: string;
+  onCopy: (message: Message) => void;
+  onRetry: (message: Message) => void;
+  onFollowUp: (message: Message) => void;
+  onSelectionStart: () => void;
+};
+
+const AiMessageRow = memo(function AiMessageRow({
+  message,
+  previousUser,
+  isStreaming,
+  showSlowNotice,
+  copiedKind,
+  isDisabled,
+  bubbleClass,
+  onCopy,
+  onRetry,
+  onFollowUp,
+  onSelectionStart,
+}: MessageRowProps) {
+  const isUserMessage = message.role === 'user';
+  const showThinking = isStreaming && !message.text;
+
+  return (
+    <div className={`flex min-w-0 items-start gap-3 ${isUserMessage ? 'flex-row-reverse' : ''}`}>
+      <div
+        className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs shadow-sm ${
+          isUserMessage
+            ? 'border border-gray-300 bg-white text-gray-500'
+            : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
+        }`}
+      >
+        {isUserMessage ? '我' : 'AI'}
+      </div>
+      <div
+        data-ai-message-id={message.id}
+        className={`flex min-w-0 flex-col ${isUserMessage ? 'max-w-[85%] items-end' : 'w-full max-w-none items-start'}`}
+      >
+        <div
+          className={
+            isUserMessage
+              ? `w-full rounded-3xl rounded-tr-md border p-4 text-sm leading-relaxed text-white shadow-sm ${bubbleClass}`
+              : 'w-full min-w-0 px-1 py-1 text-sm leading-relaxed text-gray-700'
+          }
+        >
+          {message.attachments?.length ? (
+            <div className="mb-3 select-none">
+              <div className={`mb-2 text-xs font-semibold ${isUserMessage ? 'text-white/85' : 'text-[#86909c]'}`}>
+                本轮参考图片
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {message.attachments.map((item, imageIndex) => (
+                  <img
+                    key={`${message.id}-${imageIndex}`}
+                    src={item}
+                    alt={`attachment-${imageIndex}`}
+                    className="h-24 w-24 rounded-2xl border border-white/20 object-cover"
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {showThinking ? <ThinkingIndicator active /> : null}
+          {message.text ? (
+            <article
+              data-ai-message-content-id={message.id}
+              className={`ai-message-copy-surface block min-w-0 cursor-text select-text [user-select:text] ${
+                isUserMessage ? '' : 'w-full max-w-none'
+              }`}
+              onMouseDown={onSelectionStart}
+              onPointerDown={onSelectionStart}
+              onSelect={onSelectionStart}
+            >
+              <MemoizedMarkdownMessage text={message.text} isUser={isUserMessage} />
+            </article>
+          ) : null}
+          {showSlowNotice ? (
+            <div className="mt-3 select-none rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+              AI 正在生成，可能需要较长时间，请先继续阅读材料或填写任务表。
+            </div>
+          ) : null}
+        </div>
+
+        {message.role === 'assistant' ? (
+          <MessageActions
+            visible={!isStreaming}
+            onCopy={message.text ? () => onCopy(message) : undefined}
+            onRetry={previousUser && !isDisabled ? () => onRetry(previousUser) : undefined}
+            onFollowUp={message.text && !isDisabled ? () => onFollowUp(message) : undefined}
+          />
+        ) : null}
+
+        {copiedKind ? (
+          <div className="mt-2 select-none text-xs text-[#1e80ff]">
+            {copiedKind === 'selection' ? '已复制选中内容' : '已复制本条回复'}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}, areMessageRowsEqual);
+AiMessageRow.displayName = 'AiMessageRow';
+
+function areMessageRowsEqual(prev: MessageRowProps, next: MessageRowProps) {
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.role === next.message.role &&
+    prev.message.text === next.message.text &&
+    prev.message.attachments === next.message.attachments &&
+    prev.previousUser?.id === next.previousUser?.id &&
+    prev.previousUser?.text === next.previousUser?.text &&
+    prev.previousUser?.attachments === next.previousUser?.attachments &&
+    prev.isStreaming === next.isStreaming &&
+    prev.showSlowNotice === next.showSlowNotice &&
+    prev.copiedKind === next.copiedKind &&
+    prev.isDisabled === next.isDisabled &&
+    prev.bubbleClass === next.bubbleClass
   );
 }
 
@@ -575,99 +709,23 @@ export function AiChatPanel({
             const previousUser = message.role === 'assistant' ? messages[index - 1] : null;
             const isStreaming = streamingMessageId === message.id;
             const showSlowNotice = slowStreamingMessageId === message.id;
-            const showThinking = isStreaming && !message.text;
-            const isUserMessage = message.role === 'user';
             return (
-              <div key={message.id} className={`flex min-w-0 items-start gap-3 ${isUserMessage ? 'flex-row-reverse' : ''}`}>
-                <div
-                  className={`flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-full text-xs shadow-sm ${
-                    isUserMessage
-                      ? 'border border-gray-300 bg-white text-gray-500'
-                      : 'bg-gradient-to-br from-cyan-500 to-blue-600 text-white'
-                  }`}
-                >
-                  {isUserMessage ? '我' : 'AI'}
-                </div>
-                <div
-                  data-ai-message-id={message.id}
-                  className={`flex min-w-0 flex-col ${
-                    isUserMessage ? 'max-w-[85%] items-end' : 'w-full max-w-none items-start'
-                  }`}
-                >
-                  <div
-                    className={
-                      isUserMessage
-                        ? `w-full rounded-3xl rounded-tr-md border p-4 text-sm leading-relaxed text-white shadow-sm ${accentClass.bubble}`
-                        : 'w-full min-w-0 px-1 py-1 text-sm leading-relaxed text-gray-700'
-                    }
-                  >
-                  {message.attachments?.length ? (
-                    <div className="mb-3 select-none">
-                      <div
-                        className={`mb-2 text-xs font-semibold ${
-                          isUserMessage ? 'text-white/85' : 'text-[#86909c]'
-                        }`}
-                      >
-                        本轮参考图片
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {message.attachments.map((item, imageIndex) => (
-                          <img
-                            key={`${message.id}-${imageIndex}`}
-                            src={item}
-                            alt={`attachment-${imageIndex}`}
-                            className="h-24 w-24 rounded-2xl border border-white/20 object-cover"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {showThinking ? <ThinkingIndicator active /> : null}
-                  {message.text ? (
-                    <article
-                      data-ai-message-content-id={message.id}
-                      className={`ai-message-copy-surface block min-w-0 cursor-text select-text [user-select:text] ${
-                        isUserMessage ? '' : 'w-full max-w-none'
-                      }`}
-                      onMouseDown={() => {
-                        selectingTextRef.current = true;
-                      }}
-                      onPointerDown={() => {
-                        selectingTextRef.current = true;
-                      }}
-                      onSelect={() => {
-                        selectingTextRef.current = true;
-                      }}
-                    >
-                      <MarkdownMessage text={message.text} isUser={isUserMessage} />
-                    </article>
-                  ) : null}
-                  {showSlowNotice ? (
-                    <div className="mt-3 select-none rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
-                      AI 正在生成，可能需要较长时间，请先继续阅读材料或填写任务表。
-                    </div>
-                  ) : null}
-                  </div>
-
-                  {message.role === 'assistant' ? (
-                    <MessageActions
-                      visible={!isStreaming}
-                      onCopy={message.text ? () => void copyMessage(message.text, message.id) : undefined}
-                      onRetry={
-                        previousUser && !isDisabled ? () => void submitMessage(previousUser.text, previousUser.attachments) : undefined
-                      }
-                      onFollowUp={message.text && !isDisabled ? () => startFollowUp(message) : undefined}
-                    />
-                  ) : null}
-
-                  {copiedMessage?.id === message.id ? (
-                    <div className="mt-2 select-none text-xs text-[#1e80ff]">
-                      {copiedMessage.kind === 'selection' ? '已复制选中内容' : '已复制本条回复'}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
+              <AiMessageRow
+                key={message.id}
+                message={message}
+                previousUser={previousUser}
+                isStreaming={isStreaming}
+                showSlowNotice={showSlowNotice}
+                copiedKind={copiedMessage?.id === message.id ? copiedMessage.kind : undefined}
+                isDisabled={isDisabled}
+                bubbleClass={accentClass.bubble}
+                onCopy={(item) => void copyMessage(item.text, item.id)}
+                onRetry={(item) => void submitMessage(item.text, item.attachments)}
+                onFollowUp={startFollowUp}
+                onSelectionStart={() => {
+                  selectingTextRef.current = true;
+                }}
+              />
             );
           })}
         </div>

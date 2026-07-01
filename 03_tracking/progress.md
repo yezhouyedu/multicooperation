@@ -2437,6 +2437,23 @@
 - 本轮仍是纯前端交互兜底，只改 `apps/web/src/components/ai-chat-panel.tsx`，不改变量记录、时间戳、AI 请求、数据库或导出。
 - 本地验证：`corepack pnpm --filter web build` 通过。
 
+### 2026-07-02 AI 回复正文稳定渲染修复
+
+**背景**：继续排查 AI 区复制选区 1 秒后消失问题。临时 Playwright 调试确认：静态 preview 页面中 Selection 不会自行消失；真实 `/workspace/a` runtime 环境中，父级倒计时/状态更新会触发 AI 正文内部 `childList` mutation，导致已选中的 Markdown DOM 被移除/重建，选区随之缩短或消失。
+
+**实现**：
+- 保留 `useSessionRuntime`、SSE、轮询、工作段倒计时、任务倒计时和 B 端门槛刷新，不破坏原有流程同步目的。
+- 在 `apps/web/src/components/ai-chat-panel.tsx` 中拆出 `AiMessageRow`，并用 `React.memo` 隔离单条消息渲染。
+- 将 `MarkdownMessage` 包装为 `MemoizedMarkdownMessage`，只有 `message.text` 或 `isUser` 真实变化时才重渲染 Markdown 正文。
+- 工具按钮、复制提示、慢响应提示、父级倒计时更新不再触发已完成 AI 回复正文 DOM 重建。
+
+**验证**：
+- 本地 `corepack pnpm --filter web build` 通过。
+- 复跑真实 workspace mutation debug：设置 AI 正文选区后等待 2.5 秒，选区长度保持 81，AI 正文内部不再出现 `childList mutation`。
+
+**边界**：
+- 本轮不改 AI 请求、时间戳事件、变量保存、数据库、导出结构和工作台拖拽布局。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看
