@@ -392,7 +392,7 @@ function LazyPdfPage({ pageNumber, width }: { pageNumber: number; width: number 
   return (
     <div ref={containerRef} className="flex justify-center">
       {isVisible ? (
-        <PdfPage pageNumber={pageNumber} width={width} renderTextLayer={false} renderAnnotationLayer={false} />
+        <PdfPage pageNumber={pageNumber} width={width} renderTextLayer renderAnnotationLayer={false} />
       ) : (
         <div style={{ width, height: width * 1.414 }} className="animate-pulse rounded bg-gray-100" />
       )}
@@ -463,6 +463,26 @@ function PdfMaterialViewer({ material }: { material: MaterialItem }) {
 
   return (
     <div className="flex h-full min-h-[360px] flex-col rounded-xl border border-[#e5e6eb] bg-white">
+      <style jsx global>{`
+        .react-pdf__Page {
+          position: relative;
+          user-select: text;
+        }
+        .react-pdf__Page canvas {
+          user-select: none;
+        }
+        .react-pdf__Page__textContent {
+          z-index: 2;
+          cursor: text;
+          user-select: text;
+        }
+        .react-pdf__Page__textContent span {
+          user-select: text;
+        }
+        .react-pdf__Page__textContent ::selection {
+          background: rgba(30, 128, 255, 0.28);
+        }
+      `}</style>
       <div className="flex items-center justify-between border-b border-[#e5e6eb] px-4 py-3 text-sm text-[#4e5969]">
         <div className="truncate">{material.sourceFilename}</div>
         <div className="flex items-center gap-2">
