@@ -2536,6 +2536,13 @@
 - server build、web production build（24 个路由）通过，`git diff --check` 通过。
 - 本地 admin Session 概览浏览器核对通过；可见实验局筛选、筛选范围全选、A/B 角色与手动 Session 归属。问卷页二次浏览器会话因 Playwright CLI 启动超时未作为验收依据，其结构由生产构建和条件测试覆盖。
 
+**提交与生产部署**：
+- 主实现提交：`4ce3fd4 更新A0-A6指导语与问卷流程`，已推送 GitHub `main`。
+- 部署前生产 PostgreSQL 备份：`/tmp/multi_cooperation_before_4ce3fd4_20260717_162553.sql`，约 1.8 MB。
+- 已通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署 commit `4ce3fd4`；postgres/server/web/nginx 四容器运行正常。
+- HTTPS smoke：`/api/health`、`/admin`、`/instruction` 均返回 200；生产正式问卷模板已切换为 `three-chapter-questionnaire-v2-2`。
+- 生产实验局核对：当前唯一实验局为 `ACTIVE`，尚未分配正式 Session；第一组匹配后 Session 概览将显示实验局名称/代码与 A0-A6 条件。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看
