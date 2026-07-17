@@ -2553,7 +2553,7 @@
 - 展示工作段回顾的 6 道共同题 + 3 道条件 AI 题、最终问卷模块顺序、AI/图片/交接备注/A 材料/反馈跳题规则。
 - 增加审查边界提示：Admin 可修改题干、选项和量表端点；跳题依赖稳定题号并由 server 执行，修改题号或显示范围必须同步修改和测试后端。
 
-**验证**：`apps/web` production build 通过，共 24 个路由。
+**验证与上线**：`apps/web` production build 通过，共 24 个路由。提交 `dbb91d4 补充问卷页面组装说明` 已推送 GitHub `main`，并通过 git archive 路线部署 production web；线上 `/admin` 与 `/api/health` 均返回 200。
 
 ---
 
