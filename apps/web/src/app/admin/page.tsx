@@ -1169,28 +1169,6 @@ function ConfigTab() {
         <div className="mt-2 text-xs text-[#86909c]">填 0 表示默认按“全对通过”。</div>
       </div>
 
-      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
-        <div className="mb-1 font-bold text-[#1d2129]">指导语积木</div>
-        <div className="mb-4 text-xs leading-5 text-[#86909c]">
-            开篇通用指导语和 A/B 角色说明已固定为 2026-07 最新 Word 版本；A0-A6 处理由实验局条件快照控制，这里只维护通用实验流程文字。
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {([
-            ['experimentFlow', '实验流程'],
-          ] as Array<[keyof InstructionBlocks, string]>).map(([key, label]) => (
-            <label key={key} className="text-sm text-[#4e5969]">
-              {label}
-              <textarea
-                value={config.instructionBlocks[key] ?? ''}
-                onChange={(event) => setConfig((prev) => prev ? { ...prev, instructionBlocks: { ...prev.instructionBlocks, [key]: event.target.value } } : prev)}
-                rows={key === 'commonBody' ? 4 : 3}
-                className="mt-1 w-full resize-y rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]"
-              />
-            </label>
-          ))}
-        </div>
-      </div>
-
       <div className="flex items-center gap-3">
         <button type="button" onClick={() => void save()} className="rounded-lg bg-[#1e80ff] px-4 py-2 text-sm font-bold text-white hover:bg-blue-600">保存配置</button>
         {status ? <span className="text-xs text-[#86909c]">{status}</span> : null}

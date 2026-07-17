@@ -10,30 +10,17 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 // ========== 文字内容完全来自原始文档，一个字都不能改 ==========
 
-const defaultExperimentFlow =
-  '实验开始后，你将先完成测试题和测试轮，用来熟悉页面与操作方式。测试轮不计入绩效。随后进入正式任务，共 3 个工作段。每个工作段前会先阅读提示材料；工作段结束后需要完成对应问卷，并在休息后进入下一段。';
-
-// 通用指导语.docx
-const commonInstructions: Array<{ text: string; highlight?: 'formula' | 'info' }> = [
+// 通用指导语 7.5改.docx，按原文顺序拆分为网页层级。
+const generalInstructions = [
   { text: '本实验由测试轮和三个正式工作段组成。测试轮用于熟悉页面和操作，不计入绩效。正式任务中，你将与另一名参与者组成两人团队。系统随机分配角色 A 和角色 B，角色在整个实验过程中保持不变。' },
   { text: '实验包含任务 1 和任务 2。' },
-  { text: '任务 1：公司信息处理。角色 A 和角色 B 分别阅读同一家公司的不同材料，并完成各自的任务。' },
-  { text: '作答时只能依据页面当前可见的材料、已经开放的信息和页面提供的工具，不要使用材料之外的知识进行推测。', highlight: 'info' },
-  { text: '任务 1 计分规则：个人绩效根据每个参与者所完成的任务分别计算（角色 A 和角色 B 的任务不同，各自计分）。团队绩效仅依据角色 B 提交的材料包来评定，但评定出的团队绩效分数，会同时作为角色 A 和角色 B 的团队报酬（即两人共享同一团队绩效分）。具体得分规则将在各任务表单末尾详细列出。' },
-  { text: '任务 2 是单项选择题，每题有两个选项，请你从中选出一个正确答案。每个参与者都会参与该任务。' },
-  { text: '任务 2 计分规则：答对一题得 1 分；答错或不答不得分，也不扣分，只计入个人绩效。' },
-  { text: '总报酬 = 固定报酬（25元）+ 个人绩效报酬 + 团队绩效报酬', highlight: 'formula' },
-  { text: '正式任务中所获得的绩效分，会按统一比例折算成现金。所有报酬将在实验结束后通过报名使用的手机号（支付宝）渠道发放，所有报酬会在完成实验两周内发放，如果没有收到请联系实验人员。' },
-  { text: '请注意：测试轮不计入绩效。', highlight: 'info' },
 ];
 
-// 通用指导语.docx - 机会/风险判断说明
-const opportunityRiskInstructions: Array<{ text: string; highlight?: 'definition' }> = [
-  { text: '机会是指可能对公司未来经营表现、竞争状态或投资吸引力产生正面影响的信息。', highlight: 'definition' },
-  { text: '风险是指可能对公司未来经营表现、竞争状态或投资吸引力产生负面影响的信息。', highlight: 'definition' },
-  { text: '重要信息是指影响范围较大、后果较明显、持续性较强，或足以单独改变整体判断的信息。', highlight: 'definition' },
-  { text: '普通信息是指影响方向明确，但影响范围、后果或持续性相对有限，通常需要与其他信息合并判断的信息。', highlight: 'definition' },
-  { text: '角色 A 只需判断每份材料是否存在机会线索或风险线索。角色 B 需要在最终任务表中区分重要信息和普通信息。' },
+const informationDefinitions = [
+  { term: '机会', text: '可能对公司未来经营表现、竞争状态或投资吸引力产生正面影响的信息。' },
+  { term: '风险', text: '可能对公司未来经营表现、竞争状态或投资吸引力产生负面影响的信息。' },
+  { term: '重要信息', text: '影响范围较大、后果较明显、持续性较强，或足以单独改变整体判断的信息。' },
+  { term: '普通信息', text: '影响方向明确，但影响范围、后果或持续性相对有限，通常需要与其他信息合并判断的信息。' },
 ];
 
 // 角色A指导语.docx
@@ -72,63 +59,90 @@ function SectionHeader({ num, title }: { num: string; title: string }) {
   );
 }
 
-/** 任务介绍段落列表：公式行高亮、提示行高亮 */
-function CommonInstructionList() {
+function GeneralInstructionContent() {
   return (
-    <div className="space-y-3">
-      {commonInstructions.map((item) => {
-        if (item.highlight === 'formula') {
-          return (
-            <div
-              key={item.text}
-              className="rounded-lg border border-blue-100 bg-blue-50/60 px-4 py-3 text-[14px] font-medium leading-[1.8] text-[#1d2129]"
-            >
-              {item.text}
-            </div>
-          );
-        }
-        if (item.highlight === 'info') {
-          return (
-            <div
-              key={item.text}
-              className="border-l-2 border-l-[#1e80ff] pl-4 text-[14px] leading-[1.8] text-[#86909c]"
-            >
-              {item.text}
-            </div>
-          );
-        }
-        return (
-          <p key={item.text} className="text-[14px] leading-[1.9] text-[#4e5969]">
-            {item.text}
-          </p>
-        );
-      })}
+    <div>
+      <div className="space-y-3 text-[14px] leading-[1.9] text-[#4e5969]">
+        {generalInstructions.map((item) => <p key={item.text}>{item.text}</p>)}
+      </div>
+      <div className="mt-5 grid grid-cols-2 border-y border-[#e5e6eb] sm:grid-cols-4">
+        {['测试轮', '正式工作段 1', '正式工作段 2', '正式工作段 3'].map((label, index) => (
+          <div key={label} className="flex min-h-16 items-center gap-3 px-3 py-3 sm:border-l sm:first:border-l-0">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0f7ff] text-xs font-bold text-[#1e80ff]">{index + 1}</span>
+            <span className="text-[13px] font-medium text-[#1d2129]">{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/** 机会/风险定义列表：定义项用浅色卡片 */
-function OpportunityRiskList() {
+function TaskOneContent() {
   return (
-    <div className="space-y-2.5">
-      {opportunityRiskInstructions.map((item) => {
-        if (item.highlight === 'definition') {
-          return (
-            <div
-              key={item.text}
-              className="flex items-start gap-3 rounded-lg bg-gray-50 px-4 py-3"
-            >
-              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1e80ff]" />
-              <p className="text-[14px] leading-[1.8] text-[#4e5969]">{item.text}</p>
+    <div className="space-y-6 text-[14px] leading-[1.9] text-[#4e5969]">
+      <div className="space-y-3">
+        <p>角色 A 和角色 B 分别阅读同一家公司的不同材料，并完成各自的任务。</p>
+        <p className="border-l-2 border-[#1e80ff] pl-4">作答时只能依据页面当前可见的材料、已经开放的信息和页面提供的工具，不要使用材料之外的知识进行推测。</p>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">机会和风险</h3>
+        <div className="border-y border-[#e5e6eb]">
+          {informationDefinitions.map((item) => (
+            <div key={item.term} className="grid grid-cols-[88px_1fr] border-b border-[#eef0f2] last:border-b-0 sm:grid-cols-[120px_1fr]">
+              <div className="bg-[#f7f8fa] px-3 py-3 font-semibold text-[#1d2129]">{item.term}</div>
+              <div className="px-4 py-3">{item.term}是指{item.text}</div>
             </div>
-          );
-        }
-        return (
-          <p key={item.text} className="text-[14px] leading-[1.9] text-[#4e5969]">
-            {item.text}
-          </p>
-        );
-      })}
+          ))}
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div><span className="font-semibold text-[#1d2129]">角色 A：</span>只需判断每份材料是否存在机会线索或风险线索。</div>
+          <div><span className="font-semibold text-[#1d2129]">角色 B：</span>需要在最终任务表中区分重要信息和普通信息。</div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">任务 1 计分规则</h3>
+        <div className="space-y-3">
+          <p><span className="font-semibold text-[#1d2129]">个人绩效：</span>根据每个参与者所完成的任务分别计算（角色 A 和角色 B 的任务不同，各自计分）。</p>
+          <p><span className="font-semibold text-[#1d2129]">团队绩效：</span>仅依据角色 B 提交的材料包来评定，但评定出的团队绩效分数，会同时作为角色 A 和角色 B 的团队报酬（即两人共享同一团队绩效分）。</p>
+          <p>具体得分规则将在各任务表单末尾详细列出。</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskTwoAndCompensationContent() {
+  return (
+    <div className="space-y-6 text-[14px] leading-[1.9] text-[#4e5969]">
+      <div>
+        <p><span className="font-semibold text-[#1d2129]">任务 2</span> 是单项选择题，每题有两个选项，请你从中选出一个正确答案。每个参与者都会参与该任务。</p>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">任务 2 计分规则</h3>
+        <div className="grid grid-cols-3 border-y border-[#e5e6eb] text-center">
+          <div className="px-2 py-3"><div className="font-semibold text-[#1d2129]">答对</div><div>得 1 分</div></div>
+          <div className="border-x border-[#e5e6eb] px-2 py-3"><div className="font-semibold text-[#1d2129]">答错或不答</div><div>不得分</div></div>
+          <div className="px-2 py-3"><div className="font-semibold text-[#1d2129]">计分范围</div><div>只计个人绩效</div></div>
+        </div>
+        <p className="mt-3">答对一题得 1 分；答错或不答不得分，也不扣分，只计入个人绩效。</p>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">报酬</h3>
+        <p>总报酬由三部分构成：</p>
+        <div className="my-3 border-l-4 border-[#1e80ff] bg-[#f4f9ff] px-4 py-3 text-center text-[15px] font-semibold text-[#1d2129]">
+          总报酬 = 固定报酬（25元）+ 个人绩效报酬 + 团队绩效报酬
+        </div>
+        <div className="space-y-2">
+          <p>正式任务中所获得的绩效分，会按统一比例折算成现金。</p>
+          <p>所有报酬将在实验结束后通过报名使用的手机号（支付宝）渠道发放，所有报酬会在完成实验两周内发放，如果没有收到请联系实验人员。</p>
+        </div>
+      </div>
+
+      <div className="border-l-2 border-[#1e80ff] pl-4 font-medium text-[#1d2129]">请注意：测试轮不计入绩效。</div>
     </div>
   );
 }
@@ -265,17 +279,6 @@ export default function InstructionPage() {
     router.push('/instruction/task-preview');
   }
 
-  const activeModeText = runtime?.instructionBlocks?.activeModeText ?? '';
-  const experimentFlow = runtime?.instructionBlocks?.experimentFlow?.trim() || defaultExperimentFlow;
-
-  // 动态编号：始终从一开始
-  let sectionNum = 0;
-  const nextNum = () => {
-    sectionNum += 1;
-    const nums = ['一', '二', '三', '四', '五'];
-    return nums[sectionNum - 1] || String(sectionNum);
-  };
-
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
       {/* 顶栏 */}
@@ -294,8 +297,8 @@ export default function InstructionPage() {
             style={{ boxShadow: 'var(--shadow-elevated)' }}
           >
             {/* 头部 */}
-            <header className="border-b border-[#eaecf0] px-10 py-8">
-              <div className="flex items-end justify-between">
+            <header className="border-b border-[#eaecf0] px-5 py-7 sm:px-10 sm:py-8">
+              <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
                   <h1 className="text-[22px] font-semibold text-[#1d2129]">开始前，请先阅读以下提示</h1>
                   <p className="mt-2 text-[14px] leading-6 text-[#86909c]">
@@ -311,45 +314,33 @@ export default function InstructionPage() {
             </header>
 
             {/* 内容 */}
-            <div className="px-10 pb-2">
-              {/* 一、实验流程 */}
+            <div className="px-5 pb-2 sm:px-10">
+              {/* 一、通用指导语 */}
               <section className="py-7">
-                <SectionHeader num={nextNum()} title="实验流程" />
-                <div className="rounded-lg border border-[#e8f3ff] bg-[#f4f9ff] px-5 py-4">
-                  <p className="text-[14px] leading-[2] text-[#4e5969]">{experimentFlow}</p>
-                </div>
+                <SectionHeader num="一" title="通用指导语" />
+                <GeneralInstructionContent />
               </section>
 
-              {/* 任务介绍 */}
+              {/* 二、任务1 */}
               <section className="border-t border-[#f0f2f5] py-7">
-                <SectionHeader num={nextNum()} title="任务介绍" />
-                <CommonInstructionList />
+                <SectionHeader num="二" title="任务 1：公司信息处理" />
+                <TaskOneContent />
               </section>
 
-              {/* 机会/风险判断说明 */}
+              {/* 三、任务2与报酬 */}
               <section className="border-t border-[#f0f2f5] py-7">
-                <SectionHeader num={nextNum()} title="机会/风险判断说明" />
-                <OpportunityRiskList />
+                <SectionHeader num="三" title="任务 2 与报酬" />
+                <TaskTwoAndCompensationContent />
               </section>
 
-              {/* 角色说明 */}
+              {/* 四、角色说明 */}
               <section className="border-t border-[#f0f2f5] py-7">
-                <SectionHeader num={nextNum()} title="角色说明" />
+                <SectionHeader num="四" title="角色说明" />
                 {role === 'B' ? <RoleBList /> : <RoleAList />}
               </section>
 
-              {/* 实验条件额外提示（如有） */}
-              {activeModeText.trim() ? (
-                <section className="border-t border-[#f0f2f5] py-7">
-                  <SectionHeader num={nextNum()} title="本轮额外提示" />
-                  <div className="rounded-lg border border-[#fef3c7] bg-[#fffbeb] px-5 py-4 text-[14px] leading-[1.9] text-[#92400e]">
-                    {activeModeText}
-                  </div>
-                </section>
-              ) : null}
-
               <section className="border-t border-[#f0f2f5] py-7">
-                <SectionHeader num={nextNum()} title="知情同意说明" />
+                <SectionHeader num="五" title="知情同意说明" />
                 <div className="rounded-lg border border-[#e8f3ff] bg-[#f4f9ff] px-5 py-4 text-[14px] leading-[2] text-[#4e5969]">
                   本实验用于学术研究，所有数据仅用于学术研究和实验质量检查，研究报告中不会展示能够直接识别你个人身份的信息。本实验不评价你的个人能力，也不涉及真实投资建议。测试轮不计入正式绩效，正式任务中的绩效分会按统一规则折算为报酬。参加实验是自愿的，点击“我已阅读，进入下一步”，即表示你已阅读并理解以上说明，并同意参加本实验。
                 </div>
@@ -357,13 +348,13 @@ export default function InstructionPage() {
             </div>
 
             {/* 底部 */}
-            <footer className="flex items-center justify-between border-t border-[#eaecf0] bg-[#fafbfc] px-10 py-5">
+            <footer className="flex flex-col items-start justify-between gap-4 border-t border-[#eaecf0] bg-[#fafbfc] px-5 py-5 sm:flex-row sm:items-center sm:px-10">
               <span className="text-[13px] text-[#86909c]">请尽量保持页面开启，不要随意刷新或关闭浏览器窗口。</span>
               <button
                 type="button"
                 onClick={() => void handleStart()}
                 disabled={starting || !role || !sessionCode || !participantId}
-                className="h-10 rounded-lg bg-[#1e80ff] px-8 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
+                className="h-10 w-full rounded-lg bg-[#1e80ff] px-8 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60 sm:w-auto"
               >
                 {starting ? '正在进入下一步...' : '我已阅读，进行下一步'}
               </button>
