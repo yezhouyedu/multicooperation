@@ -2496,6 +2496,13 @@
 
 **后续边界**：第八次会议准备的指导语具体修改文件留到下一轮统一审查和替换；本轮仅移除新流程对旧升级模式的依赖并建立正式条件快照。
 
+**提交与生产部署**：
+- 主实现提交：`57b5601 实现七条件区组随机化`，已推送 GitHub `main`。
+- 部署前生产 PostgreSQL 备份：`/tmp/multi_cooperation_before_57b5601_20260717_152046.sql`，约5.6 MB。
+- 已通过 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 部署 commit `57b5601`；postgres/server/web/nginx四容器运行正常。
+- 生产 Prisma 共识别15条 migration，状态为 `Database schema is up to date`。
+- HTTPS smoke：`https://aiseek.tech/api/health` 返回 ok，`https://aiseek.tech/admin` 返回200，未授权访问新实验局 API 返回401。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看
