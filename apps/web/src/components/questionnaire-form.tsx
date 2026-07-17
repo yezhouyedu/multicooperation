@@ -92,7 +92,10 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
       {sections.map((section, sectionIndex) => (
         <section key={`${section.title}-${sectionIndex}`} className="space-y-4">
           {sections.length > 1 ? (
-            <div className="border-b border-[#e5e6eb] pb-2 text-base font-semibold text-[#1d2129]">{section.title}</div>
+            <div className="border-b border-[#e5e6eb] pb-3">
+              <div className="text-base font-semibold text-[#1d2129]">{section.title}</div>
+              {section.description ? <p className="mt-2 text-sm leading-6 text-[#4e5969]">{section.description}</p> : null}
+            </div>
           ) : null}
           {section.items.map((item, itemIndex) => {
             const value = answers[item.code];

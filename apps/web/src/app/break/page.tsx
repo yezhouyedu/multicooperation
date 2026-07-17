@@ -71,14 +71,14 @@ export default function BreakPage() {
 
   // 判断问卷类型，显示不同图标
   const questionnaireIcon = questionnaire?.kind === 'post_survey' ? '📋' : '📊';
-  const stageLabel = questionnaire?.kind === 'post_survey' ? '最终问卷' : '工作段后问卷';
+  const stageLabel = questionnaire?.kind === 'post_survey' ? '最终问卷' : '工作段回顾';
   const displayTitle = safeQuestionnaireTitle(questionnaire?.title, stageLabel);
 
   return (
     <main className="flex h-screen flex-col bg-gradient-to-br from-[#f0f4f8] via-[#f5f7fa] to-[#e8edf2] text-[#1d2129]">
       <SessionTopbar
         roleLabel={runtime?.assignedRole === 'A' ? 'A' : 'B'}
-        currentLabel="休息问卷"
+        currentLabel="工作段回顾"
         stageLabel="休息剩余时间"
         countdownLabel={countdownLabel}
         connectionStatus={connectionStatus}

@@ -89,6 +89,14 @@ type RuntimeSession = Session & {
     phase: ExperimentPhase;
     answers: Prisma.JsonValue;
   }[];
+  aiMessages?: {
+    participantId: string | null;
+    contextType: string;
+    phase: ExperimentPhase | null;
+    segmentIndex: number | null;
+    messageRole: string;
+    attachments: Prisma.JsonValue | null;
+  }[];
 };
 
 type RuntimeExperimentSnapshot = {
@@ -604,6 +612,7 @@ export class ExperimentService {
     if (!pairing) throw new BadRequestException('Session pairing record is missing');
 
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    const currentParticipant = assignedRole === ParticipantRole.A ? pairing.participantA : pairing.participantB;
 
     let roleTask: TaskAssignment | undefined;
     if (session.runtimePhase === RuntimePhase.PRACTICE) {
@@ -640,6 +649,12 @@ export class ExperimentService {
     const practiceTutorialState = participantId
       ? await this.getPracticeTutorialState(session.id, participantId)
       : null;
+    const paymentPhoneConfirmed = participantId
+      ? Boolean(await this.prisma.taskProgress.findFirst({
+          where: { sessionId: session.id, participantId, stage: 'payment_phone_confirmed' },
+          select: { id: true },
+        }))
+      : false;
     const isPracticePhase = session.runtimePhase === RuntimePhase.PRACTICE;
     const currentTaskPhase = isPracticePhase ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
     const practiceTimerEndsAt =
@@ -655,6 +670,7 @@ export class ExperimentService {
     return {
       ok: true,
       assignedRole,
+      maskedPhone: this.maskPhone(currentParticipant?.phone),
       phase: this.mapRuntimePhase(session.runtimePhase),
       segmentIndex: session.currentSegmentIndex,
       segmentType: session.currentSegmentType,
@@ -687,6 +703,7 @@ export class ExperimentService {
       isFrozen: Boolean(roleTask?.frozenAt),
       isPreA: assignedRole === ParticipantRole.B && Boolean(roleTask && !roleTask.aSubmittedAt),
       questionnaireSubmitted,
+      paymentPhoneConfirmed,
       experimentMode: session.experimentMode,
       experimentSnapshot: session.experimentSnapshot,
       instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
@@ -1178,6 +1195,8 @@ export class ExperimentService {
       segmentIndex: active.segmentIndex,
       workSegment: active.questionnaire.workSegment ?? null,
       submittedAt: new Date().toISOString(),
+      displayedItemCodes: active.questionnaire.displayedItemCodes,
+      displayContext: active.questionnaire.displayContext,
       items: active.questionnaire.items,
       answers,
     };
@@ -1751,6 +1770,16 @@ export class ExperimentService {
         pairings: { include: { participantA: true, participantB: true } },
         tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
         questionnaireAnswers: true,
+        aiMessages: {
+          select: {
+            participantId: true,
+            contextType: true,
+            phase: true,
+            segmentIndex: true,
+            messageRole: true,
+            attachments: true,
+          },
+        },
       },
     });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
@@ -1763,6 +1792,16 @@ export class ExperimentService {
         pairings: { include: { participantA: true, participantB: true } },
         tasks: { orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }] },
         questionnaireAnswers: true,
+        aiMessages: {
+          select: {
+            participantId: true,
+            contextType: true,
+            phase: true,
+            segmentIndex: true,
+            messageRole: true,
+            attachments: true,
+          },
+        },
       },
     });
     if (!refetched) throw new NotFoundException(`Session ${sessionCode} not found`);
@@ -3537,9 +3576,10 @@ export class ExperimentService {
       return {
         kind: 'segment_survey' as const,
         segmentIndex,
-        questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'segment_survey', {
+        questionnaire: this.buildFormalQuestionnaire(session, config.activeQuestionnaireTemplate, 'segment_survey', {
           mode: session.experimentMode,
           role,
+          participantId,
           segmentIndex,
           workSegment: this.workSegmentBeforeQuestionnaire(segmentIndex),
         }),
@@ -3550,9 +3590,10 @@ export class ExperimentService {
         return {
           kind: 'segment_survey' as const,
           segmentIndex: 6,
-          questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'segment_survey', {
+          questionnaire: this.buildFormalQuestionnaire(session, config.activeQuestionnaireTemplate, 'segment_survey', {
             mode: session.experimentMode,
             role,
+            participantId,
             segmentIndex: 6,
             workSegment: 3,
           }),
@@ -3562,9 +3603,10 @@ export class ExperimentService {
         return {
           kind: 'post_survey' as const,
           segmentIndex: 99,
-          questionnaire: this.buildFormalQuestionnaire(config.activeQuestionnaireTemplate, 'post_survey', {
+          questionnaire: this.buildFormalQuestionnaire(session, config.activeQuestionnaireTemplate, 'post_survey', {
             mode: session.experimentMode,
             role,
+            participantId,
             segmentIndex: 99,
             workSegment: null,
           }),
@@ -3591,36 +3633,117 @@ export class ExperimentService {
   }
 
   private buildFormalQuestionnaire(
+    session: RuntimeSession,
     template: QuestionnaireTemplate,
     kind: FormalQuestionnaireKind,
-    context: { mode: string; role: ParticipantRole; segmentIndex: number; workSegment: number | null },
+    context: { mode: string; role: ParticipantRole; participantId: string; segmentIndex: number; workSegment: number | null },
   ) {
     const root = this.normalizeFormalTemplate(template.items);
+    const displayContext = this.buildQuestionnaireDisplayContext(session, context.participantId, context.workSegment);
     const sections =
       kind === 'segment_survey'
-        ? [{ title: root.segmentSurvey.title, items: root.segmentSurvey.items }]
-        : this.buildPostSurveySections(root, context.mode, context.role);
+        ? [{
+            title: root.segmentSurvey.title,
+            description: root.segmentSurvey.description,
+            items: root.segmentSurvey.items.filter((item: any) => !item.code.startsWith('SEG-AI-') || displayContext.usedTask1AiInSegment),
+          }]
+        : this.buildPostSurveySections(root, context.role, displayContext, `${session.id}:${context.participantId}`);
     const items = sections.flatMap((section) => section.items);
     return {
       id: template.id,
-      title: kind === 'segment_survey' ? `工作段 ${context.workSegment ?? ''} 后问卷` : root.postSurvey.title,
+      title: kind === 'segment_survey' ? `第 ${context.workSegment ?? ''} 段工作回顾` : root.postSurvey.title,
       kind,
       templateVersion: root.version,
       experimentMode: context.mode,
       role: context.role,
       segmentIndex: context.segmentIndex,
       workSegment: context.workSegment,
+      displayContext,
+      displayedItemCodes: items.map((item: any) => item.code),
       sections,
       items,
     };
   }
 
-  private buildPostSurveySections(root: any, mode: string, role: ParticipantRole) {
-    const sections = [...root.postSurvey.commonSections];
-    const manipulation = root.postSurvey.manipulationChecks[mode as keyof typeof root.postSurvey.manipulationChecks];
-    if (manipulation) sections.splice(1, 0, manipulation);
-    sections.splice(2, 0, root.postSurvey.roleSpecific[role]);
-    return sections;
+  private buildPostSurveySections(root: any, role: ParticipantRole, display: ReturnType<ExperimentService['buildQuestionnaireDisplayContext']>, shuffleKey: string) {
+    const sections = root.postSurvey.commonSections.map((section: any) => ({ ...section, items: [...section.items] }));
+    const roleSection = { ...root.postSurvey.roleSpecific[role], items: [...root.postSurvey.roleSpecific[role].items] };
+
+    if (role === ParticipantRole.A) {
+      roleSection.items = roleSection.items.filter((item: any) => {
+        if (item.code === 'POST-A-02') return display.usedHandoffMemo;
+        if (item.code === 'POST-A-04') return display.receivedFeedback;
+        return true;
+      });
+    } else {
+      roleSection.items = roleSection.items.filter((item: any) => {
+        if (item.code === 'POST-B-02A') return !display.aiAvailable;
+        if (item.code === 'POST-B-02B') return display.aiAvailable;
+        if (item.code === 'POST-B-03') return display.usedHandoffMemo;
+        if (item.code === 'POST-B-04') return display.viewedAMaterials;
+        if (item.code === 'POST-B-05') return display.sentFeedback;
+        return true;
+      });
+    }
+
+    const result = [sections[0], roleSection];
+    if (display.aiAvailable && display.usedTask1AiOverall) {
+      sections[1].items = sections[1].items.filter((item: any) => item.code !== 'POST-AI-04' || (display.advancedAi && display.uploadedAiImage));
+      result.push(sections[1]);
+    }
+    sections[2].items = sections[2].items.filter((item: any) => item.code === 'POST-AICHG-03A' ? role === ParticipantRole.A : item.code === 'POST-AICHG-03B' ? role === ParticipantRole.B : true);
+    sections[3].items = sections[3].items.filter((item: any) => item.code === 'POST-STRATEGY-01A' ? !display.aiAvailable : item.code === 'POST-STRATEGY-01B' ? display.aiAvailable : true);
+    const narrativeItem = sections[5].items.find((item: any) => item.code === 'MC3-02');
+    if (narrativeItem) narrativeItem.options = this.deterministicOptionOrder(narrativeItem.options, shuffleKey);
+    if (display.aiAvailable) result.push(sections[6]);
+    sections[7].items = sections[7].items.filter((item: any) => item.code === 'POST-TECH-02' ? display.aiAvailable : item.code === 'POST-TECH-04' ? role === ParticipantRole.B : true);
+    result.push(sections[2], sections[3], sections[4], sections[5], sections[7], sections[8], sections[9]);
+    return result.filter((section: any) => section?.items?.length);
+  }
+
+  private buildQuestionnaireDisplayContext(session: RuntimeSession, participantId: string, workSegment: number | null) {
+    const snapshot = this.parseExperimentSnapshot(session.experimentSnapshot);
+    const condition = session.experimentCondition ?? snapshot?.experimentCondition ?? null;
+    const aiAvailable = snapshot?.aiEnabled !== false && condition !== 'A0';
+    const advancedAi = ['A2', 'A5', 'A6'].includes(String(condition));
+    const task1Ai = (session.aiMessages ?? []).filter((message) =>
+      message.participantId === participantId &&
+      message.contextType === 'main' &&
+      message.phase === ExperimentPhase.FORMAL &&
+      message.messageRole === 'user',
+    );
+    const hasText = (value: Prisma.JsonValue | null | undefined, key: string) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+      return String((value as Record<string, unknown>)[key] ?? '').trim().length > 0;
+    };
+    return {
+      experimentCondition: condition,
+      aiAvailable,
+      advancedAi,
+      usedTask1AiInSegment: aiAvailable && workSegment !== null && task1Ai.some((message) => message.segmentIndex === (workSegment * 2) - 1),
+      usedTask1AiOverall: aiAvailable && task1Ai.length > 0,
+      uploadedAiImage: task1Ai.some((message) => Array.isArray(message.attachments) && message.attachments.length > 0),
+      usedHandoffMemo: session.tasks.some((task) => hasText(task.aDraft, 'handoffMemo')),
+      viewedAMaterials: session.tasks.some((task) => Boolean(task.bViewedAMaterialsAt)),
+      sentFeedback: session.tasks.some((task) => hasText(task.bFeedbackDraft, 'q1') && (task.bFeedbackDraft as Record<string, unknown>).q1 === '是'),
+      receivedFeedback: session.tasks.some((task) => hasText(task.bFeedbackDraft, 'q1') && (task.bFeedbackDraft as Record<string, unknown>).q1 === '是'),
+    };
+  }
+
+  private deterministicOptionOrder(options: string[], key: string) {
+    if (!Array.isArray(options) || options.length < 2) return options;
+    const fixed = options.filter((option) => option === '没有印象');
+    const shuffled = options.filter((option) => option !== '没有印象').map((option, index) => ({
+      option,
+      score: Array.from(`${key}:${index}:${option}`).reduce((sum, char) => ((sum * 31) + char.charCodeAt(0)) >>> 0, 2166136261),
+    })).sort((a, b) => a.score - b.score).map((entry) => entry.option);
+    return [...shuffled, ...fixed];
+  }
+
+  private maskPhone(phone?: string | null) {
+    const value = String(phone ?? '').trim();
+    if (value.length < 7) return value || null;
+    return `${value.slice(0, 3)}****${value.slice(-4)}`;
   }
 
   private normalizeFormalTemplate(value: unknown) {
@@ -3690,13 +3813,13 @@ export class ExperimentService {
       const template = await this.prisma.questionnaireTemplate.upsert({
         where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
         update: {
-          title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+          title: '三章实验正式问卷 V2.2',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
         create: {
           id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-          title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+          title: '三章实验正式问卷 V2.2',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
@@ -3757,6 +3880,22 @@ export class ExperimentService {
           practiceQuizTemplateId: practiceTemplate.id,
           practiceQuizPassCount: 0,
         },
+        include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
+      });
+    } else if (config.activeQuestionnaireTemplateId !== FORMAL_QUESTIONNAIRE_TEMPLATE_ID) {
+      const template = await this.prisma.questionnaireTemplate.upsert({
+        where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
+        update: { title: '三章实验正式问卷 V2.2', items: formalQuestionnaireTemplateJson(), isActive: true },
+        create: {
+          id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
+          title: '三章实验正式问卷 V2.2',
+          items: formalQuestionnaireTemplateJson(),
+          isActive: true,
+        },
+      });
+      config = await this.prisma.experimentConfig.update({
+        where: { id: config.id },
+        data: { activeQuestionnaireTemplateId: template.id },
         include: { activeQuestionnaireTemplate: true, practiceQuizTemplate: true },
       });
     } else if (!config.practiceQuizTemplateId) {

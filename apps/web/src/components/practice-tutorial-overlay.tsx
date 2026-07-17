@@ -80,7 +80,7 @@ function getVisibleAnchor(anchor: string) {
   }) as HTMLElement | undefined;
 }
 
-function getOverviewContent(role: 'A' | 'B') {
+function getOverviewContent(role: 'A' | 'B', aiEnabled: boolean) {
   if (role === 'A') {
     return {
       title: '欢迎进入测试轮',
@@ -94,7 +94,7 @@ function getOverviewContent(role: 'A' | 'B') {
           items: [
             '左侧是材料区，用于查看公司相关资料',
             '右上是答题区，用于填写A内容',
-            '右下是 AI 区，可辅助你整理信息和分析问题。正式实验可用，测试轮不可用',
+            aiEnabled ? '右下是 AI 区，可辅助你整理信息和分析问题；测试轮与正式任务使用相同的 AI 条件' : '本次实验条件不提供 AI 区',
           ],
         },
         {
@@ -109,9 +109,9 @@ function getOverviewContent(role: 'A' | 'B') {
           heading: '任务2',
           items: [
             '除了任务1，你还会收到任务2',
-            '顶部会提示“您有新事项入库，请尽快处理”',
+            '顶部任务2入口会按本次实验条件显示提醒',
             '请合理安排时间处理任务1和任务2',
-            '正式实验可用，测试轮无任务2',
+            '测试轮中的任务2为教学演示题，不计分、不进入正式变量',
           ],
         },
       ],
@@ -130,14 +130,14 @@ function getOverviewContent(role: 'A' | 'B') {
         items: [
           '左侧是材料区，用于查看公司相关资料',
           '右上是答题区，用于填写投资判断',
-          '右下是 AI 区，可辅助你整理信息和分析问题。正式实验可用，测试轮不可用',
+          aiEnabled ? '右下是 AI 区，可辅助你整理信息和分析问题；测试轮与正式任务使用相同的 AI 条件' : '本次实验条件不提供 AI 区',
         ],
       },
       {
         heading: '时间安排',
         items: [
           '测试轮先只做一家公司',
-          '正式实验每家公司的工作时长不限，测试轮为5分钟时自动保存提交。',
+          '正式实验中，每接到一家公司都有自己的 5 分钟处理窗口',
           '角色A提交后，你可以查看角色A提交的信息',
         ],
       },
@@ -145,9 +145,9 @@ function getOverviewContent(role: 'A' | 'B') {
         heading: '任务2',
         items: [
           '除了任务1，你还会收到任务2',
-          '顶部会提示“您有新事项入库，请尽快处理”',
+          '顶部任务2入口会按本次实验条件显示提醒',
           '请合理安排时间处理任务1和任务2',
-          '正式实验可用，测试轮无任务2',
+          '测试轮中的任务2为教学演示题，不计分、不进入正式变量',
         ],
       },
     ],
@@ -267,7 +267,7 @@ export function PracticeTutorialOverlay({
   const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
 
   if (isOverviewPhase) {
-    const overview = getOverviewContent(role);
+    const overview = getOverviewContent(role, aiEnabled);
     return (
       <div className="pointer-events-none fixed inset-0 z-[80] bg-slate-950/55">
         <div className="pointer-events-auto absolute left-1/2 top-1/2 max-h-[80vh] w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/15 bg-white p-6 shadow-2xl">

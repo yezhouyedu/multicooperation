@@ -314,7 +314,7 @@ function SessionSideTaskSection() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-xl font-semibold">Session 副线查看</h2>
+      <h2 className="mb-4 text-xl font-semibold">Session 任务2查看</h2>
 
       <select value={selectedCode} onChange={(e) => setSelectedCode(e.target.value)} className="mb-4 w-full rounded-lg border border-slate-200 p-2 text-sm">
         <option value="">选择 session...</option>
@@ -359,7 +359,7 @@ function SessionSideTaskSection() {
       )}
 
       {selected && !selected.sideTaskConfig && (
-        <div className="text-sm text-slate-400">该 session 无副线配置</div>
+        <div className="text-sm text-slate-400">该 Session 无任务2配置</div>
       )}
     </section>
   );
@@ -421,7 +421,7 @@ function PracticeMaterialSection() {
     <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="mb-4 text-xl font-semibold">测试轮材料</h2>
       <p className="mb-4 text-sm text-slate-600">
-        上传测试轮副线任务样例 Excel，用于测试轮阶段的副线任务展示。
+        上传测试轮任务2样例 Excel，用于测试轮阶段的任务2教学展示。
       </p>
       <div className="flex items-center gap-3">
         <label className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600 cursor-pointer">

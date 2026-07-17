@@ -93,16 +93,18 @@ export type QuestionnaireTemplate = {
   title: string;
   kind?: 'segment_survey' | 'post_survey';
   templateVersion?: string;
-  experimentMode?: 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+  experimentMode?: 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
   role?: 'A' | 'B';
   segmentIndex?: number;
   workSegment?: number | null;
-  sections?: { title: string; items: QuestionnaireItem[] }[];
+  sections?: { title: string; description?: string; items: QuestionnaireItem[] }[];
   items: QuestionnaireItem[];
 };
 
 export type RuntimeState = {
   assignedRole: 'A' | 'B';
+  maskedPhone?: string | null;
+  paymentPhoneConfirmed?: boolean;
   phase:
     | 'instruction'
     | 'practice_quiz'

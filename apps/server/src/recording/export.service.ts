@@ -693,9 +693,13 @@ export class ExportService {
     const formalQuestionnaires = session.questionnaireAnswers.filter(
       (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL,
     );
+    const questionnairePayload = (segmentIndex: number) => {
+      const value = formalQuestionnaires.find((row) => row.segmentIndex === segmentIndex)?.answers;
+      return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+    };
     const participantTasks = session.tasks.filter((task) => this.taskTouchesParticipant(task, role));
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       participantId,
       sessionCode: session.code,
       role,
@@ -749,6 +753,20 @@ export class ExportService {
         segment2Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 4),
         segment3Submitted: formalQuestionnaires.some((row) => row.segmentIndex === 6),
         postSurveySubmitted: formalQuestionnaires.some((row) => row.segmentIndex === 99),
+        templateVersion: questionnairePayload(99)?.templateVersion ?? questionnairePayload(6)?.templateVersion ?? null,
+        displayedItemCodesByStage: {
+          segment1: questionnairePayload(2)?.displayedItemCodes ?? [],
+          segment2: questionnairePayload(4)?.displayedItemCodes ?? [],
+          segment3: questionnairePayload(6)?.displayedItemCodes ?? [],
+          postSurvey: questionnairePayload(99)?.displayedItemCodes ?? [],
+        },
+        displayContextByStage: {
+          segment1: questionnairePayload(2)?.displayContext ?? null,
+          segment2: questionnairePayload(4)?.displayContext ?? null,
+          segment3: questionnairePayload(6)?.displayContext ?? null,
+          postSurvey: questionnairePayload(99)?.displayContext ?? null,
+        },
+        paymentPhoneConfirmed: session.progresses.some((row) => row.participantId === participantId && row.stage === 'payment_phone_confirmed'),
       },
       qualityFlags: this.buildQualityFlags(session, participantId),
     };

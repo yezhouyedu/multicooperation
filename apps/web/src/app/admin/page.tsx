@@ -23,6 +23,8 @@ type SessionSummary = {
   status: string;
   createdAt: string;
   currentSegmentIndex?: number;
+  experimentCondition?: string | null;
+  experimentRun?: { id: string; code: string; name: string; status: string } | null;
   pairings: {
     participantA: { phone: string | null; role: string | null } | null;
     participantB: { phone: string | null; role: string | null } | null;
@@ -52,7 +54,7 @@ type FormalQuestionnaireItem = {
   maxLength?: number;
   followup?: { prompt: string; triggerText: string };
 };
-type FormalQuestionnaireSection = { title: string; items: FormalQuestionnaireItem[] };
+type FormalQuestionnaireSection = { title: string; description?: string; items: FormalQuestionnaireItem[] };
 type FormalQuestionnaireTemplate = {
   schemaVersion: number;
   version: string;
@@ -128,32 +130,13 @@ type ExperimentRunSummary = {
   };
 };
 
+// Legacy modes remain readable for historical snapshots but are not exposed in the current admin UI.
 const MODE_META: Record<ExperimentMode, { title: string; random: string; fixed: string }> = {
-  manual: {
-    title: '手动 / 通用',
-    random: '不启用实验 1/2/3 的预设随机化',
-    fixed: '使用下方手动段 AI 与现有副线/叙事配置',
-  },
-  formal: {
-    title: '正式实验',
-    random: 'AB 团队按匹配顺序领取七条件平衡区组槽位',
-    fixed: 'A0-A6 映射固定，已创建 Session 不受后续设置影响',
-  },
-  ai_upgrade: {
-    title: '实验 1：AI 能力升级',
-    random: '随机 early_upgrade / late_upgrade',
-    fixed: '固定副线提醒与叙事信息',
-  },
-  side_reminder: {
-    title: '实验 2：副线提醒频率',
-    random: '随机 continuous / batch',
-    fixed: '固定 AI 能力与叙事信息',
-  },
-  coop_narrative: {
-    title: '实验 3：合作叙事',
-    random: '随机 coop_narrative / neutral_info；合作组随机主题顺序',
-    fixed: '固定 AI 能力与副线提醒',
-  },
+  manual: { title: '手动 / 通用', random: '使用手动配置', fixed: '不领取正式实验条件槽位' },
+  formal: { title: '正式实验', random: '按匹配顺序领取 A0-A6 平衡区组槽位', fixed: '条件映射写入 Session 快照' },
+  ai_upgrade: { title: '历史模式：AI 能力', random: '读取历史快照', fixed: '不用于新 Session' },
+  side_reminder: { title: '历史模式：提醒频率', random: '读取历史快照', fixed: '不用于新 Session' },
+  coop_narrative: { title: '历史模式：合作信息', random: '读取历史快照', fixed: '不用于新 Session' },
 };
 
 type LibraryCaseOverview = {
@@ -176,7 +159,7 @@ const NAV_ITEMS: { id: TabId; label: string }[] = [
   { id: 'config', label: '\u5b9e\u9a8c\u914d\u7f6e' },
   { id: 'questionnaires', label: '\u95ee\u5377\u914d\u7f6e' },
   { id: 'materials', label: '\u6750\u6599\u7ba1\u7406' },
-  { id: 'sidefeed', label: '\u526f\u7ebf\u8c03\u5ea6' },
+  { id: 'sidefeed', label: '任务2调度' },
   { id: 'ai-settings', label: 'AI \u53c2\u6570' },
 ];
 
@@ -202,6 +185,7 @@ function SessionsTab() {
   const [checkedCodes, setCheckedCodes] = useState<string[]>([]);
   const [progresses, setProgresses] = useState<{ id: string; stage: string; participant: { role: string | null } }[]>([]);
   const [status, setStatus] = useState('');
+  const [runFilter, setRunFilter] = useState('all');
 
   async function loadSessions() {
     setStatus('正在加载 Session...');
@@ -327,7 +311,28 @@ function SessionsTab() {
   }, []);
 
   const selected = sessions.find((item) => item.code === selectedCode);
-  const allChecked = sessions.length > 0 && checkedCodes.length === sessions.length;
+  const runOptions = useMemo(() => {
+    const runs = new Map<string, { id: string; label: string }>();
+    for (const session of sessions) {
+      if (session.experimentRun) {
+        runs.set(session.experimentRun.id, {
+          id: session.experimentRun.id,
+          label: `${session.experimentRun.name} (${session.experimentRun.code})`,
+        });
+      }
+    }
+    return Array.from(runs.values());
+  }, [sessions]);
+  const visibleSessions = useMemo(
+    () => runFilter === 'all'
+      ? sessions
+      : runFilter === 'manual'
+        ? sessions.filter((session) => !session.experimentRun)
+        : sessions.filter((session) => session.experimentRun?.id === runFilter),
+    [runFilter, sessions],
+  );
+  const visibleCodes = visibleSessions.map((session) => session.code);
+  const allChecked = visibleCodes.length > 0 && visibleCodes.every((code) => checkedCodes.includes(code));
 
   return (
     <div className="space-y-5">
@@ -343,16 +348,27 @@ function SessionsTab() {
             <button type="button" onClick={() => void clearSessions()} className="rounded-lg border border-[#ffccc7] px-3 py-1.5 text-xs font-semibold text-[#cf1322] hover:bg-red-50">清空实验数据</button>
           </div>
         </div>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-xs text-[#4e5969]">
+            实验局
+            <select value={runFilter} onChange={(event) => setRunFilter(event.target.value)} className="rounded border border-[#d9dce1] bg-white px-2 py-1.5 text-xs">
+              <option value="all">全部实验局与手动 Session</option>
+              {runOptions.map((run) => <option key={run.id} value={run.id}>{run.label}</option>)}
+              <option value="manual">手动 / 未归属实验局</option>
+            </select>
+          </label>
+          {runFilter !== 'all' ? <button type="button" onClick={() => setCheckedCodes((prev) => Array.from(new Set([...prev, ...visibleCodes])))} className="rounded border border-[#d9dce1] px-2.5 py-1.5 text-xs text-[#4e5969] hover:bg-gray-50">选中当前实验局全部 Session</button> : null}
+        </div>
         <label className="mb-2 flex items-center gap-2 text-xs text-[#4e5969]">
           <input
             type="checkbox"
             checked={allChecked}
-            onChange={(event) => setCheckedCodes(event.target.checked ? sessions.map((session) => session.code) : [])}
+            onChange={(event) => setCheckedCodes((prev) => event.target.checked ? Array.from(new Set([...prev, ...visibleCodes])) : prev.filter((code) => !visibleCodes.includes(code)))}
           />
-          全选当前 Session
+          全选当前筛选结果（{visibleSessions.length} 个 Session）
         </label>
         <div className="space-y-2">
-          {sessions.map((session) => {
+          {visibleSessions.map((session) => {
             const pairing = session.pairings[0];
             const checked = checkedCodes.includes(session.code);
             return (
@@ -385,8 +401,12 @@ function SessionsTab() {
                     {session.code}
                   </button>
                   <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-[#4e5969]">{session.status}</span>
+                  <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-semibold text-[#1e80ff]">
+                    {session.experimentRun ? `${session.experimentRun.name} · ${session.experimentRun.code}` : '手动 / 未归属实验局'}
+                  </span>
+                  {session.experimentCondition ? <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">{session.experimentCondition}</span> : null}
                   <span className="text-xs text-[#86909c]">
-                    尽调员: {pairing?.participantA?.phone ?? '-'} / 投资经理: {pairing?.participantB?.phone ?? '-'}
+                    A: {pairing?.participantA?.phone ?? '-'} / B: {pairing?.participantB?.phone ?? '-'}
                   </span>
                   <span className="ml-auto text-xs text-[#86909c]">段索引: {session.currentSegmentIndex ?? 0}</span>
                   <button
@@ -400,7 +420,7 @@ function SessionsTab() {
               </div>
             );
           })}
-          {sessions.length === 0 ? <div className="text-sm text-[#86909c]">暂无 Session</div> : null}
+          {visibleSessions.length === 0 ? <div className="text-sm text-[#86909c]">当前筛选下暂无 Session</div> : null}
         </div>
       </div>
 
@@ -414,10 +434,10 @@ function SessionsTab() {
                   <span className="w-10 text-[#86909c]">#{task.sortOrder}</span>
                   <span className="flex-1 font-medium text-[#1d2129]">{task.company?.name ?? '未加载公司'}</span>
                   <span className={`rounded px-2 py-0.5 text-xs ${task.aSubmittedAt ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-[#86909c]'}`}>
-                    尽调员: {task.aSubmittedAt ? '已提交' : '未提交'}
+                    角色 A: {task.aSubmittedAt ? '已提交' : '未提交'}
                   </span>
                   <span className={`rounded px-2 py-0.5 text-xs ${task.bCompletedAt ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-[#86909c]'}`}>
-                    投资经理: {task.bCompletedAt ? '已完成' : '未完成'}
+                    角色 B: {task.bCompletedAt ? '已完成' : '未完成'}
                   </span>
                 </div>
               ))}
@@ -988,7 +1008,7 @@ function ConfigTab() {
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
-        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? 'three-chapter-questionnaire-v1.1',
+        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '三章实验正式问卷 V2.2',
         questionnaireItems: currentConfig.questionnaireTemplate?.items ?? null,
         practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
         practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
@@ -1123,7 +1143,7 @@ function ConfigTab() {
         <div className="mt-4 grid grid-cols-3 gap-4">
           {config.activeExperimentMode !== 'manual' ? (
             <div className="col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              当前选择了实验模式，下面的工作段 AI 手动配置只在“手动 / 通用”模式下用于新 Session。
+              当前处于正式实验模式，下面的工作段 AI 手动配置只在“手动 / 通用”模式下用于新 Session。
             </div>
           ) : null}
           {[0, 1, 2].map((index) => (
@@ -1152,16 +1172,11 @@ function ConfigTab() {
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-1 font-bold text-[#1d2129]">指导语积木</div>
         <div className="mb-4 text-xs leading-5 text-[#86909c]">
-            开篇通用指导语和 A/B 角色说明已固定为正式 Word 版本；这里保留可配置的实验流程、实验条件提示和 AI 升级休息页提示。
+            开篇通用指导语和 A/B 角色说明已固定为 2026-07 最新 Word 版本；A0-A6 处理由实验局条件快照控制，这里只维护通用实验流程文字。
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {([
             ['experimentFlow', '实验流程'],
-            ['manual', '手动/通用条件块'],
-            ['ai_upgrade', '实验 1 条件块'],
-            ['side_reminder', '实验 2 条件块'],
-            ['coop_narrative', '实验 3 条件块'],
-            ['aiUpgradeBreakNotice', 'AI 升级休息页提示'],
           ] as Array<[keyof InstructionBlocks, string]>).map(([key, label]) => (
             <label key={key} className="text-sm text-[#4e5969]">
               {label}

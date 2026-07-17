@@ -230,12 +230,12 @@ export function AdminAiSettingsPanel() {
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5">
         <div className="mb-4 text-sm font-bold text-[#1d2129]">系统提示词</div>
         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-[#92600a]">
-          系统提示词用于指导 AI 的回答格式和行为规范。角色提示词（尽调助手/投资判断助手）和场景提示词（主线/副线）由系统自动生成，此处只编辑格式规则部分。
+          系统提示词用于指导 AI 的回答格式和行为规范。角色 A/B 与任务 1/任务 2 的场景提示词由系统自动生成，此处只编辑格式规则部分。
         </div>
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[#4e5969]">主线系统提示词格式规则</span>
-            <span className="mb-1 block text-xs text-[#86909c]">用于主线 AI 对话（尽调员/投资经理的主线任务场景）</span>
+            <span className="mb-1 block text-xs font-medium text-[#4e5969]">任务 1 系统提示词格式规则</span>
+            <span className="mb-1 block text-xs text-[#86909c]">用于角色 A/B 的任务 1 AI 对话</span>
             <textarea
               value={settings.systemPromptMain}
               onChange={(e) => setSettings((s) => ({ ...s, systemPromptMain: e.target.value }))}
@@ -250,8 +250,8 @@ export function AdminAiSettingsPanel() {
             )}
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-[#4e5969]">副线系统提示词格式规则</span>
-            <span className="mb-1 block text-xs text-[#86909c]">用于副线 AI 对话（待处理事宜场景）</span>
+            <span className="mb-1 block text-xs font-medium text-[#4e5969]">任务 2 系统提示词格式规则</span>
+            <span className="mb-1 block text-xs text-[#86909c]">用于任务 2 AI 对话</span>
             <textarea
               value={settings.systemPromptSide}
               onChange={(e) => setSettings((s) => ({ ...s, systemPromptSide: e.target.value }))}

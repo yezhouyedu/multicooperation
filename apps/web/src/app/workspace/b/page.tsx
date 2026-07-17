@@ -235,7 +235,9 @@ export default function WorkspaceBPage() {
       ? `A信息已生成；当前公司还需处理 ${formatRemainingTime(bRemainingSeconds)} 后可查看A信息、A原始材料并提交。`
       : aHasSubmitted
         ? '当前公司需处理满 5 分钟后可查看A信息、A原始材料并提交。'
-        : 'A信息尚未生成。你可以先阅读自己的材料、填写判断并使用 AI。';
+        : runtime?.aiEnabled
+          ? 'A信息尚未生成。你可以先阅读自己的材料、填写判断并使用 AI。'
+          : 'A信息尚未生成。你可以先阅读自己的材料并填写判断。';
   const aiBadge = runtime ? (
     <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
       {runtime.aiLevel === 'ADVANCED' ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro' : runtime.aiDisplayNames?.basic ?? 'aiseek'}

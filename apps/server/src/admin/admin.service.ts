@@ -248,13 +248,13 @@ export class AdminService {
     const template = await this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: input.questionnaireTitle?.trim() || 'three-chapter-questionnaire-v1.1',
+        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V2.2',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: input.questionnaireTitle?.trim() || 'three-chapter-questionnaire-v1.1',
+        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V2.2',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
@@ -1104,6 +1104,9 @@ export class AdminService {
     const sessions = await this.prisma.session.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
+        experimentRun: {
+          select: { id: true, code: true, name: true, status: true },
+        },
         pairings: {
           include: {
             participantA: { select: { id: true, phone: true, role: true } },
@@ -1504,13 +1507,13 @@ export class AdminService {
     return this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+        title: '三章实验正式问卷 V2.2',
         items: formalQuestionnaireTemplateJson(),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: '\u4e09\u7ae0\u5b9e\u9a8c\u6b63\u5f0f\u95ee\u5377 V1.1',
+        title: '三章实验正式问卷 V2.2',
         isActive: true,
         items: formalQuestionnaireTemplateJson(),
       },
