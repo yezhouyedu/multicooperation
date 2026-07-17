@@ -131,6 +131,31 @@ export class AdminController {
     return this.adminService.importCaseLibrary();
   }
 
+  @Get('experiment-runs')
+  getExperimentRuns() {
+    return this.adminService.getExperimentRuns();
+  }
+
+  @Post('experiment-runs')
+  createExperimentRun(@Body() body: { name?: string }) {
+    return this.adminService.createExperimentRun(body.name);
+  }
+
+  @Post('experiment-runs/:id/activate')
+  activateExperimentRun(@Param('id') id: string) {
+    return this.adminService.activateExperimentRun(id);
+  }
+
+  @Post('experiment-runs/:id/close')
+  closeExperimentRun(@Param('id') id: string) {
+    return this.adminService.closeExperimentRun(id);
+  }
+
+  @Post('experiment-runs/use-manual')
+  useManualExperimentMode() {
+    return this.adminService.useManualExperimentMode();
+  }
+
   @Post('companies/library/replace-upload')
   @UseInterceptors(
     FilesInterceptor('files', 1000, {

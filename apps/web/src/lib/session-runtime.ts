@@ -126,7 +126,7 @@ export type RuntimeState = {
   isFrozen: boolean;
   isPreA: boolean;
   questionnaireSubmitted: boolean;
-  experimentMode: 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+  experimentMode: 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
   experimentSnapshot: Record<string, unknown> | null;
   instructionBlocks: {
     commonTitle: string;
@@ -143,6 +143,7 @@ export type RuntimeState = {
     activeModeText: string;
   };
   aiLevel: 'BASIC' | 'ADVANCED';
+  aiEnabled: boolean;
   aiDisplayNames: {
     basic: string;
     advanced: string;

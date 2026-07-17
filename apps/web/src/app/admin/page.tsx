@@ -66,7 +66,7 @@ type FormalQuestionnaireTemplate = {
     roleSpecific: Record<'A' | 'B', FormalQuestionnaireSection>;
   };
 };
-type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+type ExperimentMode = 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
 type ExperimentModeSettings = {
   ai_upgrade: { fixedSideDispatchMode: 'continuous' | 'batch'; fixedNarrativeGroup: 'neutral_info' | 'coop_narrative' };
   side_reminder: { fixedAiLevel: 'BASIC' | 'ADVANCED'; fixedNarrativeGroup: 'neutral_info' | 'coop_narrative' };
@@ -88,6 +88,7 @@ type InstructionBlocks = {
 
 type ExperimentConfig = {
   activeExperimentMode: ExperimentMode;
+  activeExperimentRunId?: string | null;
   experimentModeSettings: ExperimentModeSettings;
   instructionBlocks: InstructionBlocks;
   practiceDurationMinutes: number;
@@ -108,11 +109,35 @@ type ExperimentConfig = {
   feedbackNotificationDurationSec: number;
 };
 
+type ExperimentRunSummary = {
+  id: string;
+  code: string;
+  name: string;
+  status: 'DRAFT' | 'ACTIVE' | 'CLOSED';
+  designVersion: string;
+  initialBlockCount: number;
+  generatedBlockCount: number;
+  activatedAt: string | null;
+  progress: {
+    assigned: number;
+    completed: number;
+    available: number;
+    currentBlockIndex: number;
+    claimedInCurrentBlock: number;
+    byCondition: Record<string, number>;
+  };
+};
+
 const MODE_META: Record<ExperimentMode, { title: string; random: string; fixed: string }> = {
   manual: {
     title: '手动 / 通用',
     random: '不启用实验 1/2/3 的预设随机化',
     fixed: '使用下方手动段 AI 与现有副线/叙事配置',
+  },
+  formal: {
+    title: '正式实验',
+    random: 'AB 团队按匹配顺序领取七条件平衡区组槽位',
+    fixed: 'A0-A6 映射固定，已创建 Session 不受后续设置影响',
   },
   ai_upgrade: {
     title: '实验 1：AI 能力升级',
@@ -848,6 +873,88 @@ function SingleChoiceEditor({
   );
 }
 
+const FORMAL_CONDITIONS = [
+  ['A0', '无 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  ['A1', 'BASIC 基础 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  ['A2', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  ['A3', 'BASIC 基础 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+  ['A4', 'BASIC 基础 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
+  ['A5', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
+  ['A6', 'ADVANCED 高级 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+] as const;
+
+function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentMode; onChanged: () => Promise<void> }) {
+  const [runs, setRuns] = useState<ExperimentRunSummary[]>([]);
+  const [name, setName] = useState('');
+  const [status, setStatus] = useState('');
+
+  async function loadRuns() {
+    const data = await fetchJsonWithRetry<{ runs: ExperimentRunSummary[] }>(`${serverBaseUrl}/admin/experiment-runs`);
+    setRuns(data.runs);
+  }
+
+  useEffect(() => { void loadRuns(); }, []);
+
+  async function action(path: string, body?: unknown) {
+    setStatus('处理中...');
+    const response = await fetch(`${serverBaseUrl}/admin/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    if (!response.ok) {
+      setStatus(`操作失败：${response.status}`);
+      return;
+    }
+    setStatus('已更新');
+    await Promise.all([loadRuns(), onChanged()]);
+  }
+
+  return (
+    <div className="space-y-4 rounded-lg border border-[#e5e6eb] bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="font-bold text-[#1d2129]">实验模式</div>
+          <div className="mt-1 text-xs text-[#86909c]">当前：{activeMode === 'formal' ? '正式实验模式' : '手动 / 通用模式'}</div>
+        </div>
+        <button type="button" onClick={() => void action('experiment-runs/use-manual')} className="rounded border border-[#d9dce1] px-3 py-2 text-sm hover:bg-gray-50">
+          使用手动 / 通用模式
+        </button>
+      </div>
+
+      <div className="overflow-x-auto border-y border-[#eaecf0] py-3">
+        <table className="w-full min-w-[720px] text-left text-xs">
+          <thead className="text-[#86909c]"><tr><th className="py-2">条件</th><th>AI</th><th>任务2提醒</th><th>叙事</th></tr></thead>
+          <tbody>{FORMAL_CONDITIONS.map((row) => <tr key={row[0]} className="border-t border-[#f0f1f2]"><td className="py-2 font-semibold">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td></tr>)}</tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="实验局名称" className="min-w-64 rounded border border-[#d9dce1] px-3 py-2 text-sm" />
+        <button type="button" onClick={() => void action('experiment-runs', { name })} className="rounded bg-[#1e80ff] px-3 py-2 text-sm font-semibold text-white">创建实验局并生成60个区组</button>
+        <button type="button" onClick={() => void loadRuns()} className="rounded border border-[#d9dce1] p-2" title="刷新"><RefreshCw size={16} /></button>
+        {status ? <span className="self-center text-xs text-[#4e5969]">{status}</span> : null}
+      </div>
+
+      <div className="space-y-2">
+        {runs.map((run) => (
+          <div key={run.id} className="grid gap-3 border-b border-[#eaecf0] py-3 lg:grid-cols-[1fr_auto]">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 text-sm"><strong>{run.name}</strong><span className="text-[#86909c]">{run.code}</span><span>{run.status}</span></div>
+              <div className="mt-1 text-xs text-[#4e5969]">区组 {run.progress.currentBlockIndex}，已领取 {run.progress.claimedInCurrentBlock}/7；累计分配 {run.progress.assigned}，完成 {run.progress.completed}，队列剩余 {run.progress.available}</div>
+              <div className="mt-1 text-xs text-[#86909c]">{FORMAL_CONDITIONS.map(([condition]) => `${condition}: ${run.progress.byCondition[condition] ?? 0}`).join('  ·  ')}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              {run.status === 'DRAFT' ? <button type="button" onClick={() => void action(`experiment-runs/${run.id}/activate`)} className="rounded bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">激活正式实验</button> : null}
+              {run.status === 'ACTIVE' ? <button type="button" onClick={() => void action(`experiment-runs/${run.id}/close`)} className="rounded border border-red-200 px-3 py-2 text-xs text-red-600">关闭实验局</button> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ConfigTab() {
   const [config, setConfig] = useState<ExperimentConfig | null>(null);
   const [status, setStatus] = useState('');
@@ -900,7 +1007,8 @@ function ConfigTab() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
+      <ExperimentRunPanel activeMode={config.activeExperimentMode} onChanged={load} />
+      <div className="hidden">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="font-bold text-[#1d2129]">实验模式</div>

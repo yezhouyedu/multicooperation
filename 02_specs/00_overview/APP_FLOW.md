@@ -33,6 +33,25 @@ flowchart TD
 
 ## 2. 配对与角色分配
 
+### 2.0 实验条件分配
+
+- Admin 正式实验模式使用七个实验条件 A0-A6；详细定义见 `02_specs/03_execution/实验条件与区组随机方案.md`。
+- 每个正式实验局预生成由 A0-A6随机排列组成的七条件平衡区组。
+- 第二位参与者加入并成功组成 session 时，该 session 在同一数据库事务中按全局顺序领取一个实验条件槽位。
+- 领取结果是 session 级共享处理，A/B两人使用相同实验条件。
+- 槽位分配保存实验局、条件号、区组号、区组内位置、全局位置、seed、方法和领取时间。
+- 实验条件随机、组内角色随机、正式公司顺序随机是三个相互独立、分别审计的随机化层级。
+
+| 条件 | AI（测试轮起生效） | 任务2提醒 | 叙事 |
+|---|---|---|---|
+| A0 | 无 AI | continuous 高频 | neutral_info 中性 |
+| A1 | BASIC 基础 AI | continuous 高频 | neutral_info 中性 |
+| A2 | ADVANCED 高级 AI | continuous 高频 | neutral_info 中性 |
+| A3 | BASIC 基础 AI | batch 低频 | neutral_info 中性 |
+| A4 | BASIC 基础 AI | continuous 高频 | coop_narrative 合作叙事 |
+| A5 | ADVANCED 高级 AI | continuous 高频 | coop_narrative 合作叙事 |
+| A6 | ADVANCED 高级 AI | batch 低频 | neutral_info 中性 |
+
 ### 2.1 参与者可见角色名称
 
 - 参与者前台直接显示 `A` / `B`，不再使用“尽调员 / 投资经理”。

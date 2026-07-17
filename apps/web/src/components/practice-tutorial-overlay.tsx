@@ -9,6 +9,7 @@ type Props = {
   participantId: string;
   role: 'A' | 'B';
   aiLevel: 'BASIC' | 'ADVANCED';
+  aiEnabled?: boolean;
   completedSteps?: string[];
   onCompleted?: () => void;
 };
@@ -22,7 +23,7 @@ type Step = {
   requireAction?: boolean;
 };
 
-function buildSteps(role: 'A' | 'B'): Step[] {
+function buildSteps(role: 'A' | 'B', aiEnabled: boolean): Step[] {
   return [
     {
       key: 'material_tab',
@@ -67,7 +68,7 @@ function buildSteps(role: 'A' | 'B'): Step[] {
       anchor: 'sidetask-option',
       requireAction: true,
     },
-  ];
+  ].filter((step) => aiEnabled || step.key !== 'ai_message');
 }
 
 function getVisibleAnchor(anchor: string) {
@@ -158,10 +159,11 @@ export function PracticeTutorialOverlay({
   participantId,
   role,
   aiLevel,
+  aiEnabled = true,
   completedSteps = [],
   onCompleted,
 }: Props) {
-  const steps = useMemo(() => buildSteps(role), [role]);
+  const steps = useMemo(() => buildSteps(role, aiEnabled), [role, aiEnabled]);
   const [localCompleted, setLocalCompleted] = useState<string[]>(completedSteps);
   const [highlightRect, setHighlightRect] = useState<DOMRect | null>(null);
   const [showOverview, setShowOverview] = useState(completedSteps.length === 0);

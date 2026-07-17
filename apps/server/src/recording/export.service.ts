@@ -561,6 +561,11 @@ export class ExportService {
         activeExperimentMode: session.experimentMode,
         snapshot,
       },
+      experimentRun: {
+        experimentRunId: session.experimentRunId,
+        experimentCondition: session.experimentCondition,
+        conditionAssignedAt: session.conditionAssignedAt?.toISOString() ?? null,
+      },
     };
   }
 
@@ -569,6 +574,16 @@ export class ExportService {
     const audit = session.randomizationAudit;
     const experiment = this.parseObject(audit?.experimentRandomization ?? session.experimentSnapshot);
     return {
+      experimentConditionAssignment: {
+        experimentRunId: session.experimentRunId,
+        experimentCondition: session.experimentCondition,
+        method: audit?.conditionAssignmentMethod ?? null,
+        seed: audit?.conditionAssignmentSeed ?? null,
+        blockIndex: audit?.conditionBlockIndex ?? null,
+        positionInBlock: audit?.conditionBlockPosition ?? null,
+        globalPosition: audit?.conditionGlobalPosition ?? null,
+        assignedAt: audit?.conditionAssignedAt?.toISOString() ?? session.conditionAssignedAt?.toISOString() ?? null,
+      },
       roleAssignment: {
         method: audit?.roleAssignmentMethod ?? 'unknown',
         seed: audit?.roleAssignmentSeed ?? null,
@@ -687,7 +702,11 @@ export class ExportService {
       displayRole: this.displayRole(role),
       treatments: {
         experimentMode: session.experimentMode,
-        upgradeCohort: session.upgradeCohort,
+        experimentRunId: session.experimentRunId,
+        experimentCondition: session.experimentCondition,
+        aiEnabled: this.snapshotValue(session, 'aiEnabled'),
+        aiCondition: this.snapshotValue(session, 'aiCondition'),
+        upgradeCohort: session.upgradeCohort ?? this.snapshotValue(session, 'upgradeCohort'),
         sideDispatchMode: session.sideTaskConfig?.dispatchMode ?? this.snapshotValue(session, 'sideDispatchMode'),
         narrativeGroup: session.sideTaskConfig?.narrativeGroup ?? this.snapshotValue(session, 'narrativeGroup'),
         themeOrder: session.sideTaskConfig?.themeOrder ?? this.snapshotValue(session, 'themeOrder') ?? [],

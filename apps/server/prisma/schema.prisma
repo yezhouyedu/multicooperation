@@ -48,38 +48,41 @@ enum AiLevel {
 }
 
 model Participant {
-  id                    String                  @id @default(cuid())
-  phone                 String?                 @unique
-  nickname              String?
-  role                  ParticipantRole?
-  isActive              Boolean                 @default(true)
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime                @updatedAt
-  pairingsAsA           Pairing[]               @relation("PairingParticipantA")
-  pairingsAsB           Pairing[]               @relation("PairingParticipantB")
-  progresses            TaskProgress[]
-  questionnaireAnswers  QuestionnaireResponse[]
-  sideTaskResponses     SideTaskResponseLog[]
-  sideTaskExposureLogs  SideTaskExposureLog[]
-  experimentEvents      ExperimentEvent[]
+  id                   String                  @id @default(cuid())
+  phone                String?                 @unique
+  nickname             String?
+  role                 ParticipantRole?
+  isActive             Boolean                 @default(true)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  pairingsAsA          Pairing[]               @relation("PairingParticipantA")
+  pairingsAsB          Pairing[]               @relation("PairingParticipantB")
+  progresses           TaskProgress[]
+  questionnaireAnswers QuestionnaireResponse[]
+  sideTaskResponses    SideTaskResponseLog[]
+  sideTaskExposureLogs SideTaskExposureLog[]
+  experimentEvents     ExperimentEvent[]
 }
 
 model Session {
-  id                   String                @id @default(cuid())
-  code                 String                @unique
-  status               SessionStatus         @default(WAITING)
-  runtimePhase         RuntimePhase          @default(INSTRUCTION)
-  experimentMode       String                @default("manual")
+  id                   String                   @id @default(cuid())
+  code                 String                   @unique
+  status               SessionStatus            @default(WAITING)
+  runtimePhase         RuntimePhase             @default(INSTRUCTION)
+  experimentMode       String                   @default("manual")
   upgradeCohort        String?
   experimentSnapshot   Json?
-  currentSegmentIndex  Int                   @default(0)
+  experimentRunId      String?
+  experimentCondition  String?
+  conditionAssignedAt  DateTime?
+  currentSegmentIndex  Int                      @default(0)
   currentSegmentType   SegmentType?
   currentPhase         ExperimentPhase?
   currentSegmentStarts DateTime?
   currentSegmentEnds   DateTime?
   practiceCompletedAt  DateTime?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
   pairings             Pairing[]
   progresses           TaskProgress[]
   tasks                TaskAssignment[]
@@ -94,6 +97,11 @@ model Session {
   randomizationAudit   RandomizationAudit?
   experimentEvents     ExperimentEvent[]
   exportJobs           ExportJob[]
+  experimentRun        ExperimentRun?           @relation(fields: [experimentRunId], references: [id], onDelete: SetNull)
+  conditionSlot        ExperimentConditionSlot?
+
+  @@index([experimentRunId])
+  @@index([experimentCondition])
 }
 
 model Pairing {
@@ -111,69 +119,69 @@ model Pairing {
 }
 
 model TaskProgress {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   sessionId     String
   participantId String
   stage         String
   payload       Json?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  session       Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  session       Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([participantId])
 }
 
 model Company {
-  id          String         @id @default(cuid())
-  name        String
-  roundLabel  String
-  sector      String
-  usage       String         @default("formal")
-  tags        Json
-  summary     String
-  materials   Json
-  researchProfile Json?
+  id                       String           @id @default(cuid())
+  name                     String
+  roundLabel               String
+  sector                   String
+  usage                    String           @default("formal")
+  tags                     Json
+  summary                  String
+  materials                Json
+  researchProfile          Json?
   autoFillSourceMaterialId String?
-  sortOrder   Int            @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  assignments TaskAssignment[]
+  sortOrder                Int              @default(0)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  assignments              TaskAssignment[]
 }
 
 model TaskAssignment {
-  id               String          @id @default(cuid())
-  sessionId        String
-  companyId        String
-  phase            ExperimentPhase @default(FORMAL)
-  sortOrder        Int
-  sequenceIndex    Int
-  aStartedAt       DateTime?
-  aDeadlineAt      DateTime?
-  aRemainingSeconds Int            @default(300)
-  aSubmittedAt     DateTime?
-  aUnlockedForBAt  DateTime?
-  bViewedAInfoAt   DateTime?
-  bViewedAMaterialsAt DateTime?
-  bCanSubmitAt     DateTime?
-  bCompletedAt     DateTime?
-  bSequenceIndex   Int?
-  aAiLevelAtWindow AiLevel?
-  bPreAAiLevel     AiLevel?
-  bPostAAiLevel    AiLevel?
-  crossUpgradeBoundaryFlag Boolean @default(false)
-  frozenAt         DateTime?
-  resumedAt        DateTime?
-  aDraft           Json?
-  bDraft           Json?
-  bFeedbackDraft   Json?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  session          Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  company          Company         @relation(fields: [companyId], references: [id])
-  snapshots        TaskSnapshot[]
-  experimentEvents ExperimentEvent[]
+  id                       String            @id @default(cuid())
+  sessionId                String
+  companyId                String
+  phase                    ExperimentPhase   @default(FORMAL)
+  sortOrder                Int
+  sequenceIndex            Int
+  aStartedAt               DateTime?
+  aDeadlineAt              DateTime?
+  aRemainingSeconds        Int               @default(300)
+  aSubmittedAt             DateTime?
+  aUnlockedForBAt          DateTime?
+  bViewedAInfoAt           DateTime?
+  bViewedAMaterialsAt      DateTime?
+  bCanSubmitAt             DateTime?
+  bCompletedAt             DateTime?
+  bSequenceIndex           Int?
+  aAiLevelAtWindow         AiLevel?
+  bPreAAiLevel             AiLevel?
+  bPostAAiLevel            AiLevel?
+  crossUpgradeBoundaryFlag Boolean           @default(false)
+  frozenAt                 DateTime?
+  resumedAt                DateTime?
+  aDraft                   Json?
+  bDraft                   Json?
+  bFeedbackDraft           Json?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  session                  Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  company                  Company           @relation(fields: [companyId], references: [id])
+  snapshots                TaskSnapshot[]
+  experimentEvents         ExperimentEvent[]
 
   @@index([sessionId])
   @@index([sessionId, phase, sortOrder])
@@ -181,143 +189,188 @@ model TaskAssignment {
 }
 
 model ExperimentConfig {
-  id                           String                @id @default("default")
-  activeExperimentMode         String                @default("manual")
-  experimentModeSettings       Json?
-  instructionBlocks            Json?
-  practiceDurationMinutes      Int                   @default(5)
-  workDurationMinutes          Int                   @default(20)
-  breakDurationMinutes         Int                   @default(5)
-  segmentOneAiLevel            AiLevel               @default(BASIC)
-  segmentTwoAiLevel            AiLevel               @default(BASIC)
-  segmentThreeAiLevel          AiLevel               @default(ADVANCED)
-  activeQuestionnaireTemplateId String?
-  practiceQuizTemplateId       String?
-  practiceQuizPassCount        Int                   @default(0)
-  sideTaskContinuousIntervalSec Int                  @default(45)
-  sideTaskContinuousJitterSec   Int                  @default(15)
-  sideTaskScrollDurationSec     Int                  @default(12)
-  sideTaskHoldSec               Int                  @default(5)
-  sideTaskFadeSec               Int                  @default(2)
-  sideTaskContinuousPauseSec    Int                  @default(15)
-  sideTaskBatchSizes            String               @default("10,15,15")
-  sideTaskBatchTriggerSec       Int                  @default(180)
-  sideTaskBatchPauseSec         Int                  @default(60)
-  feedbackNotificationDurationSec Int                @default(10)
-  createdAt                    DateTime              @default(now())
-  updatedAt                    DateTime              @updatedAt
-  activeQuestionnaireTemplate  QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
-  practiceQuizTemplate         QuestionnaireTemplate? @relation("PracticeQuizTemplate", fields: [practiceQuizTemplateId], references: [id])
+  id                              String                 @id @default("default")
+  activeExperimentMode            String                 @default("manual")
+  experimentModeSettings          Json?
+  activeExperimentRunId           String?                @unique
+  instructionBlocks               Json?
+  practiceDurationMinutes         Int                    @default(5)
+  workDurationMinutes             Int                    @default(20)
+  breakDurationMinutes            Int                    @default(5)
+  segmentOneAiLevel               AiLevel                @default(BASIC)
+  segmentTwoAiLevel               AiLevel                @default(BASIC)
+  segmentThreeAiLevel             AiLevel                @default(ADVANCED)
+  activeQuestionnaireTemplateId   String?
+  practiceQuizTemplateId          String?
+  practiceQuizPassCount           Int                    @default(0)
+  sideTaskContinuousIntervalSec   Int                    @default(45)
+  sideTaskContinuousJitterSec     Int                    @default(15)
+  sideTaskScrollDurationSec       Int                    @default(12)
+  sideTaskHoldSec                 Int                    @default(5)
+  sideTaskFadeSec                 Int                    @default(2)
+  sideTaskContinuousPauseSec      Int                    @default(15)
+  sideTaskBatchSizes              String                 @default("10,15,15")
+  sideTaskBatchTriggerSec         Int                    @default(180)
+  sideTaskBatchPauseSec           Int                    @default(60)
+  feedbackNotificationDurationSec Int                    @default(10)
+  createdAt                       DateTime               @default(now())
+  updatedAt                       DateTime               @updatedAt
+  activeQuestionnaireTemplate     QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
+  practiceQuizTemplate            QuestionnaireTemplate? @relation("PracticeQuizTemplate", fields: [practiceQuizTemplateId], references: [id])
+  activeExperimentRun             ExperimentRun?         @relation("ActiveExperimentRun", fields: [activeExperimentRunId], references: [id], onDelete: SetNull)
+}
+
+model ExperimentRun {
+  id                  String                    @id @default(cuid())
+  code                String                    @unique
+  name                String
+  status              String                    @default("DRAFT")
+  designVersion       String                    @default("seven_condition_block_v1")
+  masterSeed          String
+  initialBlockCount   Int                       @default(60)
+  generatedBlockCount Int                       @default(0)
+  activatedAt         DateTime?
+  closedAt            DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  sessions            Session[]
+  slots               ExperimentConditionSlot[]
+  activeForConfigs    ExperimentConfig[]        @relation("ActiveExperimentRun")
+
+  @@index([status])
+}
+
+model ExperimentConditionSlot {
+  id                  String        @id @default(cuid())
+  experimentRunId     String
+  blockIndex          Int
+  positionInBlock     Int
+  globalPosition      Int
+  experimentCondition String
+  blockSeed           String
+  status              String        @default("AVAILABLE")
+  assignedSessionId   String?       @unique
+  assignedSessionCode String?
+  assignedAt          DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  experimentRun       ExperimentRun @relation(fields: [experimentRunId], references: [id], onDelete: Cascade)
+  assignedSession     Session?      @relation(fields: [assignedSessionId], references: [id], onDelete: SetNull)
+
+  @@unique([experimentRunId, globalPosition])
+  @@unique([experimentRunId, blockIndex, positionInBlock])
+  @@index([experimentRunId, status, globalPosition])
+  @@index([experimentCondition])
 }
 
 model SessionSegmentState {
-  id          String          @id @default(cuid())
-  sessionId   String
-  phase       ExperimentPhase
+  id           String          @id @default(cuid())
+  sessionId    String
+  phase        ExperimentPhase
   segmentIndex Int
-  type        SegmentType
-  startedAt   DateTime?
-  endsAt      DateTime?
-  completedAt DateTime?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  session     Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  type         SegmentType
+  startedAt    DateTime?
+  endsAt       DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  session      Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, phase, segmentIndex])
 }
 
 model TaskSnapshot {
-  id               String          @id @default(cuid())
-  sessionId        String
-  taskAssignmentId String
-  participantId    String?
-  snapshotType     String
-  scope            String?
-  role             String?
-  section          String?
-  segmentIndex     Int?
+  id                      String         @id @default(cuid())
+  sessionId               String
+  taskAssignmentId        String
+  participantId           String?
+  snapshotType            String
+  scope                   String?
+  role                    String?
+  section                 String?
+  segmentIndex            Int?
   restoreSourceSnapshotId String?
-  takenReason      String?
-  schemaVersion    Int             @default(1)
-  label            String
-  payload          Json
-  createdAt        DateTime        @default(now())
-  session          Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  taskAssignment   TaskAssignment  @relation(fields: [taskAssignmentId], references: [id], onDelete: Cascade)
+  takenReason             String?
+  schemaVersion           Int            @default(1)
+  label                   String
+  payload                 Json
+  createdAt               DateTime       @default(now())
+  session                 Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskAssignment          TaskAssignment @relation(fields: [taskAssignmentId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, taskAssignmentId])
   @@index([sessionId, taskAssignmentId, snapshotType])
 }
 
 model QuestionnaireTemplate {
-  id          String                 @id @default(cuid())
-  title       String
-  items       Json
-  isActive    Boolean                @default(false)
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
-  responses   QuestionnaireResponse[]
-  configs     ExperimentConfig[]
-  practiceConfigs ExperimentConfig[] @relation("PracticeQuizTemplate")
+  id              String                  @id @default(cuid())
+  title           String
+  items           Json
+  isActive        Boolean                 @default(false)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  responses       QuestionnaireResponse[]
+  configs         ExperimentConfig[]
+  practiceConfigs ExperimentConfig[]      @relation("PracticeQuizTemplate")
 }
 
 model QuestionnaireResponse {
-  id            String                @id @default(cuid())
+  id            String                 @id @default(cuid())
   sessionId     String
   participantId String
   templateId    String?
-  phase         ExperimentPhase       @default(FORMAL)
+  phase         ExperimentPhase        @default(FORMAL)
   segmentIndex  Int
   answers       Json
-  submittedAt   DateTime              @default(now())
-  session       Session               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant   Participant           @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  submittedAt   DateTime               @default(now())
+  session       Session                @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant            @relation(fields: [participantId], references: [id], onDelete: Cascade)
   template      QuestionnaireTemplate? @relation(fields: [templateId], references: [id])
 
   @@index([sessionId, participantId, segmentIndex])
 }
 
 model AiSettings {
-  id                  String   @id @default("default")
-  basicBaseUrl        String   @default("https://api.deepseek.com")
-  basicModel          String   @default("deepseek-chat")
-  basicApiKey         String   @default("")
-  basicContextLimit   Int      @default(20)
-  advancedBaseUrl     String   @default("https://api.deepseek.com")
-  advancedModel       String   @default("deepseek-chat")
-  advancedApiKey      String   @default("")
-  advancedContextLimit Int     @default(20)
-  basicDisplayName   String   @default("aiseek")
-  advancedDisplayName String  @default("aiseek pro")
-  systemPromptMain    String   @default("")
-  systemPromptSide    String   @default("")
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String   @id @default("default")
+  basicBaseUrl         String   @default("https://api.deepseek.com")
+  basicModel           String   @default("deepseek-chat")
+  basicApiKey          String   @default("")
+  basicContextLimit    Int      @default(20)
+  advancedBaseUrl      String   @default("https://api.deepseek.com")
+  advancedModel        String   @default("deepseek-chat")
+  advancedApiKey       String   @default("")
+  advancedContextLimit Int      @default(20)
+  basicDisplayName     String   @default("aiseek")
+  advancedDisplayName  String   @default("aiseek pro")
+  systemPromptMain     String   @default("")
+  systemPromptSide     String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model AiMessageLog {
-  id            String          @id @default(cuid())
-  sessionId     String
-  participantId String?
-  companyId     String?
-  taskAssignmentId String?
-  sideTaskPlanId String?
-  contextType   String
-  phase         ExperimentPhase?
-  segmentIndex  Int?
-  aiLevel       AiLevel
-  modelVersion  String?
-  imageUploadEnabled Boolean @default(false)
-  messageRole   String
-  requestId     String
-  content       String
-  attachments   Json?
-  completedAt   DateTime?
-  latencyMs      Int?
-  providerStatus String?
-  errorMessage   String?
-  createdAt     DateTime        @default(now())
-  session       Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                 String           @id @default(cuid())
+  sessionId          String
+  participantId      String?
+  companyId          String?
+  taskAssignmentId   String?
+  sideTaskPlanId     String?
+  contextType        String
+  phase              ExperimentPhase?
+  segmentIndex       Int?
+  aiLevel            AiLevel
+  modelVersion       String?
+  imageUploadEnabled Boolean          @default(false)
+  messageRole        String
+  requestId          String
+  content            String
+  attachments        Json?
+  completedAt        DateTime?
+  latencyMs          Int?
+  providerStatus     String?
+  errorMessage       String?
+  createdAt          DateTime         @default(now())
+  session            Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, contextType, phase, segmentIndex])
   @@index([taskAssignmentId])
@@ -326,52 +379,52 @@ model AiMessageLog {
 }
 
 model SideTaskResponseLog {
-  id            String       @id @default(cuid())
+  id            String      @id @default(cuid())
   sessionId     String
   participantId String
   segmentIndex  Int
   itemId        String
   prompt        String
   response      String
-  createdAt     DateTime     @default(now())
-  session       Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant   Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  session       Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, participantId, segmentIndex])
 }
 
 model SideTaskItem {
-  id                String   @id @default(cuid())
-  itemCode          String   @unique
-  poolType          String
-  workSegment       Int
-  eventArchetype    String?
-  eventChain        String?
-  surfaceScenario   String?
-  languageVariant   String?
-  skeletonType      String?
-  narrativeCategory String?
-  narrativeSubtype  String?
-  directAiFlag      Boolean  @default(false)
-  text              String
-  question          String
-  questionVariantId String?
-  optionA           String
-  optionB           String
-  goldAnswer        String?
-  evidenceSpan      String?
-  distractorType    String?
-  distractorNote    String?
+  id                  String   @id @default(cuid())
+  itemCode            String   @unique
+  poolType            String
+  workSegment         Int
+  eventArchetype      String?
+  eventChain          String?
+  surfaceScenario     String?
+  languageVariant     String?
+  skeletonType        String?
+  narrativeCategory   String?
+  narrativeSubtype    String?
+  directAiFlag        Boolean  @default(false)
+  text                String
+  question            String
+  questionVariantId   String?
+  optionA             String
+  optionB             String
+  goldAnswer          String?
+  evidenceSpan        String?
+  distractorType      String?
+  distractorNote      String?
   narrativeComponents String?
-  spilloverRiskFlag Boolean  @default(false)
-  spilloverRiskNote String?
-  difficulty        String?
-  version           String?
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  spilloverRiskFlag   Boolean  @default(false)
+  spilloverRiskNote   String?
+  difficulty          String?
+  version             String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  plans             SideTaskPlan[]
+  plans SideTaskPlan[]
 
   @@index([poolType, workSegment])
   @@index([narrativeCategory, workSegment])
@@ -390,13 +443,13 @@ model SideTaskPlan {
   batchNo                Int?
   scheduledAt            DateTime?
   releasedAt             DateTime?
-  isArchivedAtSegmentEnd Boolean  @default(false)
-  createdAt              DateTime @default(now())
+  isArchivedAtSegmentEnd Boolean   @default(false)
+  createdAt              DateTime  @default(now())
 
-  session                Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  item                   SideTaskItem         @relation(fields: [itemId], references: [id])
-  exposureLogs           SideTaskExposureLog[]
-  experimentEvents       ExperimentEvent[]
+  session          Session               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  item             SideTaskItem          @relation(fields: [itemId], references: [id])
+  exposureLogs     SideTaskExposureLog[]
+  experimentEvents ExperimentEvent[]
 
   @@index([sessionId, segmentIndex])
   @@index([sessionId, segmentIndex, queueOrder])
@@ -411,9 +464,9 @@ model SideTaskExposureLog {
   eventAt        DateTime @default(now())
   payload        Json?
 
-  session        Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant    Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  plan           SideTaskPlan @relation(fields: [sideTaskPlanId], references: [id], onDelete: Cascade)
+  session     Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  plan        SideTaskPlan @relation(fields: [sideTaskPlanId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, participantId])
   @@index([sideTaskPlanId])
@@ -437,26 +490,32 @@ model SideTaskSessionConfig {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  session              Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model RandomizationAudit {
-  id                        String   @id @default(cuid())
-  sessionId                 String   @unique
-  roleAssignmentMethod      String
-  roleAssignmentSeed        String
-  roleAssignedAt            DateTime
-  companySequenceMethod     String
-  companySequenceSeed       String
+  id                         String    @id @default(cuid())
+  sessionId                  String    @unique
+  roleAssignmentMethod       String
+  roleAssignmentSeed         String
+  roleAssignedAt             DateTime
+  companySequenceMethod      String
+  companySequenceSeed        String
   companySequenceGeneratedAt DateTime
-  companySequence           Json
-  bAssignmentMethod         String?
-  bAssignmentLog            Json?
-  experimentMode            String?
-  experimentRandomization   Json?
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
-  session                   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  companySequence            Json
+  bAssignmentMethod          String?
+  bAssignmentLog             Json?
+  experimentMode             String?
+  experimentRandomization    Json?
+  conditionAssignmentMethod  String?
+  conditionAssignmentSeed    String?
+  conditionBlockIndex        Int?
+  conditionBlockPosition     Int?
+  conditionGlobalPosition    Int?
+  conditionAssignedAt        DateTime?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+  session                    Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
 }
@@ -478,10 +537,10 @@ model ExperimentEvent {
   schemaVersion    Int              @default(1)
   createdAt        DateTime         @default(now())
 
-  session          Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  participant      Participant?     @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  taskAssignment   TaskAssignment?  @relation(fields: [taskAssignmentId], references: [id], onDelete: SetNull)
-  sideTaskPlan     SideTaskPlan?    @relation(fields: [sideTaskPlanId], references: [id], onDelete: SetNull)
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant    Participant?    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  taskAssignment TaskAssignment? @relation(fields: [taskAssignmentId], references: [id], onDelete: SetNull)
+  sideTaskPlan   SideTaskPlan?   @relation(fields: [sideTaskPlanId], references: [id], onDelete: SetNull)
 
   @@index([sessionId, participantId])
   @@index([sessionId, eventType])
@@ -505,7 +564,7 @@ model ExportJob {
   startedAt    DateTime?
   finishedAt   DateTime?
 
-  session      Session?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([createdAt])
@@ -513,16 +572,16 @@ model ExportJob {
 }
 
 model IdempotencyRecord {
-  id          String   @id @default(cuid())
-  key         String   @unique
-  route       String
-  scope       String?
-  response    Json?
-  status      String   @default("pending")
+  id           String    @id @default(cuid())
+  key          String    @unique
+  route        String
+  scope        String?
+  response     Json?
+  status       String    @default("pending")
   errorMessage String?
-  expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([route])
   @@index([scope])

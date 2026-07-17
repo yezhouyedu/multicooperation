@@ -121,6 +121,7 @@ export default function WorkspaceAPage() {
             participantId={bootstrap.participantId}
             role="A"
             aiLevel={runtime.aiLevel}
+            aiEnabled={runtime.aiEnabled}
             sideTaskQueue={runtime.sideTaskQueue}
             sideTaskConfig={runtime.sideTaskConfig}
             phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
@@ -135,6 +136,7 @@ export default function WorkspaceAPage() {
             </div>
           ) : (
             <WorkbenchLayout
+              aiEnabled={runtime.aiEnabled}
               key={runtime.currentTask.id}
               sidebar={<CompanyMaterialPanel ref={materialPanelRef} company={company} />}
               sidebarTitle="参考材料"
@@ -218,6 +220,7 @@ export default function WorkspaceAPage() {
           participantId={bootstrap.participantId}
           role="A"
           aiLevel={runtime.aiLevel}
+          aiEnabled={runtime.aiEnabled}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />
       ) : null}

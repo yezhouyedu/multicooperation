@@ -18,6 +18,7 @@ type Props = {
   participantId?: string;
   role: 'A' | 'B';
   aiLevel?: 'BASIC' | 'ADVANCED';
+  aiEnabled?: boolean;
   sideTaskQueue: QueueItem[];
   sideTaskConfig: SideTaskConfig;
   phase?: 'practice' | 'formal';
@@ -30,6 +31,7 @@ export function SideTaskStrip({
   participantId,
   role,
   aiLevel = 'BASIC',
+  aiEnabled = true,
   sideTaskQueue,
   sideTaskConfig,
   phase = 'formal',
@@ -545,6 +547,7 @@ export function SideTaskStrip({
             </div>
             <div className="min-h-0 flex-1 p-2">
               <WorkbenchLayout
+                aiEnabled={aiEnabled}
                 sidebar={sidebar}
                 sidebarTitle="任务2队列"
                 taskPane={taskPane}

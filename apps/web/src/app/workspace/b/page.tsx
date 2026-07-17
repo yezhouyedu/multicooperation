@@ -341,6 +341,7 @@ export default function WorkspaceBPage() {
             participantId={bootstrap.participantId}
             role="B"
             aiLevel={runtime.aiLevel}
+            aiEnabled={runtime.aiEnabled}
             sideTaskQueue={runtime.sideTaskQueue}
             sideTaskConfig={runtime.sideTaskConfig}
             phase={runtime.phase === 'practice' ? 'practice' : 'formal'}
@@ -356,6 +357,7 @@ export default function WorkspaceBPage() {
             </div>
           ) : (
             <WorkbenchLayout
+              aiEnabled={runtime.aiEnabled}
               key={runtime.currentTask.id}
               sidebar={
                 <CompanyMaterialPanel
@@ -465,6 +467,7 @@ export default function WorkspaceBPage() {
           participantId={bootstrap.participantId}
           role="B"
           aiLevel={runtime.aiLevel}
+          aiEnabled={runtime.aiEnabled}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />
       ) : null}

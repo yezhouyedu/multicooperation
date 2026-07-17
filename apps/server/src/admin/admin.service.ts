@@ -20,6 +20,7 @@ import {
   scanCaseLibrary,
 } from './materials';
 import { storagePath } from '../storage-paths';
+import { ExperimentConditionAssignmentService } from '../experiment/experiment-condition-assignment.service';
 import {
   FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
   formalQuestionnaireTemplateJson,
@@ -48,9 +49,9 @@ type SingleChoiceQuestionInput = {
 
 type FormalQuestionnaireInput = Prisma.InputJsonValue | Record<string, unknown> | null | undefined;
 
-type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+type ExperimentMode = 'manual' | 'formal';
 
-const EXPERIMENT_MODES = new Set<ExperimentMode>(['manual', 'ai_upgrade', 'side_reminder', 'coop_narrative']);
+const EXPERIMENT_MODES = new Set<ExperimentMode>(['manual', 'formal']);
 
 const DEFAULT_EXPERIMENT_MODE_SETTINGS = {
   ai_upgrade: {
@@ -83,7 +84,34 @@ const DEFAULT_INSTRUCTION_BLOCKS = {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly conditionAssignments: ExperimentConditionAssignmentService,
+  ) {}
+
+  async createExperimentRun(name?: string) {
+    return { ok: true, run: await this.conditionAssignments.createRun(name) };
+  }
+
+  async activateExperimentRun(runId: string) {
+    return { ok: true, run: await this.conditionAssignments.activateRun(runId) };
+  }
+
+  async closeExperimentRun(runId: string) {
+    return { ok: true, run: await this.conditionAssignments.closeRun(runId) };
+  }
+
+  async getExperimentRuns() {
+    return { ok: true, runs: await this.conditionAssignments.listRuns() };
+  }
+
+  async useManualExperimentMode() {
+    await this.prisma.experimentConfig.update({
+      where: { id: 'default' },
+      data: { activeExperimentMode: 'manual', activeExperimentRunId: null },
+    });
+    return { ok: true };
+  }
 
   async upsertParticipants(entries: { phone: string }[]) {
     let inserted = 0;
@@ -149,6 +177,7 @@ export class AdminService {
       config: {
         id: config.id,
         activeExperimentMode: config.activeExperimentMode,
+        activeExperimentRunId: config.activeExperimentRunId,
         experimentModeSettings: this.normalizeExperimentModeSettings(config.experimentModeSettings),
         instructionBlocks: this.normalizeInstructionBlocks(config.instructionBlocks),
         practiceDurationMinutes: config.practiceDurationMinutes,

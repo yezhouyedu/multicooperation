@@ -13,6 +13,7 @@ type Props = {
   taskTitle: string;
   aiTitle: string;
   aiBadge?: ReactNode;
+  aiEnabled?: boolean;
 };
 
 export function WorkbenchLayout({
@@ -24,6 +25,7 @@ export function WorkbenchLayout({
   taskTitle,
   aiTitle,
   aiBadge,
+  aiEnabled = true,
 }: Props) {
   const [mode, setMode] = useState<LayoutMode>('split');
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saved' | 'dirty'>('idle');
@@ -138,7 +140,7 @@ export function WorkbenchLayout({
 
   const showSidebar = mode === 'split' || mode === 'sidebar';
   const showTask = mode === 'split' || mode === 'task';
-  const showAi = mode === 'split' || mode === 'ai';
+  const showAi = aiEnabled && (mode === 'split' || mode === 'ai');
 
   const saveBtnClass =
     draftStatus === 'saved'
@@ -201,11 +203,11 @@ export function WorkbenchLayout({
             ref={taskPanelRef}
             data-tutorial-anchor="task-panel"
             style={{
-              height: isSplit ? '50%' : undefined,
+              height: isSplit && aiEnabled ? '50%' : undefined,
               display: showTask ? undefined : 'none',
               boxShadow: 'var(--shadow-card)',
             }}
-            className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#eaecf0] bg-white ${isSplit ? 'shrink-0' : 'flex-1'}`}
+            className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-[#eaecf0] bg-white ${isSplit && aiEnabled ? 'shrink-0' : 'flex-1'}`}
           >
             <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#eaecf0] bg-[#fafbfc] px-4">
               <div className="flex items-center gap-2">
@@ -226,7 +228,7 @@ export function WorkbenchLayout({
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{taskPane}</div>
           </section>
 
-          {isSplit ? (
+          {isSplit && aiEnabled ? (
             <div
               onMouseDown={startVerticalDrag}
               className="my-0.5 flex h-2 shrink-0 cursor-row-resize items-center justify-center rounded bg-transparent transition-colors hover:bg-[#93c5fd]/40"
@@ -235,7 +237,7 @@ export function WorkbenchLayout({
             </div>
           ) : null}
 
-          <section
+          {aiEnabled ? <section
             data-tutorial-anchor="ai-panel"
             style={{
               display: showAi ? undefined : 'none',
@@ -254,7 +256,7 @@ export function WorkbenchLayout({
               </div>
             </header>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{aiPane}</div>
-          </section>
+          </section> : null}
         </div>
       </div>
     </div>

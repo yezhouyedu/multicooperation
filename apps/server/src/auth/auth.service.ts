@@ -12,8 +12,13 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ExperimentAuditService } from '../recording/experiment-audit.service';
+import { ExperimentConditionAssignmentService } from '../experiment/experiment-condition-assignment.service';
+import {
+  ExperimentCondition,
+  experimentConditionDefinition,
+} from '../experiment/experiment-conditions';
 
-type ExperimentMode = 'manual' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
+type ExperimentMode = 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
 type DispatchMode = 'continuous' | 'batch';
 type NarrativeGroup = 'neutral_info' | 'coop_narrative';
 
@@ -48,8 +53,13 @@ const THEME_TO_INSTRUCTION: Record<string, InstructionType> = {
 
 type ExperimentSnapshot = {
   experimentMode: ExperimentMode;
+  experimentCondition: ExperimentCondition | null;
+  experimentRunId: string | null;
+  aiEnabled: boolean;
+  aiCondition: 'NONE' | 'BASIC' | 'ADVANCED';
   upgradeCohort: 'early_upgrade' | 'late_upgrade' | null;
-  segmentAiStates: { 1: AiLevel; 2: AiLevel; 3: AiLevel };
+  practiceAiState: AiLevel | null;
+  segmentAiStates: { 1: AiLevel | null; 2: AiLevel | null; 3: AiLevel | null };
   sideDispatchMode: DispatchMode;
   narrativeGroup: NarrativeGroup;
   themeOrder: string[];
@@ -72,6 +82,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: ExperimentAuditService,
+    private readonly conditionAssignments: ExperimentConditionAssignmentService,
   ) {}
 
   async login(phone: string) {
@@ -246,7 +257,11 @@ export class AuthService {
     },
   ) {
     const config = await tx.experimentConfig.findUnique({ where: { id: 'default' } });
-    const experimentSnapshot = this.buildExperimentSnapshot(config);
+    const session = await tx.session.findUniqueOrThrow({ where: { id: sessionId } });
+    const conditionAssignment = config?.activeExperimentMode === 'formal' && config.activeExperimentRunId
+      ? await this.conditionAssignments.claimNextSlot(tx, config.activeExperimentRunId, sessionId, session.code)
+      : null;
+    const experimentSnapshot = this.buildExperimentSnapshot(config, conditionAssignment);
     const companies = await tx.company.findMany({ orderBy: { sortOrder: 'asc' } });
     const practiceCompanies = companies.filter((company) => company.usage === 'practice');
     const formalCompanies = companies.filter((company) => company.usage === 'formal');
@@ -305,7 +320,10 @@ export class AuthService {
       where: { id: sessionId },
       data: {
         experimentMode: experimentSnapshot.experimentMode,
-        upgradeCohort: experimentSnapshot.upgradeCohort,
+        upgradeCohort: null,
+        experimentRunId: conditionAssignment?.experimentRunId ?? null,
+        experimentCondition: conditionAssignment?.experimentCondition ?? null,
+        conditionAssignedAt: conditionAssignment?.assignedAt ?? null,
         experimentSnapshot: experimentSnapshot as Prisma.InputJsonValue,
       },
     });
@@ -324,6 +342,12 @@ export class AuthService {
         bAssignmentLog: [],
         experimentMode: experimentSnapshot.experimentMode,
         experimentRandomization: experimentSnapshot as Prisma.InputJsonValue,
+        conditionAssignmentMethod: conditionAssignment?.method ?? null,
+        conditionAssignmentSeed: conditionAssignment?.blockSeed ?? null,
+        conditionBlockIndex: conditionAssignment?.blockIndex ?? null,
+        conditionBlockPosition: conditionAssignment?.positionInBlock ?? null,
+        conditionGlobalPosition: conditionAssignment?.globalPosition ?? null,
+        conditionAssignedAt: conditionAssignment?.assignedAt ?? null,
       },
       create: {
         sessionId,
@@ -338,6 +362,12 @@ export class AuthService {
         bAssignmentLog: [],
         experimentMode: experimentSnapshot.experimentMode,
         experimentRandomization: experimentSnapshot as Prisma.InputJsonValue,
+        conditionAssignmentMethod: conditionAssignment?.method ?? null,
+        conditionAssignmentSeed: conditionAssignment?.blockSeed ?? null,
+        conditionBlockIndex: conditionAssignment?.blockIndex ?? null,
+        conditionBlockPosition: conditionAssignment?.positionInBlock ?? null,
+        conditionGlobalPosition: conditionAssignment?.globalPosition ?? null,
+        conditionAssignedAt: conditionAssignment?.assignedAt ?? null,
       },
     });
 
@@ -467,14 +497,17 @@ export class AuthService {
     return shuffled.slice(0, count);
   }
 
-  private buildExperimentSnapshot(config: ExperimentConfig | null): ExperimentSnapshot {
+  private buildExperimentSnapshot(
+    config: ExperimentConfig | null,
+    conditionAssignment: Awaited<ReturnType<ExperimentConditionAssignmentService['claimNextSlot']>> | null,
+  ): ExperimentSnapshot {
     const mode = this.normalizeExperimentMode(config?.activeExperimentMode);
     const settings = this.normalizeExperimentModeSettings(config?.experimentModeSettings);
     const manualAiStates = {
       1: config?.segmentOneAiLevel ?? AiLevel.BASIC,
       2: config?.segmentTwoAiLevel ?? AiLevel.ADVANCED,
       3: config?.segmentThreeAiLevel ?? AiLevel.ADVANCED,
-    } as { 1: AiLevel; 2: AiLevel; 3: AiLevel };
+    } as { 1: AiLevel | null; 2: AiLevel | null; 3: AiLevel | null };
     const seeds: ExperimentSnapshot['seeds'] = { newsOrderSeed: this.generateSeed() };
 
     let upgradeCohort: ExperimentSnapshot['upgradeCohort'] = null;
@@ -483,6 +516,23 @@ export class AuthService {
     let narrativeGroup: NarrativeGroup = 'neutral_info';
     let themeOrder: string[] = [];
     const fixedVariables: Record<string, string> = {};
+
+    if (mode === 'formal') {
+      if (!conditionAssignment) throw new ForbiddenException('正式实验局尚未激活');
+      const definition = experimentConditionDefinition(conditionAssignment.experimentCondition);
+      const aiLevel = definition.aiCondition === 'ADVANCED'
+        ? AiLevel.ADVANCED
+        : definition.aiCondition === 'BASIC'
+          ? AiLevel.BASIC
+          : null;
+      segmentAiStates = { 1: aiLevel, 2: aiLevel, 3: aiLevel };
+      sideDispatchMode = definition.sideDispatchMode;
+      narrativeGroup = definition.narrativeGroup;
+      fixedVariables.experimentCondition = definition.condition;
+      fixedVariables.aiCondition = definition.aiCondition;
+      fixedVariables.sideDispatchMode = definition.sideDispatchMode;
+      fixedVariables.narrativeGroup = definition.narrativeGroup;
+    }
 
     if (mode === 'manual') {
       seeds.sideDispatchSeed = this.generateSeed();
@@ -531,7 +581,16 @@ export class AuthService {
 
     return {
       experimentMode: mode,
+      experimentCondition: conditionAssignment?.experimentCondition ?? null,
+      experimentRunId: conditionAssignment?.experimentRunId ?? null,
+      aiEnabled: conditionAssignment
+        ? experimentConditionDefinition(conditionAssignment.experimentCondition).aiEnabled
+        : true,
+      aiCondition: conditionAssignment
+        ? experimentConditionDefinition(conditionAssignment.experimentCondition).aiCondition
+        : segmentAiStates[1] === AiLevel.ADVANCED ? 'ADVANCED' : 'BASIC',
       upgradeCohort,
+      practiceAiState: segmentAiStates[1],
       segmentAiStates,
       sideDispatchMode,
       narrativeGroup,
@@ -551,7 +610,7 @@ export class AuthService {
     let orderType: InstructionPlanSnapshot['orderType'] = 'fixed_neutral_order';
     let order = FIXED_NEUTRAL_ORDER;
 
-    if (mode === 'coop_narrative' && narrativeGroup === 'coop_narrative') {
+    if (narrativeGroup === 'coop_narrative') {
       orderType = 'theme_order';
       order = themeOrder.map((theme) => THEME_TO_INSTRUCTION[theme] ?? 'complementarity');
     } else if (mode === 'coop_narrative' && narrativeGroup === 'neutral_info') {
@@ -602,6 +661,7 @@ export class AuthService {
   }
 
   private normalizeExperimentMode(value?: string): ExperimentMode {
+    if (value === 'formal') return value;
     if (value === 'ai_upgrade' || value === 'side_reminder' || value === 'coop_narrative') return value;
     return 'manual';
   }

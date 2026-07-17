@@ -2454,6 +2454,48 @@
 **边界**：
 - 本轮不改 AI 请求、时间戳事件、变量保存、数据库、导出结构和工作台拖拽布局。
 
+### 2026-07-02 PDF 阅读器文本层开启与线上临时材料测试
+
+**背景**：用户测试发现线上 admin 中临时 PDF 材料可正常预览但无法像 Word 阅读器一样拖选复制文字，需要验证 PDF 作为正式材料格式的可行性。
+
+**实现**：
+- 开启 `CompanyMaterialPanel` 中 PDF 阅读器的 `renderTextLayer`，保留 `renderAnnotationLayer={false}`，让文字型 PDF 在浏览器中支持文本选择与复制。
+- 为 `react-pdf` 文本层补充 `user-select: text`、文字选择高亮和层级样式，避免 canvas 层阻挡选区。
+- 本地验证 `corepack pnpm --filter web build` 通过。
+- 提交 `81d8d80 开启PDF文本复制层` 并通过 `scripts/deploy/upload-git-archive.ps1 -Service web -AllowDirty` 部署线上 web。
+- 线上 smoke：`https://aiseek.tech/admin` 返回 200，`https://aiseek.tech/api/health` 返回 ok。
+
+**测试材料清理**：
+- 曾临时把 `P01_A_材料2.pdf` 加入线上 P01 材料预览，用于验证 PDF 展示和复制效果。
+- 验证后已删除线上生产库中的临时材料记录 `8b638ccb-27bc-45d5-a780-f1d5e5f2c08a`，并删除对应 server storage 文件 `1782982134281-f012d9ca.pdf`。
+- 已清理误加到本地数据库的临时材料记录 `fcce728a-205e-4cc4-8997-725152546707`，并删除本地源目录测试文件 `00_start_materials/原始材料/正式/P01/participant/diligence/P01_A_材料2.pdf`。
+
+**结论**：
+- PDF 阅读器文字复制功能已上线并保留；后续若正式材料改成 PDF，前提是 PDF 本身必须是文字型 PDF，扫描图片版 PDF 仍需要 OCR。
+- Word 阅读器仍可能受浏览器本机字体和 docx 渲染还原能力影响；后续需在“统一转 PDF”与“补 Word 字体兼容”之间做材料格式决策。
+
+---
+
+### 2026-07-17 七条件区组随机化与正式实验模式
+
+**背景**：第八次会议将旧实验 1/2/3 改为 A0-A6七个固定实验条件。实验局按七条件平衡区组顺序给新组成的 AB session 分配处理，测试轮/练习轮起即遵循对应 AI 条件。
+
+**实现**：
+- 新增 A0-A6唯一条件映射：AI为 NONE/BASIC/ADVANCED，提醒为 continuous/batch，叙事为 neutral_info/coop_narrative。
+- 新增 `ExperimentRun` 与 `ExperimentConditionSlot`，正式实验局默认预生成60个区组/420槽位；槽位使用区组 seed 确定性洗牌并支持耗尽后追加。
+- session 配对事务内原子领取槽位，数据库唯一约束防止重复；保存条件号、区组号、区组内位置、全局位置、seed、方法和时间。
+- Admin 新增手动/通用与正式实验模式、实验局创建/激活/关闭、当前区组进度和 A0-A6分配计数；旧实验1/2/3不再作为新 session 入口。
+- A0从测试轮起隐藏任务1和任务2 AI，AI后端同时拒绝请求；其余条件的练习轮 AI 档位与正式条件一致。
+- 扩展 `session_metadata.json`、`randomization.json` 与 `variables.json.treatments` 的实验局和条件随机化字段。
+- 新 migration：`20260717090000_seven_condition_block_randomization`。`upgradeCohort` 停止用于新正式 session，暂保留为历史兼容字段。
+
+**验证**：
+- A0-A6映射与1000个平衡区组单元测试通过，共9项测试。
+- 本地 Prisma migration deploy、Prisma generate、server build、web build通过。
+- 数据库集成验证：首个 session 领取位置1，幂等重试仍为位置1，第二个 session 领取位置2，420槽位剩余418；测试数据已清理。
+
+**后续边界**：第八次会议准备的指导语具体修改文件留到下一轮统一审查和替换；本轮仅移除新流程对旧升级模式的依赖并建立正式条件快照。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看

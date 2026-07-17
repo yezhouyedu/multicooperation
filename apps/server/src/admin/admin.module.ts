@@ -6,8 +6,10 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { SideTaskAdminController } from './sidetask-admin.controller';
 import { SideTaskAdminService } from './sidetask-admin.service';
+import { ExperimentConditionAssignmentModule } from '../experiment/experiment-condition-assignment.module';
 
 @Module({
+  imports: [ExperimentConditionAssignmentModule],
   controllers: [AdminAuthController, AdminController, SideTaskAdminController],
   providers: [AdminAuthService, AdminAuthGuard, AdminService, SideTaskAdminService],
 })

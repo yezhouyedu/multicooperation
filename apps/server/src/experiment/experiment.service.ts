@@ -93,6 +93,10 @@ type RuntimeSession = Session & {
 
 type RuntimeExperimentSnapshot = {
   experimentMode?: string;
+  experimentCondition?: string | null;
+  aiEnabled?: boolean;
+  aiCondition?: string;
+  practiceAiState?: AiLevel | string | null;
   upgradeCohort?: string | null;
   segmentAiStates?: Record<string, AiLevel | string>;
   sideDispatchMode?: string;
@@ -686,6 +690,7 @@ export class ExperimentService {
       experimentMode: session.experimentMode,
       experimentSnapshot: session.experimentSnapshot,
       instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
+      aiEnabled: this.parseExperimentSnapshot(session.experimentSnapshot)?.aiEnabled !== false,
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
       aiDisplayNames: {
         basic: aiSettings?.basicDisplayName || 'aiseek',
@@ -3186,8 +3191,13 @@ export class ExperimentService {
     segmentIndex: number,
     session?: Pick<Session, 'experimentSnapshot'> | null,
   ) {
-    if (segmentIndex === 0) return AiLevel.BASIC;
     const snapshot = this.parseExperimentSnapshot(session?.experimentSnapshot);
+    if (segmentIndex === 0) {
+      const practiceLevel = snapshot?.practiceAiState;
+      return practiceLevel === AiLevel.ADVANCED || practiceLevel === 'ADVANCED'
+        ? AiLevel.ADVANCED
+        : AiLevel.BASIC;
+    }
     const aiStates = snapshot?.segmentAiStates;
     const segmentNumber = segmentIndex <= 1 ? 1 : segmentIndex <= 3 ? 2 : 3;
     const snapshotLevel = aiStates?.[String(segmentNumber)];

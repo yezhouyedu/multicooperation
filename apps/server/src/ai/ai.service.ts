@@ -288,6 +288,12 @@ export class AiService {
 
   private async resolveChatContext(input: ChatInput): Promise<ResolvedChatContext> {
     const session = await this.prisma.session.findUnique({ where: { code: input.sessionCode } });
+    const experimentSnapshot = session?.experimentSnapshot && typeof session.experimentSnapshot === 'object'
+      ? session.experimentSnapshot as Record<string, unknown>
+      : null;
+    if (experimentSnapshot?.aiEnabled === false || experimentSnapshot?.aiCondition === 'NONE') {
+      throw new BadRequestException('当前实验条件不提供 AI 辅助');
+    }
     if (!session) throw new BadRequestException('Session 不存在');
 
     const participantId = input.participantId ?? null;
