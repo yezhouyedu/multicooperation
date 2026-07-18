@@ -151,6 +151,11 @@ export class AdminController {
     return this.adminService.closeExperimentRun(id);
   }
 
+  @Delete('experiment-runs/:id')
+  deleteExperimentRun(@Param('id') id: string) {
+    return this.adminService.deleteExperimentRun(id);
+  }
+
   @Post('experiment-runs/use-manual')
   useManualExperimentMode() {
     return this.adminService.useManualExperimentMode();

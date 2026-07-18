@@ -5,7 +5,7 @@ import { AdminAiSettingsPanel } from '@/components/admin-ai-settings-panel';
 import { CompanyMaterialPanel } from '@/components/company-material-panel';
 import { adminFetch, clearAdminToken, hasAdminToken, loginAdmin } from '@/lib/admin-auth';
 import type { CompanyData } from '@/lib/session-runtime';
-import { ArrowDown, ArrowUp, RefreshCw, Upload } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pause, Play, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
@@ -123,6 +123,7 @@ type ExperimentRunSummary = {
   progress: {
     assigned: number;
     completed: number;
+    sessionCount: number;
     available: number;
     currentBlockIndex: number;
     claimedInCurrentBlock: number;
@@ -915,19 +916,41 @@ function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentM
 
   useEffect(() => { void loadRuns(); }, []);
 
-  async function action(path: string, body?: unknown) {
+  async function action(path: string, body?: unknown, method: 'POST' | 'DELETE' = 'POST') {
     setStatus('处理中...');
     const response = await fetch(`${serverBaseUrl}/admin/${path}`, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!response.ok) {
-      setStatus(`操作失败：${response.status}`);
+      let message = `操作失败（${response.status}）`;
+      try {
+        const payload = (await response.json()) as { message?: string | string[] };
+        if (payload.message) message = Array.isArray(payload.message) ? payload.message.join('；') : payload.message;
+      } catch {
+        // Keep the HTTP status fallback when the response has no JSON body.
+      }
+      setStatus(message);
       return;
     }
     setStatus('已更新');
     await Promise.all([loadRuns(), onChanged()]);
+  }
+
+  function activateRun(run: ExperimentRunSummary) {
+    const current = runs.find((item) => item.status === 'ACTIVE' && item.id !== run.id);
+    if (current && !window.confirm(`切换后“${current.name}”会暂停，“${run.name}”将从原有数据库进度继续分配。确认切换吗？`)) return;
+    void action(`experiment-runs/${run.id}/activate`);
+  }
+
+  function deleteRun(run: ExperimentRunSummary) {
+    if (run.progress.sessionCount > 0) {
+      setStatus(`“${run.name}”仍关联 ${run.progress.sessionCount} 个 Session，请先在 Session 概览中清理对应被试数据`);
+      return;
+    }
+    if (!window.confirm(`确认永久删除实验局“${run.name}”及其未使用的条件序列吗？`)) return;
+    void action(`experiment-runs/${run.id}`, undefined, 'DELETE');
   }
 
   return (
@@ -936,6 +959,7 @@ function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentM
         <div>
           <div className="font-bold text-[#1d2129]">实验模式</div>
           <div className="mt-1 text-xs text-[#86909c]">当前：{activeMode === 'formal' ? '正式实验模式' : '手动 / 通用模式'}</div>
+          <div className="mt-1 text-xs text-[#86909c]">切换实验局只影响之后新匹配的 Session；旧实验局再次启用时会从数据库中的下一可用槽位继续。</div>
         </div>
         <button type="button" onClick={() => void action('experiment-runs/use-manual')} className="rounded border border-[#d9dce1] px-3 py-2 text-sm hover:bg-gray-50">
           使用手动 / 通用模式
@@ -960,13 +984,14 @@ function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentM
         {runs.map((run) => (
           <div key={run.id} className="grid gap-3 border-b border-[#eaecf0] py-3 lg:grid-cols-[1fr_auto]">
             <div>
-              <div className="flex flex-wrap items-center gap-2 text-sm"><strong>{run.name}</strong><span className="text-[#86909c]">{run.code}</span><span>{run.status}</span></div>
-              <div className="mt-1 text-xs text-[#4e5969]">区组 {run.progress.currentBlockIndex}，已领取 {run.progress.claimedInCurrentBlock}/7；累计分配 {run.progress.assigned}，完成 {run.progress.completed}，队列剩余 {run.progress.available}</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm"><strong>{run.name}</strong><span className="text-[#86909c]">{run.code}</span><span>{run.status === 'ACTIVE' ? '正在分配' : run.status === 'CLOSED' ? '已暂停' : '未启动'}</span></div>
+              <div className="mt-1 text-xs text-[#4e5969]">区组 {run.progress.currentBlockIndex}，已领取 {run.progress.claimedInCurrentBlock}/7；累计分配 {run.progress.assigned}，关联 Session {run.progress.sessionCount}，完成 {run.progress.completed}，队列剩余 {run.progress.available}</div>
               <div className="mt-1 text-xs text-[#86909c]">{FORMAL_CONDITIONS.map(([condition]) => `${condition}: ${run.progress.byCondition[condition] ?? 0}`).join('  ·  ')}</div>
             </div>
             <div className="flex items-center gap-2">
-              {run.status === 'DRAFT' ? <button type="button" onClick={() => void action(`experiment-runs/${run.id}/activate`)} className="rounded bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">激活正式实验</button> : null}
-              {run.status === 'ACTIVE' ? <button type="button" onClick={() => void action(`experiment-runs/${run.id}/close`)} className="rounded border border-red-200 px-3 py-2 text-xs text-red-600">关闭实验局</button> : null}
+              {run.status !== 'ACTIVE' ? <button type="button" onClick={() => activateRun(run)} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><Play size={14} />{run.status === 'CLOSED' ? '继续此实验局' : '激活正式实验'}</button> : null}
+              {run.status === 'ACTIVE' ? <button type="button" onClick={() => void action(`experiment-runs/${run.id}/close`)} className="inline-flex items-center gap-1 rounded border border-amber-300 px-3 py-2 text-xs text-amber-700"><Pause size={14} />暂停实验局</button> : null}
+              {run.status !== 'ACTIVE' ? <button type="button" onClick={() => deleteRun(run)} className="grid size-8 place-items-center rounded border border-red-200 text-red-600 hover:bg-red-50" title="删除实验局" aria-label={`删除实验局 ${run.name}`}><Trash2 size={15} /></button> : null}
             </div>
           </div>
         ))}

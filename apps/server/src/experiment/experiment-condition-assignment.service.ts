@@ -36,7 +36,6 @@ export class ExperimentConditionAssignmentService {
     return this.prisma.$transaction(async (tx) => {
       const run = await tx.experimentRun.findUnique({ where: { id: runId } });
       if (!run) throw new NotFoundException('实验局不存在');
-      if (run.status === 'CLOSED') throw new BadRequestException('已关闭的实验局不能重新激活');
       await tx.experimentRun.updateMany({
         where: { status: 'ACTIVE', id: { not: runId } },
         data: { status: 'CLOSED', closedAt: new Date() },
@@ -51,6 +50,40 @@ export class ExperimentConditionAssignmentService {
         data: { activeExperimentMode: 'formal', activeExperimentRunId: runId },
       });
       return active;
+    });
+  }
+
+  async deleteRun(runId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const run = await tx.experimentRun.findUnique({ where: { id: runId } });
+      if (!run) throw new NotFoundException('实验局不存在');
+      if (run.status === 'ACTIVE') {
+        throw new BadRequestException('当前实验局正在使用，请先暂停或切换到其他实验局后再删除');
+      }
+
+      const sessionCount = await tx.session.count({ where: { experimentRunId: runId } });
+      if (sessionCount > 0) {
+        throw new BadRequestException(
+          `该实验局仍关联 ${sessionCount} 个 Session，请先在 Session 概览中清理对应被试数据后再删除实验局`,
+        );
+      }
+
+      await tx.experimentRun.delete({ where: { id: runId } });
+      return { id: runId };
+    });
+  }
+
+  async useManualMode() {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.experimentRun.updateMany({
+        where: { status: 'ACTIVE' },
+        data: { status: 'CLOSED', closedAt: new Date() },
+      });
+      await tx.experimentConfig.update({
+        where: { id: 'default' },
+        data: { activeExperimentMode: 'manual', activeExperimentRunId: null },
+      });
+      return { ok: true };
     });
   }
 
@@ -73,10 +106,11 @@ export class ExperimentConditionAssignmentService {
   async listRuns() {
     const runs = await this.prisma.experimentRun.findMany({ orderBy: { createdAt: 'desc' } });
     const summaries = await Promise.all(runs.map(async (run) => {
-      const [assigned, available, completed, byCondition] = await Promise.all([
+      const [assigned, available, completed, sessionCount, byCondition] = await Promise.all([
         this.prisma.experimentConditionSlot.count({ where: { experimentRunId: run.id, status: 'ASSIGNED' } }),
         this.prisma.experimentConditionSlot.count({ where: { experimentRunId: run.id, status: 'AVAILABLE' } }),
         this.prisma.session.count({ where: { experimentRunId: run.id, status: 'COMPLETED' } }),
+        this.prisma.session.count({ where: { experimentRunId: run.id } }),
         this.prisma.experimentConditionSlot.groupBy({
           by: ['experimentCondition'],
           where: { experimentRunId: run.id, status: 'ASSIGNED' },
@@ -89,6 +123,7 @@ export class ExperimentConditionAssignmentService {
         progress: {
           assigned,
           completed,
+          sessionCount,
           available,
           currentBlockIndex,
           claimedInCurrentBlock: assigned % 7 || (assigned > 0 ? 7 : 0),

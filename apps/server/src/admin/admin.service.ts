@@ -101,16 +101,16 @@ export class AdminService {
     return { ok: true, run: await this.conditionAssignments.closeRun(runId) };
   }
 
+  async deleteExperimentRun(runId: string) {
+    return { ok: true, run: await this.conditionAssignments.deleteRun(runId) };
+  }
+
   async getExperimentRuns() {
     return { ok: true, runs: await this.conditionAssignments.listRuns() };
   }
 
   async useManualExperimentMode() {
-    await this.prisma.experimentConfig.update({
-      where: { id: 'default' },
-      data: { activeExperimentMode: 'manual', activeExperimentRunId: null },
-    });
-    return { ok: true };
+    return this.conditionAssignments.useManualMode();
   }
 
   async upsertParticipants(entries: { phone: string }[]) {
