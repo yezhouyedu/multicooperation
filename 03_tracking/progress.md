@@ -2571,6 +2571,15 @@
 
 ---
 
+### 2026-07-18 移除 Admin 旧三段 AI 控件
+
+**实现**：
+- 删除 Admin“实验配置 → 时间参数”下方的工作段 1/2/3 AI BASIC/ADVANCED 下拉控件，避免与 A0-A6正式条件产生双重配置错觉。
+- 核对正式 session 初始化：正式模式先领取 A0-A6槽位，再按条件定义生成测试轮和三段 AI 状态并写入 session 快照；运行时优先读取快照，不读取 Admin 旧三段值。
+- 数据库 `segmentOneAiLevel / segmentTwoAiLevel / segmentThreeAiLevel` 与接口字段暂不删除，仅用于手动调试兼容、旧 session 或异常缺快照回退，不得覆盖正式实验条件。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。

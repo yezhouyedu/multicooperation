@@ -1140,22 +1140,6 @@ function ConfigTab() {
             <input type="number" min={1} value={config.feedbackNotificationDurationSec ?? 10} onChange={(event) => setConfig((prev) => (prev ? { ...prev, feedbackNotificationDurationSec: Number(event.target.value) || 10 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
           </label>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-4">
-          {config.activeExperimentMode !== 'manual' ? (
-            <div className="col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              当前处于正式实验模式，下面的工作段 AI 手动配置只在“手动 / 通用”模式下用于新 Session。
-            </div>
-          ) : null}
-          {[0, 1, 2].map((index) => (
-            <label key={index} className="text-sm text-[#4e5969]">
-              工作段 {index + 1} AI
-              <select value={config.segmentAiLevels[index] ?? 'BASIC'} onChange={(event) => setConfig((prev) => { if (!prev) return prev; const next = [...prev.segmentAiLevels]; next[index] = event.target.value; return { ...prev, segmentAiLevels: next }; })} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]">
-                <option value="BASIC">BASIC</option>
-                <option value="ADVANCED">ADVANCED</option>
-              </select>
-            </label>
-          ))}
-        </div>
       </div>
 
       <SingleChoiceEditor title="测试题模板" template={practiceQuiz} allowCorrectOption onChange={(next) => setConfig((prev) => (prev ? { ...prev, practiceQuizTemplate: next } : prev))} />
