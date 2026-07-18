@@ -2597,6 +2597,9 @@
 - server 全量 4 个测试套件、19 项测试通过；新增 5 项生命周期测试覆盖恢复、活动局删除保护、Session 关联保护、清理后删除和手动模式暂停。
 - server build、web production build（24 个路由）和 `git diff --check` 通过。
 - 本地浏览器创建两个临时实验局，完成激活、切换、旧局“继续此实验局”、暂停和零 Session 删除流程；测试实验局已全部删除，数据库残留数为 0。
+- 主实现提交 `6ce25b9 支持实验局切换与受保护删除` 已推送 GitHub `main`；部署前生产 PostgreSQL 备份为 `/tmp/multi_cooperation_before_6ce25b9_20260718.sql`（2.1 MB）。
+- 已通过 git archive 路线部署 production 全部服务，postgres/server/web/nginx 正常；HTTPS `/api/health` 返回 `ok`，`/admin` 返回 200。
+- 生产数据库只读核对：正式模式仍指向原活动实验局 `RUN-20260718091446-787D7C`，状态 `ACTIVE`、关联 Session 0；部署未切换或重置现有实验局。
 
 ---
 
