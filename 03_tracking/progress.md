@@ -2578,6 +2578,8 @@
 - 核对正式 session 初始化：正式模式先领取 A0-A6槽位，再按条件定义生成测试轮和三段 AI 状态并写入 session 快照；运行时优先读取快照，不读取 Admin 旧三段值。
 - 数据库 `segmentOneAiLevel / segmentTwoAiLevel / segmentThreeAiLevel` 与接口字段暂不删除，仅用于手动调试兼容、旧 session 或异常缺快照回退，不得覆盖正式实验条件。
 
+**验证与上线**：`apps/web` production build 通过，共 24 个路由。提交 `7b6d51d 移除旧三段AI配置控件` 已推送 GitHub `main` 并部署 production web；线上 `/admin` 与 `/api/health` 均返回 200。
+
 ---
 
 ## 末尾固定提示：写入 progress.md 前必须先看
