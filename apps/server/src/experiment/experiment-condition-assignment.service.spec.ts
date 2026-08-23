@@ -25,7 +25,7 @@ describe('ExperimentConditionAssignmentService experiment run lifecycle', () => 
   it('reactivates a paused run without replacing its existing sequence', async () => {
     const { service, tx } = setup();
     const activatedAt = new Date('2026-07-01T00:00:00.000Z');
-    tx.experimentRun.findUnique.mockResolvedValue({ id: 'run-1', status: 'CLOSED', activatedAt });
+    tx.experimentRun.findUnique.mockResolvedValue({ id: 'run-1', status: 'CLOSED', activatedAt, designVersion: 'nine_condition_block_v1' });
     tx.experimentRun.updateMany.mockResolvedValue({ count: 1 });
     tx.experimentRun.update.mockResolvedValue({ id: 'run-1', status: 'ACTIVE' });
     tx.experimentConfig.update.mockResolvedValue({});

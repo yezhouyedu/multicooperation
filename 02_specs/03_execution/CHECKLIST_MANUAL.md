@@ -18,25 +18,28 @@
    - 自动配对
    - 先按进入顺序两人成组，再在组内随机分配 `A/B`
 3. `/instruction`
-   - 指导语页
-4. `/ready?target=practice`
+   - 通用指导语与当前 A/B 角色说明
+4. `/instruction/task-preview`
+   - 当前角色任务表只读预览，至少阅读 30 秒
+5. `/ready?target=practice`
    - 同步准备页 1
-5. `/practice-quiz`
+6. `/practice-quiz`
    - 测试题
-6. `/practice`
+7. `/practice`
    - 测试轮入口页；实际会把参与者导向真实工作台
-7. `/ready?target=formal`
+8. `/ready?target=formal`
    - 同步准备页 2
-8. 正式实验
+9. 正式实验
+   - 每个工作段前进入 `/pre-segment-instruction`
    - `3` 个工作段
-   - `2` 个休息问卷段
+   - 每段后提交一次工作段回顾；前两次提交后进入休息等待
    - 工作段页面：
      - `A -> /workspace/a`
      - `B -> /workspace/b`
-9. `/workspace/b-feedback`
+10. `/workspace/b-feedback`
    - B 完成主任务后的反馈页
-10. `/workspace/end`
-   - 实验结束页
+11. `/workspace/end`
+   - 第 3 段工作回顾 → 最终长问卷 → 独立支付确认 → 实验完成页
 
 补充说明：
 
@@ -131,9 +134,10 @@ http://localhost:3000/admin
   - 测试轮时长
   - 工作段时长
   - 休息段时长
-  - 工作段 `1/2/3` 的 AI 等级
+  - 当前正式实验局、A0-A8 槽位进度与条件分配计数（每区组 9 个）
   - 测试题模板
-  - 休息问卷模板
+  - 工作段回顾与最终长问卷模板
+- 正式模式下 AI/任务2处理由 A0-A8 条件决定；A0/A7/A8 均无 AI；旧三段 AI 字段不得覆盖正式 Session 条件快照
 
 ## 2）参与者登录与自动配对
 
@@ -144,12 +148,24 @@ http://localhost:3000/admin
 - 两人进入同一个 session
 - session 状态从 `WAITING` 变成 `MATCHED`
 - 角色不是“先来固定 A、后来固定 B”，而是配对完成后随机决定
+- 正式模式下 Session 同时原子领取一个 A0-A8 条件槽位；A/B 共享条件，角色随机与条件分配相互独立
+
+### 线上质量与退出专项
+
+- 正式工作段进入时必须由按钮触发全屏；退出全屏出现阻断层但数据库不生成 fullscreen 事件。
+- 逐次测试 1 秒、2 秒、3 秒切屏：三次都落 `OFFSCREEN`，只有 3 秒的 `isViolation/hasOffscreenViolation=true`。
+- 高级 AI 图片选择器失焦标记 `authorizedDialog=true`，即使超过 2 秒也不判切屏违规。
+- 将 Admin 临时设为 10 秒 + 5 秒，验证软提醒确认不判无效、确认超时开启 `INACTIVITY`、下一次有效操作闭合。
+- 断开某一端网络：超过掉线宽限生成 `DISCONNECT`，阈值前恢复不正式退出，超过退出阈值才 `DROPPED`。
+- A 退出：B 页面显示队友退出且 B 草稿/查看/提交 API 被拒绝。B 退出：A 显示提示并可继续下一家公司与后续工作段。
+- 导出后核对 `session_metadata.json.qualityFlags` 和双方 `online_integrity.json` 能由原始区间重算。
 
 ## 3）指导语、同步准备与测试轮
 
 两位参与者配对成功后，应能继续进入：
 
 - `/instruction`
+- `/instruction/task-preview`
 - `/ready?target=practice`
 - `/practice-quiz`
 - `/practice`
@@ -157,7 +173,7 @@ http://localhost:3000/admin
 你应该观察到：
 
 - 指导语页能进入
-- 指导语点击后先进入同步准备页 1
+- 第 1 页指导语进入任务表预览；预览至少阅读 30 秒后才进入同步准备页 1
 - 双方都 ready 后才进入测试题页
 - 只有双方都通过测试题，系统才自动进入测试轮
 - 测试轮页会把参与者导向真实工作台
@@ -182,8 +198,9 @@ http://localhost:3000/admin
 - A 信息未解锁前：
   - A 信息区显示锁定态
   - 提交按钮不可用
-- A 信息解锁后：
-  - B 可以直接进入反馈页并完成提交
+- A 已提交且 B 自己的 `5` 分钟窗口到点后：
+  - A 信息区、A 原始材料与提交按钮同时解锁
+  - B 可以进入反馈页并完成提交
   - 是否点开 A 信息区只影响行为记录，不再影响是否可提交
 
 ### A/B 共用顺序检查
@@ -194,13 +211,15 @@ http://localhost:3000/admin
 - 不是两套不同顺序
 - 该顺序为 session 内随机、无放回
 
-## 5）休息问卷段
+## 5）工作段回顾、休息等待与段前指导语
 
-当工作段时间推进到休息段时，检查：
+每个工作段结束后检查：
 
 - 页面进入 `/break`
 - 顶栏仍显示倒计时
-- 问卷能正常显示和提交
+- 页面标题与内容为“工作段回顾”，问卷能正常显示和提交
+- 第 1、2 段提交后进入休息等待，休息结束后先进入 `/pre-segment-instruction`
+- 第 3 段回顾提交后进入 `/workspace/end`，依次完成最终长问卷与支付确认
 
 ## 6）测试轮副线与教学引导
 
@@ -227,16 +246,17 @@ http://localhost:3000/admin
 - A 提交前，B 端 runtime 里 `aInfoUnlocked` 应为 `false`
 - A 提交后，或 A 到 `5` 分钟自动解锁后，B 端 runtime 里 `aInfoUnlocked` 应为 `true`
 
-## 2）B 只在 A 解锁后才能提交
+## 2）B 同时满足 A 提交与自己的 5 分钟窗口后才能提交
 
 目标：
 
-- B 不能在 A 信息未解锁时完成任务
-- A 信息一旦解锁，B 无需先点开 A 信息区也可完成任务
+- B 不能在 A 尚未提交时完成任务
+- 即使 A 已提交，`bCanSubmitAt > now` 时 B 仍不能查看 A 信息或提交
+- 两个条件都满足后，B 无需先点开 A 信息区即可完成任务
 
 检查方式：
 
-1. 在 A 信息尚未解锁时，直接调：
+1. 在 A 尚未提交，或 A 已提交但 B 自己的 5 分钟尚未结束时，直接调：
 
 ```text
 POST /experiment/session/:code/tasks/:taskId/b-complete
@@ -244,7 +264,7 @@ POST /experiment/session/:code/tasks/:taskId/b-complete
 
 应该返回 `400`。
 
-2. 等 A 信息解锁后，不先调用：
+2. 等 A 已提交且 `bCanSubmitAt <= now` 后，不先调用：
 
 ```text
 POST /experiment/session/:code/tasks/:taskId/view-a-info
@@ -319,10 +339,12 @@ GET /experiment/session/:code
 - `/login`
 - `/waiting-room`
 - `/instruction`
+- `/instruction/task-preview`
 - `/ready`
 - `/practice-quiz`
 - `/practice`
 - `/break`
+- `/pre-segment-instruction`
 - `/workspace/a`
 - `/workspace/b`
 - `/workspace/b-feedback`
@@ -367,10 +389,10 @@ GET /experiment/session/:code
 3. 打开 `/admin`
 4. 用两个种子手机号登录
 5. 观察自动配对
-6. 走完 `/instruction -> /ready?target=practice -> /practice-quiz -> /practice -> /ready?target=formal -> /workspace/a or /workspace/b`
+6. 走完 `/instruction -> /instruction/task-preview -> /ready?target=practice -> /practice-quiz -> /practice -> /ready?target=formal -> /pre-segment-instruction -> /workspace/a or /workspace/b`
 7. 检查 A/B 表单结构
-8. 检查 A 解锁、B 提交门槛、B 提交
-9. 至少走过一次 `/break`
-10. 最后查 session 是否变成 `COMPLETED`
+8. 检查 A 提交、B 自己的 5 分钟窗口、B 双重提交门槛与 B 提交
+9. 至少走过一次“工作段回顾 → 休息等待 → 下一段段前指导语”
+10. 检查第 3 段回顾、最终长问卷、支付确认，并确认 session 最终变成 `COMPLETED`
 
 如果这一轮能走通，就说明当前真实主链路是通的。

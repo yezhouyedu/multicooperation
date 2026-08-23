@@ -65,6 +65,18 @@ type ExperimentSnapshot = {
   themeOrder: string[];
   instructionPlan: InstructionPlanSnapshot;
   fixedVariables: Record<string, string>;
+  onlineIntegrity: {
+    enabled: boolean;
+    idlePromptSeconds: number;
+    idleConfirmationGraceSeconds: number;
+    heartbeatIntervalSeconds: number;
+    connectionLostGraceSeconds: number;
+    dropoutTimeoutSeconds: number;
+    offscreenViolationSeconds: number;
+    fullscreenRequired: boolean;
+    authorizedDialogMaxSeconds: number;
+    pasteAfterOffscreenWindowSeconds: number;
+  };
   seeds: {
     upgradeCohortSeed?: string;
     sideDispatchSeed?: string;
@@ -597,6 +609,18 @@ export class AuthService {
       themeOrder,
       instructionPlan,
       fixedVariables,
+      onlineIntegrity: {
+        enabled: config?.onlineIntegrityEnabled ?? true,
+        idlePromptSeconds: config?.idlePromptSeconds ?? 120,
+        idleConfirmationGraceSeconds: config?.idleConfirmationGraceSeconds ?? 20,
+        heartbeatIntervalSeconds: config?.heartbeatIntervalSeconds ?? 10,
+        connectionLostGraceSeconds: config?.connectionLostGraceSeconds ?? 30,
+        dropoutTimeoutSeconds: config?.dropoutTimeoutSeconds ?? 180,
+        offscreenViolationSeconds: config?.offscreenViolationSeconds ?? 2,
+        fullscreenRequired: config?.fullscreenRequired ?? true,
+        authorizedDialogMaxSeconds: config?.authorizedDialogMaxSeconds ?? 60,
+        pasteAfterOffscreenWindowSeconds: config?.pasteAfterOffscreenWindowSeconds ?? 30,
+      },
       seeds,
     };
   }

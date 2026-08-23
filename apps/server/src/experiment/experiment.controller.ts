@@ -164,6 +164,52 @@ export class ExperimentController {
     return this.experimentService.recordTimestampEvent(code.toUpperCase(), body);
   }
 
+  @Post('session/:code/integrity/heartbeat')
+  integrityHeartbeat(
+    @Param('code') code: string,
+    @Body() body: { participantId: string; lastValidActivityAt?: string; clientTime?: string },
+  ) {
+    return this.experimentService.integrityHeartbeat(code.toUpperCase(), body);
+  }
+
+  @Post('session/:code/integrity/event')
+  recordIntegrityEvent(
+    @Param('code') code: string,
+    @Body() body: {
+      participantId: string;
+      eventType: string;
+      clientTime?: string;
+      intervalId?: string;
+      payload?: Prisma.InputJsonValue;
+    },
+  ) {
+    return this.experimentService.recordIntegrityEvent(code.toUpperCase(), body);
+  }
+
+  @Post('session/:code/integrity/quit')
+  formalQuit(
+    @Param('code') code: string,
+    @Body() body: { participantId: string; reason?: string },
+    @Headers('idempotency-key') key?: string,
+  ) {
+    const sessionCode = code.toUpperCase();
+    return this.idem(key, 'formal-quit', `${sessionCode}:${body.participantId}`, () =>
+      this.experimentService.formalQuit(sessionCode, body.participantId, body.reason),
+    );
+  }
+
+  @Post('session/:code/integrity/commitment')
+  submitIntegrityCommitment(
+    @Param('code') code: string,
+    @Body() body: { participantId: string; accepted: boolean; answers: Prisma.InputJsonValue },
+    @Headers('idempotency-key') key?: string,
+  ) {
+    const sessionCode = code.toUpperCase();
+    return this.idem(key, 'integrity-commitment', `${sessionCode}:${body.participantId}`, () =>
+      this.experimentService.submitIntegrityCommitment(sessionCode, body),
+    );
+  }
+
   @Get('session/:code/progress')
   getSessionProgress(@Param('code') code: string) {
     return this.experimentService.getSessionProgress(code.toUpperCase());

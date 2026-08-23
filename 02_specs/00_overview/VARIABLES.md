@@ -1,6 +1,6 @@
 ﻿# VARIABLES.md
 
-> 状态：2026-05-12 第二轮变量口径版
+> 状态：2026-08-23 九条件与线上实验质量口径版
 > 位置：`02_specs/00_overview/VARIABLES.md`
 
 ## 1. 文档目标
@@ -91,7 +91,7 @@
 - 工作段恢复
 
 ### 3.3 问卷与休息段
-- 进入休息问卷段
+- 进入工作段回顾或休息等待阶段
 - 问卷开始作答
 - 问卷提交
 - 问卷超时结束
@@ -116,6 +116,15 @@
 - 上传图片尝试
 - `basic` 模式图片被拒绝
 
+### 3.6 线上实验质量与退出
+- `ParticipantIntegrityState`：每名被试的当前监测状态、最近心跳/有效操作、四类质量旗标、累计区间次数与时长、正式退出原因、规则承诺和最终自报
+- `OnlineIntegrityInterval`：每次 `OFFSCREEN / INACTIVITY / DISCONNECT` 的起止时间、时长、工作段、公司/任务上下文和是否违规
+- 全部切屏区间都记录；只有未授权区间严格超过 Session 快照中的 `offscreenViolationSeconds`（默认 2 秒）才设为正式违规
+- 120 秒无有效操作显示确认弹窗；20 秒内明确确认只记软提醒，超时才开启无效区间并令 Session 数据不可用
+- 关闭网页后由服务器周期扫描心跳；超过连接宽限记录掉线区间，超过退出阈值正式退出
+- A 正式退出时 Session 进入 `TERMINATED` 且 B 停止；B 正式退出时 A 继续，后续段前同步不再等待 B
+- 剪贴板只保存字符数、带 Session 盐的哈希、内外来源分类与是否紧邻切屏，不保存原文
+
 ## 4. 快照与分析关键口径
 - B 的 `5` 分钟快照必须带 `snapshotType = b_five_minute_snapshot`
 - 快照名称必须带“5分钟快照 + 时间戳”
@@ -138,3 +147,4 @@
 - B 是否“看过 A 信息”仅作为行为记录口径，不再作为提交门槛；真正提交门槛是 A 已提交且 B 当前公司的 `bCanSubmitAt <= now`
 - 副线已完成累计只在当前工作段内有效
 - 本轮不为截图功能设计变量口径
+- 数据清洗必须同时读取 `online_integrity.json`、participant `qualityFlags` 与 session `qualityFlags`；任一被试出现无效区间、正式切屏违规或正式退出时，`sessionDataUsable = false`

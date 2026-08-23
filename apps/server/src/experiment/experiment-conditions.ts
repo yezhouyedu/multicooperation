@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'crypto';
 
-export const EXPERIMENT_CONDITIONS = ['A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6'] as const;
+export const EXPERIMENT_CONDITIONS = ['A0', 'A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8'] as const;
 
 export type ExperimentCondition = (typeof EXPERIMENT_CONDITIONS)[number];
 export type ExperimentAiCondition = 'NONE' | 'BASIC' | 'ADVANCED';
@@ -23,6 +23,8 @@ export const EXPERIMENT_CONDITION_DEFINITIONS: Record<ExperimentCondition, Exper
   A4: { condition: 'A4', aiEnabled: true, aiCondition: 'BASIC', sideDispatchMode: 'continuous', narrativeGroup: 'coop_narrative' },
   A5: { condition: 'A5', aiEnabled: true, aiCondition: 'ADVANCED', sideDispatchMode: 'continuous', narrativeGroup: 'coop_narrative' },
   A6: { condition: 'A6', aiEnabled: true, aiCondition: 'ADVANCED', sideDispatchMode: 'batch', narrativeGroup: 'neutral_info' },
+  A7: { condition: 'A7', aiEnabled: false, aiCondition: 'NONE', sideDispatchMode: 'batch', narrativeGroup: 'neutral_info' },
+  A8: { condition: 'A8', aiEnabled: false, aiCondition: 'NONE', sideDispatchMode: 'continuous', narrativeGroup: 'coop_narrative' },
 };
 
 export function isExperimentCondition(value: unknown): value is ExperimentCondition {

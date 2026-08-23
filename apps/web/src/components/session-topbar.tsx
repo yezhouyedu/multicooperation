@@ -1,7 +1,5 @@
 'use client';
 
-import { useExperimentFullscreen } from '@/components/experiment-fullscreen';
-
 export type SessionTopbarProps = {
   roleLabel: string;
   currentLabel: string;
@@ -21,7 +19,6 @@ export function SessionTopbar({
   connectionStatus,
   pendingDraftCount = 0,
 }: SessionTopbarProps) {
-  useExperimentFullscreen();
   const statusLabel =
     connectionStatus === 'connected'
       ? '网络正常'

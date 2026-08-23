@@ -42,7 +42,11 @@
 ### 03_execution
 - `IMPLEMENTATION_PLAN.md`
 - `CHECKLIST_MANUAL.md`
-- `实验123计划.md`
+- `实验条件与区组随机方案.md`：当前 A0-A8 九条件与实验局区组随机真相源
+- `线上实验质量与行为监测方案.md`：正式工作段全屏、切屏、无效行为、掉线和 A/B 退出真相源
+- `问卷流程方案.md`：V2.2 工作段回顾、最终问卷与支付确认
+- `段前指导语方案.md`：三个正式工作段前的阅读材料流程
+- `实验123计划.md`：已废弃，仅用于理解旧 session
 
 ### 04_pre_deploy
 - `STORAGE_AND_IMPORT_SPEC.md`
@@ -59,8 +63,9 @@
 ## 后续约定
 
 1. `FRONTEND_GUIDELINES.md` 保持为前端总纲，不继续塞入过细页面实现。
-2. 后续新增的 A/B 工作台、AI 面板、副线区等细化规格，统一放入 `01_frontend/`。
+2. 后续新增的 A/B 工作台、AI 面板、任务2区等细化规格，统一放入 `01_frontend/`；内部代码与历史文件可继续沿用 `SideTask` / “副线”命名。
 3. 贴近代码实现的说明，优先放到对应 app 内部文档；跨模块共识仍回写到 `02_specs/`。
 4. 重要结构调整要同步更新本 README 与 `03_tracking/progress.md`。
 5. 变量记录、服务器导出、上线前存储结构等数据相关内容统一放入 `04_pre_deploy/`。
 6. 服务器部署、域名 HTTPS、Docker、备份恢复、运维排障等上线运行内容统一放入 `05_server_deploy/`。
+7. 新正式 session 只使用 `manual / formal` 两种入口；`ai_upgrade / side_reminder / coop_narrative / seven_condition_block_v1` 仅作历史兼容，不得覆盖 A0-A8 条件与线上质量快照。

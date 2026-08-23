@@ -17,6 +17,7 @@ enum SessionStatus {
   MATCHED
   IN_PROGRESS
   COMPLETED
+  TERMINATED
 }
 
 enum RuntimePhase {
@@ -48,41 +49,43 @@ enum AiLevel {
 }
 
 model Participant {
-  id                   String                  @id @default(cuid())
-  phone                String?                 @unique
+  id                   String                      @id @default(cuid())
+  phone                String?                     @unique
   nickname             String?
   role                 ParticipantRole?
-  isActive             Boolean                 @default(true)
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
-  pairingsAsA          Pairing[]               @relation("PairingParticipantA")
-  pairingsAsB          Pairing[]               @relation("PairingParticipantB")
+  isActive             Boolean                     @default(true)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  pairingsAsA          Pairing[]                   @relation("PairingParticipantA")
+  pairingsAsB          Pairing[]                   @relation("PairingParticipantB")
   progresses           TaskProgress[]
   questionnaireAnswers QuestionnaireResponse[]
   sideTaskResponses    SideTaskResponseLog[]
   sideTaskExposureLogs SideTaskExposureLog[]
   experimentEvents     ExperimentEvent[]
+  integrityStates      ParticipantIntegrityState[]
+  integrityIntervals   OnlineIntegrityInterval[]
 }
 
 model Session {
-  id                   String                   @id @default(cuid())
-  code                 String                   @unique
-  status               SessionStatus            @default(WAITING)
-  runtimePhase         RuntimePhase             @default(INSTRUCTION)
-  experimentMode       String                   @default("manual")
+  id                   String                      @id @default(cuid())
+  code                 String                      @unique
+  status               SessionStatus               @default(WAITING)
+  runtimePhase         RuntimePhase                @default(INSTRUCTION)
+  experimentMode       String                      @default("manual")
   upgradeCohort        String?
   experimentSnapshot   Json?
   experimentRunId      String?
   experimentCondition  String?
   conditionAssignedAt  DateTime?
-  currentSegmentIndex  Int                      @default(0)
+  currentSegmentIndex  Int                         @default(0)
   currentSegmentType   SegmentType?
   currentPhase         ExperimentPhase?
   currentSegmentStarts DateTime?
   currentSegmentEnds   DateTime?
   practiceCompletedAt  DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
   pairings             Pairing[]
   progresses           TaskProgress[]
   tasks                TaskAssignment[]
@@ -96,8 +99,10 @@ model Session {
   sideTaskConfig       SideTaskSessionConfig?
   randomizationAudit   RandomizationAudit?
   experimentEvents     ExperimentEvent[]
+  integrityStates      ParticipantIntegrityState[]
+  integrityIntervals   OnlineIntegrityInterval[]
   exportJobs           ExportJob[]
-  experimentRun        ExperimentRun?           @relation(fields: [experimentRunId], references: [id], onDelete: SetNull)
+  experimentRun        ExperimentRun?              @relation(fields: [experimentRunId], references: [id], onDelete: SetNull)
   conditionSlot        ExperimentConditionSlot?
 
   @@index([experimentRunId])
@@ -189,35 +194,45 @@ model TaskAssignment {
 }
 
 model ExperimentConfig {
-  id                              String                 @id @default("default")
-  activeExperimentMode            String                 @default("manual")
-  experimentModeSettings          Json?
-  activeExperimentRunId           String?                @unique
-  instructionBlocks               Json?
-  practiceDurationMinutes         Int                    @default(5)
-  workDurationMinutes             Int                    @default(20)
-  breakDurationMinutes            Int                    @default(5)
-  segmentOneAiLevel               AiLevel                @default(BASIC)
-  segmentTwoAiLevel               AiLevel                @default(BASIC)
-  segmentThreeAiLevel             AiLevel                @default(ADVANCED)
-  activeQuestionnaireTemplateId   String?
-  practiceQuizTemplateId          String?
-  practiceQuizPassCount           Int                    @default(0)
-  sideTaskContinuousIntervalSec   Int                    @default(45)
-  sideTaskContinuousJitterSec     Int                    @default(15)
-  sideTaskScrollDurationSec       Int                    @default(12)
-  sideTaskHoldSec                 Int                    @default(5)
-  sideTaskFadeSec                 Int                    @default(2)
-  sideTaskContinuousPauseSec      Int                    @default(15)
-  sideTaskBatchSizes              String                 @default("10,15,15")
-  sideTaskBatchTriggerSec         Int                    @default(180)
-  sideTaskBatchPauseSec           Int                    @default(60)
-  feedbackNotificationDurationSec Int                    @default(10)
-  createdAt                       DateTime               @default(now())
-  updatedAt                       DateTime               @updatedAt
-  activeQuestionnaireTemplate     QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
-  practiceQuizTemplate            QuestionnaireTemplate? @relation("PracticeQuizTemplate", fields: [practiceQuizTemplateId], references: [id])
-  activeExperimentRun             ExperimentRun?         @relation("ActiveExperimentRun", fields: [activeExperimentRunId], references: [id], onDelete: SetNull)
+  id                               String                 @id @default("default")
+  activeExperimentMode             String                 @default("manual")
+  experimentModeSettings           Json?
+  activeExperimentRunId            String?                @unique
+  instructionBlocks                Json?
+  practiceDurationMinutes          Int                    @default(5)
+  workDurationMinutes              Int                    @default(20)
+  breakDurationMinutes             Int                    @default(5)
+  segmentOneAiLevel                AiLevel                @default(BASIC)
+  segmentTwoAiLevel                AiLevel                @default(BASIC)
+  segmentThreeAiLevel              AiLevel                @default(ADVANCED)
+  activeQuestionnaireTemplateId    String?
+  practiceQuizTemplateId           String?
+  practiceQuizPassCount            Int                    @default(0)
+  sideTaskContinuousIntervalSec    Int                    @default(45)
+  sideTaskContinuousJitterSec      Int                    @default(15)
+  sideTaskScrollDurationSec        Int                    @default(12)
+  sideTaskHoldSec                  Int                    @default(5)
+  sideTaskFadeSec                  Int                    @default(2)
+  sideTaskContinuousPauseSec       Int                    @default(15)
+  sideTaskBatchSizes               String                 @default("10,15,15")
+  sideTaskBatchTriggerSec          Int                    @default(180)
+  sideTaskBatchPauseSec            Int                    @default(60)
+  feedbackNotificationDurationSec  Int                    @default(10)
+  onlineIntegrityEnabled           Boolean                @default(true)
+  idlePromptSeconds                Int                    @default(120)
+  idleConfirmationGraceSeconds     Int                    @default(20)
+  heartbeatIntervalSeconds         Int                    @default(10)
+  connectionLostGraceSeconds       Int                    @default(30)
+  dropoutTimeoutSeconds            Int                    @default(180)
+  offscreenViolationSeconds        Int                    @default(2)
+  fullscreenRequired               Boolean                @default(true)
+  authorizedDialogMaxSeconds       Int                    @default(60)
+  pasteAfterOffscreenWindowSeconds Int                    @default(30)
+  createdAt                        DateTime               @default(now())
+  updatedAt                        DateTime               @updatedAt
+  activeQuestionnaireTemplate      QuestionnaireTemplate? @relation(fields: [activeQuestionnaireTemplateId], references: [id])
+  practiceQuizTemplate             QuestionnaireTemplate? @relation("PracticeQuizTemplate", fields: [practiceQuizTemplateId], references: [id])
+  activeExperimentRun              ExperimentRun?         @relation("ActiveExperimentRun", fields: [activeExperimentRunId], references: [id], onDelete: SetNull)
 }
 
 model ExperimentRun {
@@ -225,7 +240,7 @@ model ExperimentRun {
   code                String                    @unique
   name                String
   status              String                    @default("DRAFT")
-  designVersion       String                    @default("seven_condition_block_v1")
+  designVersion       String                    @default("nine_condition_block_v1")
   masterSeed          String
   initialBlockCount   Int                       @default(60)
   generatedBlockCount Int                       @default(0)
@@ -548,6 +563,82 @@ model ExperimentEvent {
   @@index([companyId])
   @@index([sideTaskPlanId])
   @@index([serverTime])
+}
+
+model ParticipantIntegrityState {
+  id                      String          @id @default(cuid())
+  sessionId               String
+  participantId           String
+  role                    ParticipantRole
+  currentState            String          @default("ACTIVE")
+  stateStartedAt          DateTime        @default(now())
+  lastHeartbeatAt         DateTime?
+  lastValidActivityAt     DateTime?
+  hasInvalidInactivity    Boolean         @default(false)
+  hasOffscreenViolation   Boolean         @default(false)
+  hasConnectionLoss       Boolean         @default(false)
+  hasFormalDropout        Boolean         @default(false)
+  inactivityIntervalCount Int             @default(0)
+  offscreenIntervalCount  Int             @default(0)
+  offscreenViolationCount Int             @default(0)
+  disconnectIntervalCount Int             @default(0)
+  inactivityTotalMs       Int             @default(0)
+  offscreenTotalMs        Int             @default(0)
+  disconnectTotalMs       Int             @default(0)
+  formalDropoutAt         DateTime?
+  formalDropoutReason     String?
+  integrityCommitmentAt   DateTime?
+  comprehensionAnswers    Json?
+  comprehensionPassedAt   DateTime?
+  finalSelfReport         Json?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  session     Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant Participant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  intervals   OnlineIntegrityInterval[]
+
+  @@unique([sessionId, participantId])
+  @@index([sessionId, role])
+  @@index([currentState])
+  @@index([hasFormalDropout])
+}
+
+model OnlineIntegrityInterval {
+  id                     String          @id @default(cuid())
+  sessionId              String
+  participantId          String
+  integrityStateId       String
+  role                   ParticipantRole
+  intervalType           String
+  phase                  ExperimentPhase @default(FORMAL)
+  segmentIndex           Int?
+  taskAssignmentId       String?
+  companyId              String?
+  startedAt              DateTime
+  endedAt                DateTime?
+  durationMs             Int?
+  isViolation            Boolean         @default(false)
+  idleCountdownStartedAt DateTime?
+  promptShownAt          DateTime?
+  confirmationDeadlineAt DateTime?
+  confirmedAt            DateTime?
+  invalidStartedAt       DateTime?
+  invalidEndedAt         DateTime?
+  triggerReason          String?
+  endReason              String?
+  metadata               Json?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  session        Session                   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant    Participant               @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  integrityState ParticipantIntegrityState @relation(fields: [integrityStateId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, participantId, intervalType])
+  @@index([integrityStateId, startedAt])
+  @@index([startedAt])
+  @@index([endedAt])
 }
 
 model ExportJob {

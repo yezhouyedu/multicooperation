@@ -130,6 +130,24 @@ export type RuntimeState = {
   questionnaireSubmitted: boolean;
   experimentMode: 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
   experimentSnapshot: Record<string, unknown> | null;
+  onlineIntegrity: {
+    config: {
+      enabled: boolean;
+      idlePromptSeconds: number;
+      idleConfirmationGraceSeconds: number;
+      heartbeatIntervalSeconds: number;
+      connectionLostGraceSeconds: number;
+      dropoutTimeoutSeconds: number;
+      offscreenViolationSeconds: number;
+      fullscreenRequired: boolean;
+      authorizedDialogMaxSeconds: number;
+      pasteAfterOffscreenWindowSeconds: number;
+    };
+    commitmentCompleted: boolean;
+    outcome: 'ACTIVE' | 'SELF_DROPPED' | 'STOP_AFTER_A_DROPOUT' | 'CONTINUE_AFTER_B_DROPOUT';
+    self: Record<string, unknown> | null;
+    qualityFlags: Record<string, boolean>;
+  };
   instructionBlocks: {
     commonTitle: string;
       commonBody: string;

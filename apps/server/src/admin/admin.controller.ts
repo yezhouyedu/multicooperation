@@ -131,6 +131,27 @@ export class AdminController {
     return this.adminService.importCaseLibrary();
   }
 
+  @Get('online-integrity-config')
+  getOnlineIntegrityConfig() {
+    return this.adminService.getOnlineIntegrityConfig();
+  }
+
+  @Post('online-integrity-config')
+  saveOnlineIntegrityConfig(@Body() body: {
+    enabled?: boolean;
+    idlePromptSeconds?: number;
+    idleConfirmationGraceSeconds?: number;
+    heartbeatIntervalSeconds?: number;
+    connectionLostGraceSeconds?: number;
+    dropoutTimeoutSeconds?: number;
+    offscreenViolationSeconds?: number;
+    fullscreenRequired?: boolean;
+    authorizedDialogMaxSeconds?: number;
+    pasteAfterOffscreenWindowSeconds?: number;
+  }) {
+    return this.adminService.saveOnlineIntegrityConfig(body);
+  }
+
   @Get('experiment-runs')
   getExperimentRuns() {
     return this.adminService.getExperimentRuns();

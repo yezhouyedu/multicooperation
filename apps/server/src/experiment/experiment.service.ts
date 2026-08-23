@@ -1,8 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   MessageEvent,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import {
   AiLevel,
@@ -112,6 +115,20 @@ type RuntimeExperimentSnapshot = {
   themeOrder?: string[];
   instructionPlan?: Record<string, unknown>;
   fixedVariables?: Record<string, string>;
+  onlineIntegrity?: OnlineIntegrityConfigSnapshot;
+};
+
+type OnlineIntegrityConfigSnapshot = {
+  enabled: boolean;
+  idlePromptSeconds: number;
+  idleConfirmationGraceSeconds: number;
+  heartbeatIntervalSeconds: number;
+  connectionLostGraceSeconds: number;
+  dropoutTimeoutSeconds: number;
+  offscreenViolationSeconds: number;
+  fullscreenRequired: boolean;
+  authorizedDialogMaxSeconds: number;
+  pasteAfterOffscreenWindowSeconds: number;
 };
 
 type RuntimeConfig = ExperimentConfig & {
@@ -145,9 +162,11 @@ const TIMESTAMP_EVENT_TYPES = new Set([
 ]);
 
 @Injectable()
-export class ExperimentService {
+export class ExperimentService implements OnModuleInit, OnModuleDestroy {
   private readonly sessionStreams = new Map<string, Subject<SessionStreamEnvelope>>();
   private readonly sessionEventCache = new Map<string, SessionStreamEnvelope[]>();
+  private readonly logger = new Logger(ExperimentService.name);
+  private integritySweepTimer?: NodeJS.Timeout;
   private nextSessionEventId = 1;
   private readonly bCompanyReviewWindowMs = 5 * 60 * 1000;
 
@@ -155,6 +174,19 @@ export class ExperimentService {
     private readonly prisma: PrismaService,
     private readonly audit: ExperimentAuditService,
   ) {}
+
+  onModuleInit() {
+    this.integritySweepTimer = setInterval(() => {
+      void this.sweepOnlineIntegrityStates().catch((error: unknown) => {
+        this.logger.warn(`Online integrity sweep failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }, 5000);
+    this.integritySweepTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.integritySweepTimer) clearInterval(this.integritySweepTimer);
+  }
 
   async createSession(_input: EnterExperimentInput = {}) {
     return {
@@ -425,6 +457,7 @@ export class ExperimentService {
     const pairing = session.pairings[0];
     if (!pairing) throw new BadRequestException('Session pairing record is missing');
     const role = this.resolveParticipantRole(pairing, participantId);
+    await this.assertRoleCanContinue(session.id, role);
     const workSegment = workSegmentFromRuntimeSegment(session.currentSegmentIndex);
     const now = new Date();
     const instruction = this.resolvePreSegmentInstruction(session);
@@ -467,6 +500,8 @@ export class ExperimentService {
 
   async completePreSegmentInstruction(sessionCode: string, participantId: string) {
     const config = await this.ensureConfig();
+    const integrityContext = await this.getIntegrityContext(sessionCode, participantId);
+    await this.assertRoleCanContinue(integrityContext.session.id, integrityContext.role);
     const result = await this.prisma.$transaction(async (tx) => {
       const session = await tx.session.findUnique({
         where: { code: sessionCode },
@@ -547,9 +582,14 @@ export class ExperimentService {
           .filter((row) => this.progressWorkSegment(row.payload) === workSegment)
           .map((row) => row.participantId),
       );
+      const droppedB = pairing.participantBId
+        ? await tx.participantIntegrityState.findUnique({
+            where: { sessionId_participantId: { sessionId: session.id, participantId: pairing.participantBId } },
+          })
+        : null;
       const bothCompleted =
         Boolean(pairing.participantAId && completedIds.has(pairing.participantAId)) &&
-        Boolean(pairing.participantBId && completedIds.has(pairing.participantBId));
+        Boolean(pairing.participantBId && (completedIds.has(pairing.participantBId) || droppedB?.hasFormalDropout));
       if (!bothCompleted) return { ok: true, started: false, waiting: true };
 
       await this.startFormalWorkSegmentTx(tx, session.id, session.currentSegmentIndex, config, now, workSegment === 1);
@@ -666,6 +706,17 @@ export class ExperimentService {
       ? this.hasSubmittedQuestionnaire(session, participantId, activeQuestionnaire?.segmentIndex ?? session.currentSegmentIndex)
       : false;
     const bAccessReady = this.isBAccessReady(roleTask);
+    const onlineIntegrity = this.onlineIntegrityConfig(session.experimentSnapshot);
+    if (participantId && onlineIntegrity.enabled && session.runtimePhase === RuntimePhase.FORMAL_WORK) {
+      await this.ensureIntegrityState(session.id, participantId, assignedRole, new Date());
+      await this.evaluateConnectionStates(session.id, onlineIntegrity, new Date());
+    }
+    const integrityStates = participantId
+      ? await this.prisma.participantIntegrityState.findMany({ where: { sessionId: session.id } })
+      : [];
+    const selfIntegrity = participantId
+      ? integrityStates.find((state) => state.participantId === participantId) ?? null
+      : null;
 
     return {
       ok: true,
@@ -706,6 +757,13 @@ export class ExperimentService {
       paymentPhoneConfirmed,
       experimentMode: session.experimentMode,
       experimentSnapshot: session.experimentSnapshot,
+      onlineIntegrity: {
+        config: onlineIntegrity,
+        commitmentCompleted: Boolean(selfIntegrity?.comprehensionPassedAt),
+        outcome: participantId ? this.integrityOutcome(assignedRole, participantId, integrityStates) : 'ACTIVE',
+        self: selfIntegrity,
+        qualityFlags: this.integrityQualityFlags(integrityStates),
+      },
       instructionBlocks: this.buildInstructionBlocks(config.instructionBlocks, session.experimentMode),
       aiEnabled: this.parseExperimentSnapshot(session.experimentSnapshot)?.aiEnabled !== false,
       aiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
@@ -815,6 +873,187 @@ export class ExperimentService {
         createdAt: progress.createdAt,
       },
     };
+  }
+
+  async integrityHeartbeat(sessionCode: string, input: {
+    participantId: string;
+    lastValidActivityAt?: string;
+    clientTime?: string;
+  }) {
+    const context = await this.getIntegrityContext(sessionCode, input.participantId);
+    const { session, role, config } = context;
+    const now = new Date();
+    if (!config.enabled || session.runtimePhase !== RuntimePhase.FORMAL_WORK) {
+      return { ok: true, monitoring: false, phase: this.mapRuntimePhase(session.runtimePhase) };
+    }
+
+    const lastValidActivityAt = this.safeClientTime(input.lastValidActivityAt, now);
+    const state = await this.prisma.participantIntegrityState.upsert({
+      where: { sessionId_participantId: { sessionId: session.id, participantId: input.participantId } },
+      update: {
+        lastHeartbeatAt: now,
+        ...(lastValidActivityAt ? { lastValidActivityAt } : {}),
+      },
+      create: {
+        sessionId: session.id,
+        participantId: input.participantId,
+        role,
+        lastHeartbeatAt: now,
+        lastValidActivityAt: lastValidActivityAt ?? now,
+      },
+    });
+    await this.closeOpenIntegrityInterval(state.id, 'DISCONNECT', now, 'heartbeat_restored');
+    await this.refreshIntegrityCurrentState(state.id, now);
+    await this.evaluateConnectionStates(session.id, config, now);
+    const states = await this.prisma.participantIntegrityState.findMany({ where: { sessionId: session.id } });
+    return {
+      ok: true,
+      monitoring: true,
+      serverTime: now.toISOString(),
+      outcome: this.integrityOutcome(role, input.participantId, states),
+      qualityFlags: this.integrityQualityFlags(states),
+    };
+  }
+
+  async recordIntegrityEvent(sessionCode: string, input: {
+    participantId: string;
+    eventType: string;
+    clientTime?: string;
+    intervalId?: string;
+    payload?: Prisma.InputJsonValue;
+  }) {
+    const allowed = new Set([
+      'offscreen_started', 'offscreen_ended', 'inactivity_started', 'inactivity_ended',
+      'idle_prompt_shown', 'idle_prompt_confirmed', 'valid_activity', 'clipboard_copy', 'clipboard_paste',
+      'partner_dropout_notice_shown',
+    ]);
+    if (!allowed.has(input.eventType)) throw new BadRequestException('Unsupported integrity event');
+    const { session, role, config } = await this.getIntegrityContext(sessionCode, input.participantId);
+    if (!config.enabled || session.runtimePhase !== RuntimePhase.FORMAL_WORK) {
+      return { ok: true, ignored: true, reason: 'outside_formal_work' };
+    }
+    const now = new Date();
+    const clientTime = this.safeClientTime(input.clientTime, now);
+    const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+      ? input.payload as Record<string, unknown>
+      : {};
+    const state = await this.prisma.participantIntegrityState.upsert({
+      where: { sessionId_participantId: { sessionId: session.id, participantId: input.participantId } },
+      update: {},
+      create: { sessionId: session.id, participantId: input.participantId, role, lastHeartbeatAt: now, lastValidActivityAt: now },
+    });
+    if (state.hasFormalDropout) return { ok: true, ignored: true, reason: 'formal_dropout' };
+
+    if (input.eventType === 'offscreen_started' || input.eventType === 'inactivity_started') {
+      const intervalType = input.eventType === 'offscreen_started' ? 'OFFSCREEN' : 'INACTIVITY';
+      const existing = await this.prisma.onlineIntegrityInterval.findFirst({
+        where: { integrityStateId: state.id, intervalType, endedAt: null },
+        orderBy: { startedAt: 'desc' },
+      });
+      if (existing) return { ok: true, intervalId: existing.id, duplicate: true };
+      const interval = await this.prisma.onlineIntegrityInterval.create({
+        data: {
+          sessionId: session.id,
+          participantId: input.participantId,
+          integrityStateId: state.id,
+          role,
+          intervalType,
+          segmentIndex: session.currentSegmentIndex,
+          taskAssignmentId: typeof payload.taskAssignmentId === 'string' ? payload.taskAssignmentId : null,
+          companyId: typeof payload.companyId === 'string' ? payload.companyId : null,
+          startedAt: now,
+          triggerReason: typeof payload.triggerReason === 'string' ? payload.triggerReason : input.eventType,
+          idleCountdownStartedAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.idleCountdownStartedAt, now) : null,
+          promptShownAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.promptShownAt, now) : null,
+          confirmationDeadlineAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.confirmationDeadlineAt, now) : null,
+          invalidStartedAt: intervalType === 'INACTIVITY' ? now : null,
+          metadata: { clientTime: clientTime?.toISOString() ?? null, authorizedDialog: Boolean(payload.authorizedDialog) } as Prisma.InputJsonValue,
+        },
+      });
+      await this.prisma.participantIntegrityState.update({
+        where: { id: state.id },
+        data: {
+          currentState: intervalType,
+          stateStartedAt: now,
+          ...(intervalType === 'INACTIVITY'
+            ? { hasInvalidInactivity: true, inactivityIntervalCount: { increment: 1 } }
+            : { offscreenIntervalCount: { increment: 1 } }),
+        },
+      });
+      await this.refreshIntegrityCurrentState(state.id, now);
+      return { ok: true, intervalId: interval.id };
+    }
+
+    if (input.eventType === 'offscreen_ended' || input.eventType === 'inactivity_ended' || input.eventType === 'valid_activity') {
+      const intervalType = input.eventType === 'offscreen_ended' ? 'OFFSCREEN' : 'INACTIVITY';
+      const closed = await this.closeOpenIntegrityInterval(
+        state.id,
+        intervalType,
+        now,
+        typeof payload.endReason === 'string' ? payload.endReason : input.eventType,
+        input.intervalId,
+        config,
+      );
+      if (input.eventType === 'valid_activity') {
+        await this.prisma.participantIntegrityState.update({ where: { id: state.id }, data: { lastValidActivityAt: now } });
+      }
+      return { ok: true, interval: closed };
+    }
+
+    const safePayload = input.eventType.startsWith('clipboard_')
+      ? {
+          charCount: Math.max(0, Math.min(100000, Number(payload.charCount) || 0)),
+          contentHash: typeof payload.contentHash === 'string' ? payload.contentHash.slice(0, 128) : null,
+          classification: ['platform_internal', 'platform_external', 'unknown'].includes(String(payload.classification))
+            ? String(payload.classification) : 'unknown',
+          afterOffscreen: Boolean(payload.afterOffscreen),
+        }
+      : { clientTime: clientTime?.toISOString() ?? null };
+    await this.prisma.experimentEvent.create({
+      data: {
+        sessionId: session.id,
+        participantId: input.participantId,
+        role,
+        eventType: input.eventType,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: session.currentSegmentIndex,
+        clientTime,
+        payload: safePayload as Prisma.InputJsonValue,
+      },
+    });
+    if (input.eventType === 'idle_prompt_confirmed') {
+      await this.prisma.participantIntegrityState.update({ where: { id: state.id }, data: { lastValidActivityAt: now } });
+    }
+    return { ok: true };
+  }
+
+  async submitIntegrityCommitment(sessionCode: string, input: {
+    participantId: string;
+    accepted: boolean;
+    answers: Prisma.InputJsonValue;
+  }) {
+    const { session, role } = await this.getIntegrityContext(sessionCode, input.participantId);
+    const answers = input.answers && typeof input.answers === 'object' && !Array.isArray(input.answers)
+      ? input.answers as Record<string, unknown> : {};
+    const passed = input.accepted && ['formalOnly', 'offscreenRule', 'dropoutRule', 'privacyRule'].every((key) => answers[key] === true);
+    if (!passed) throw new BadRequestException('请勾选承诺并正确回答全部线上实验规则题');
+    const now = new Date();
+    await this.prisma.participantIntegrityState.upsert({
+      where: { sessionId_participantId: { sessionId: session.id, participantId: input.participantId } },
+      update: { role, integrityCommitmentAt: now, comprehensionAnswers: answers as Prisma.InputJsonValue, comprehensionPassedAt: now },
+      create: { sessionId: session.id, participantId: input.participantId, role, integrityCommitmentAt: now, comprehensionAnswers: answers as Prisma.InputJsonValue, comprehensionPassedAt: now },
+    });
+    await this.prisma.experimentEvent.create({ data: { sessionId: session.id, participantId: input.participantId, role, eventType: 'integrity_commitment_completed', phase: ExperimentPhase.FORMAL, serverTime: now } });
+    return { ok: true, passed: true };
+  }
+
+  async formalQuit(sessionCode: string, participantId: string, reason?: string) {
+    const { session, role, config } = await this.getIntegrityContext(sessionCode, participantId);
+    if (session.runtimePhase !== RuntimePhase.FORMAL_WORK) throw new BadRequestException('只能在正式工作段执行正式退出');
+    const state = await this.ensureIntegrityState(session.id, participantId, role, new Date());
+    await this.markFormalDropout(state.id, session.id, participantId, role, reason?.trim() || 'participant_confirmed_quit', new Date());
+    const states = await this.prisma.participantIntegrityState.findMany({ where: { sessionId: session.id } });
+    return { ok: true, outcome: this.integrityOutcome(role, participantId, states), config };
   }
 
   async recordTimestampEvent(sessionCode: string, input: RecordTimestampEventInput) {
@@ -1060,6 +1299,7 @@ export class ExperimentService {
   ) {
     const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    await this.assertRoleCanContinue(session.id, body.role);
 
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
@@ -1093,6 +1333,7 @@ export class ExperimentService {
   async viewAInfo(sessionCode: string, taskId: string) {
     const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    await this.assertRoleCanContinue(session.id, ParticipantRole.B);
 
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
@@ -1123,6 +1364,7 @@ export class ExperimentService {
   async viewAMaterials(sessionCode: string, taskId: string) {
     const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    await this.assertRoleCanContinue(session.id, ParticipantRole.B);
 
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
@@ -1154,6 +1396,7 @@ export class ExperimentService {
     const synced = await this.syncRuntime(sessionCode);
     const pairing = synced.session.pairings[0];
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    await this.assertRoleCanContinue(synced.session.id, assignedRole);
     const active = participantId
       ? this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId)
       : null;
@@ -1173,6 +1416,7 @@ export class ExperimentService {
     if (!participant) throw new NotFoundException('Participant not found');
     const pairing = synced.session.pairings[0];
     const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    await this.assertRoleCanContinue(synced.session.id, assignedRole);
     const active = this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId);
     if (!active) throw new BadRequestException('No active questionnaire for current phase');
     const existing = await this.prisma.questionnaireResponse.findFirst({
@@ -1211,6 +1455,18 @@ export class ExperimentService {
         answers: payload as Prisma.InputJsonValue,
       },
     });
+    if (active.kind === 'post_survey') {
+      const answerObject = answers && typeof answers === 'object' && !Array.isArray(answers)
+        ? answers as Record<string, unknown>
+        : {};
+      const selfReport = Object.fromEntries(
+        Object.entries(answerObject).filter(([key]) => key.startsWith('POST-ONLINE-')),
+      );
+      await this.prisma.participantIntegrityState.updateMany({
+        where: { sessionId: synced.session.id, participantId },
+        data: { finalSelfReport: selfReport as Prisma.InputJsonValue },
+      });
+    }
 
     await this.prisma.taskProgress.create({
       data: {
@@ -1246,6 +1502,8 @@ export class ExperimentService {
     answer: string,
   ) {
     const synced = await this.syncRuntime(sessionCode);
+    const pairing = synced.session.pairings[0];
+    await this.assertRoleCanContinue(synced.session.id, this.resolveParticipantRole(pairing, participantId));
     const plan = await this.prisma.sideTaskPlan.findUnique({
       where: { id: planId },
       select: { id: true, sessionId: true },
@@ -1332,6 +1590,7 @@ export class ExperimentService {
   async aSubmitTask(sessionCode: string, taskId: string) {
     const synced = await this.syncRuntime(sessionCode);
     const session = synced.session;
+    await this.assertRoleCanContinue(session.id, ParticipantRole.A);
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
     if (task.aSubmittedAt) return { ok: true, taskId, duplicate: true };
@@ -1372,6 +1631,7 @@ export class ExperimentService {
   async bCompleteTask(sessionCode: string, taskId: string) {
     const synced = await this.syncRuntime(sessionCode);
     const session = synced.session;
+    await this.assertRoleCanContinue(session.id, ParticipantRole.B);
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
@@ -1544,6 +1804,15 @@ export class ExperimentService {
         });
         if (!tutorialCompleted) {
           throw new BadRequestException('尚未完成测试轮教学引导');
+        }
+
+        if (this.onlineIntegrityConfig(session.experimentSnapshot).enabled) {
+          const integrityCommitment = await tx.participantIntegrityState.findUnique({
+            where: { sessionId_participantId: { sessionId: session.id, participantId } },
+          });
+          if (!integrityCommitment?.comprehensionPassedAt) {
+            throw new BadRequestException('尚未完成线上实验规则承诺与理解题');
+          }
         }
 
         const practiceTask = await tx.taskAssignment.findFirst({
@@ -2054,6 +2323,7 @@ export class ExperimentService {
     config: ExperimentConfig,
     now: Date,
   ) {
+    await this.closeSessionIntegrityIntervals(tx, session, now, 'formal_work_segment_ended');
     // A 和 B 可能在不同公司，分别找各自的当前公司
     const aCurrentTask = session.tasks.find(
       (t) => t.phase === ExperimentPhase.FORMAL && !t.aSubmittedAt,
@@ -2392,7 +2662,12 @@ export class ExperimentService {
     const selfCompleted = completedIds.has(participantId);
     const pairing = session.pairings[0] ?? null;
     const participantIds = [pairing?.participantAId, pairing?.participantBId].filter(Boolean) as string[];
-    const completedCount = participantIds.filter((id) => completedIds.has(id)).length;
+    const droppedStates = await this.prisma.participantIntegrityState.findMany({
+      where: { sessionId: session.id, hasFormalDropout: true },
+      select: { participantId: true, role: true },
+    });
+    const droppedBIds = new Set(droppedStates.filter((state) => state.role === ParticipantRole.B).map((state) => state.participantId));
+    const completedCount = participantIds.filter((id) => completedIds.has(id) || droppedBIds.has(id)).length;
     const now = Date.now();
     return {
       workSegment: instruction.workSegment,
@@ -3668,6 +3943,18 @@ export class ExperimentService {
   private buildPostSurveySections(root: any, role: ParticipantRole, display: ReturnType<ExperimentService['buildQuestionnaireDisplayContext']>, shuffleKey: string) {
     const sections = root.postSurvey.commonSections.map((section: any) => ({ ...section, items: [...section.items] }));
     const roleSection = { ...root.postSurvey.roleSpecific[role], items: [...root.postSurvey.roleSpecific[role].items] };
+    const sectionWith = (code: string) => sections.find((section: any) => section.items.some((item: any) => item.code === code));
+    const cooperationSection = sectionWith('POST-COMP-02');
+    const aiSection = sectionWith('POST-AI-01');
+    const aiChangeSection = sectionWith('POST-AICHG-01');
+    const strategySection = sectionWith('POST-STR-02');
+    const sideTaskSection = sectionWith('MC2-01');
+    const onlineSelfReportSection = sectionWith('POST-ONLINE-01');
+    const narrativeSection = sectionWith('MC3-02');
+    const imageSection = sectionWith('MC1-03');
+    const techSection = sectionWith('POST-TECH-01');
+    const demographicSection = sectionWith('DEMO-01');
+    const paymentSection = sectionWith('POST-PAY-02');
 
     if (role === ParticipantRole.A) {
       roleSection.items = roleSection.items.filter((item: any) => {
@@ -3686,25 +3973,25 @@ export class ExperimentService {
       });
     }
 
-    const result = [sections[0], roleSection];
-    if (display.aiAvailable && display.usedTask1AiOverall) {
-      sections[1].items = sections[1].items.filter((item: any) => item.code !== 'POST-AI-04' || (display.advancedAi && display.uploadedAiImage));
-      result.push(sections[1]);
+    const result = [cooperationSection, roleSection];
+    if (display.aiAvailable && display.usedTask1AiOverall && aiSection) {
+      aiSection.items = aiSection.items.filter((item: any) => item.code !== 'POST-AI-04' || (display.advancedAi && display.uploadedAiImage));
+      result.push(aiSection);
     }
-    sections[2].items = sections[2].items.filter((item: any) => item.code === 'POST-AICHG-03A' ? role === ParticipantRole.A : item.code === 'POST-AICHG-03B' ? role === ParticipantRole.B : true);
-    sections[3].items = sections[3].items.filter((item: any) => item.code === 'POST-STRATEGY-01A' ? !display.aiAvailable : item.code === 'POST-STRATEGY-01B' ? display.aiAvailable : true);
-    const narrativeItem = sections[5].items.find((item: any) => item.code === 'MC3-02');
+    if (aiChangeSection) aiChangeSection.items = aiChangeSection.items.filter((item: any) => item.code === 'POST-AICHG-03A' ? role === ParticipantRole.A : item.code === 'POST-AICHG-03B' ? role === ParticipantRole.B : true);
+    if (strategySection) strategySection.items = strategySection.items.filter((item: any) => item.code === 'POST-STRATEGY-01A' ? !display.aiAvailable : item.code === 'POST-STRATEGY-01B' ? display.aiAvailable : true);
+    const narrativeItem = narrativeSection?.items.find((item: any) => item.code === 'MC3-02');
     if (narrativeItem) narrativeItem.options = this.deterministicOptionOrder(narrativeItem.options, shuffleKey);
-    if (display.aiAvailable) result.push(sections[6]);
-    sections[7].items = sections[7].items.filter((item: any) => item.code === 'POST-TECH-02' ? display.aiAvailable : item.code === 'POST-TECH-04' ? role === ParticipantRole.B : true);
-    result.push(sections[2], sections[3], sections[4], sections[5], sections[7], sections[8], sections[9]);
+    if (display.aiAvailable && imageSection) result.push(imageSection);
+    if (techSection) techSection.items = techSection.items.filter((item: any) => item.code === 'POST-TECH-02' ? display.aiAvailable : item.code === 'POST-TECH-04' ? role === ParticipantRole.B : true);
+    result.push(aiChangeSection, strategySection, sideTaskSection, onlineSelfReportSection, narrativeSection, techSection, demographicSection, paymentSection);
     return result.filter((section: any) => section?.items?.length);
   }
 
   private buildQuestionnaireDisplayContext(session: RuntimeSession, participantId: string, workSegment: number | null) {
     const snapshot = this.parseExperimentSnapshot(session.experimentSnapshot);
     const condition = session.experimentCondition ?? snapshot?.experimentCondition ?? null;
-    const aiAvailable = snapshot?.aiEnabled !== false && condition !== 'A0';
+    const aiAvailable = snapshot?.aiEnabled !== false;
     const advancedAi = ['A2', 'A5', 'A6'].includes(String(condition));
     const task1Ai = (session.aiMessages ?? []).filter((message) =>
       message.participantId === participantId &&
@@ -3801,6 +4088,288 @@ export class ExperimentService {
       completedSteps: Array.from(new Set(completedSteps)),
       completed: progressRows.some((row) => row.stage === 'practice_tutorial_completed'),
     };
+  }
+
+  private async getIntegrityContext(sessionCode: string, participantId: string) {
+    const session = await this.prisma.session.findUnique({
+      where: { code: sessionCode },
+      include: { pairings: true },
+    });
+    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
+    const pairing = session.pairings[0];
+    if (!pairing) throw new BadRequestException('Session pairing record is missing');
+    const role = pairing.participantAId === participantId
+      ? ParticipantRole.A
+      : pairing.participantBId === participantId
+        ? ParticipantRole.B
+        : null;
+    if (!role) throw new BadRequestException('Participant does not belong to this session');
+    return { session, pairing, role, config: this.onlineIntegrityConfig(session.experimentSnapshot) };
+  }
+
+  private onlineIntegrityConfig(snapshotValue: unknown): OnlineIntegrityConfigSnapshot {
+    const snapshot = this.parseExperimentSnapshot(snapshotValue)?.onlineIntegrity;
+    return {
+      enabled: snapshot?.enabled ?? true,
+      idlePromptSeconds: snapshot?.idlePromptSeconds ?? 120,
+      idleConfirmationGraceSeconds: snapshot?.idleConfirmationGraceSeconds ?? 20,
+      heartbeatIntervalSeconds: snapshot?.heartbeatIntervalSeconds ?? 10,
+      connectionLostGraceSeconds: snapshot?.connectionLostGraceSeconds ?? 30,
+      dropoutTimeoutSeconds: snapshot?.dropoutTimeoutSeconds ?? 180,
+      offscreenViolationSeconds: snapshot?.offscreenViolationSeconds ?? 2,
+      fullscreenRequired: snapshot?.fullscreenRequired ?? true,
+      authorizedDialogMaxSeconds: snapshot?.authorizedDialogMaxSeconds ?? 60,
+      pasteAfterOffscreenWindowSeconds: snapshot?.pasteAfterOffscreenWindowSeconds ?? 30,
+    };
+  }
+
+  private async sweepOnlineIntegrityStates() {
+    const sessions = await this.prisma.session.findMany({
+      where: { runtimePhase: RuntimePhase.FORMAL_WORK },
+      select: { id: true, experimentSnapshot: true },
+    });
+    const now = new Date();
+    for (const session of sessions) {
+      const config = this.onlineIntegrityConfig(session.experimentSnapshot);
+      if (config.enabled) await this.evaluateConnectionStates(session.id, config, now);
+    }
+  }
+
+  private safeClientTime(value: unknown, serverNow: Date) {
+    if (typeof value !== 'string') return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    if (Math.abs(parsed.getTime() - serverNow.getTime()) > 24 * 60 * 60 * 1000) return null;
+    return parsed;
+  }
+
+  private async ensureIntegrityState(
+    sessionId: string,
+    participantId: string,
+    role: ParticipantRole,
+    now: Date,
+  ) {
+    return this.prisma.participantIntegrityState.upsert({
+      where: { sessionId_participantId: { sessionId, participantId } },
+      update: {},
+      create: { sessionId, participantId, role, lastHeartbeatAt: now, lastValidActivityAt: now },
+    });
+  }
+
+  private async closeOpenIntegrityInterval(
+    stateId: string,
+    intervalType: string,
+    endedAt: Date,
+    endReason: string,
+    intervalId?: string,
+    config?: OnlineIntegrityConfigSnapshot,
+  ) {
+    const interval = await this.prisma.onlineIntegrityInterval.findFirst({
+      where: { integrityStateId: stateId, intervalType, endedAt: null, ...(intervalId ? { id: intervalId } : {}) },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (!interval) return null;
+    const durationMs = Math.max(0, endedAt.getTime() - interval.startedAt.getTime());
+    const metadata = interval.metadata && typeof interval.metadata === 'object' && !Array.isArray(interval.metadata)
+      ? interval.metadata as Record<string, unknown> : {};
+    const authorizedDialog = Boolean(metadata.authorizedDialog)
+      && durationMs <= (config?.authorizedDialogMaxSeconds ?? 60) * 1000;
+    const isViolation = intervalType === 'INACTIVITY'
+      || (intervalType === 'OFFSCREEN'
+        && !authorizedDialog
+        && durationMs > (config?.offscreenViolationSeconds ?? 2) * 1000);
+    const closed = await this.prisma.onlineIntegrityInterval.update({
+      where: { id: interval.id },
+      data: {
+        endedAt,
+        durationMs,
+        isViolation,
+        endReason,
+        ...(intervalType === 'INACTIVITY' ? { invalidEndedAt: endedAt } : {}),
+      },
+    });
+    const stateUpdate: Prisma.ParticipantIntegrityStateUpdateInput = {
+      currentState: 'ACTIVE',
+      stateStartedAt: endedAt,
+      ...(intervalType === 'INACTIVITY' ? { inactivityTotalMs: { increment: durationMs } } : {}),
+      ...(intervalType === 'OFFSCREEN' ? { offscreenTotalMs: { increment: durationMs } } : {}),
+      ...(intervalType === 'DISCONNECT' ? { disconnectTotalMs: { increment: durationMs } } : {}),
+      ...(intervalType === 'OFFSCREEN' && isViolation
+        ? { hasOffscreenViolation: true, offscreenViolationCount: { increment: 1 } }
+        : {}),
+    };
+    await this.prisma.participantIntegrityState.update({ where: { id: stateId }, data: stateUpdate });
+    await this.refreshIntegrityCurrentState(stateId, endedAt);
+    return closed;
+  }
+
+  private async refreshIntegrityCurrentState(stateId: string, now: Date) {
+    const state = await this.prisma.participantIntegrityState.findUnique({ where: { id: stateId } });
+    if (!state || state.hasFormalDropout) return;
+    const open = await this.prisma.onlineIntegrityInterval.findMany({ where: { integrityStateId: stateId, endedAt: null } });
+    const currentState = open.some((item) => item.intervalType === 'DISCONNECT')
+      ? 'DISCONNECTED'
+      : open.some((item) => item.intervalType === 'OFFSCREEN')
+        ? 'OFFSCREEN'
+        : open.some((item) => item.intervalType === 'INACTIVITY')
+          ? 'INACTIVITY'
+          : 'ACTIVE';
+    if (state.currentState !== currentState) {
+      await this.prisma.participantIntegrityState.update({ where: { id: stateId }, data: { currentState, stateStartedAt: now } });
+    }
+  }
+
+  private async evaluateConnectionStates(sessionId: string, config: OnlineIntegrityConfigSnapshot, now: Date) {
+    const states = await this.prisma.participantIntegrityState.findMany({ where: { sessionId } });
+    for (const state of states) {
+      if (!state.lastHeartbeatAt || state.hasFormalDropout) continue;
+      const elapsedMs = now.getTime() - state.lastHeartbeatAt.getTime();
+      if (elapsedMs > config.connectionLostGraceSeconds * 1000) {
+        const existing = await this.prisma.onlineIntegrityInterval.findFirst({
+          where: { integrityStateId: state.id, intervalType: 'DISCONNECT', endedAt: null },
+        });
+        if (!existing) {
+          const startedAt = new Date(state.lastHeartbeatAt.getTime() + config.connectionLostGraceSeconds * 1000);
+          await this.prisma.onlineIntegrityInterval.create({
+            data: {
+              sessionId,
+              participantId: state.participantId,
+              integrityStateId: state.id,
+              role: state.role,
+              intervalType: 'DISCONNECT',
+              startedAt,
+              triggerReason: 'heartbeat_grace_exceeded',
+            },
+          });
+          await this.prisma.participantIntegrityState.update({
+            where: { id: state.id },
+            data: { currentState: 'DISCONNECTED', stateStartedAt: startedAt, hasConnectionLoss: true, disconnectIntervalCount: { increment: 1 } },
+          });
+        }
+      }
+      if (elapsedMs > config.dropoutTimeoutSeconds * 1000) {
+        await this.markFormalDropout(state.id, sessionId, state.participantId, state.role, 'heartbeat_timeout', now);
+      }
+    }
+  }
+
+  private async markFormalDropout(
+    stateId: string,
+    sessionId: string,
+    participantId: string,
+    role: ParticipantRole,
+    reason: string,
+    now: Date,
+  ) {
+    const updated = await this.prisma.participantIntegrityState.updateMany({
+      where: { id: stateId, hasFormalDropout: false },
+      data: { hasFormalDropout: true, formalDropoutAt: now, formalDropoutReason: reason, currentState: 'DROPPED', stateStartedAt: now },
+    });
+    if (updated.count === 0) return;
+    const open = await this.prisma.onlineIntegrityInterval.findMany({ where: { integrityStateId: stateId, endedAt: null } });
+    for (const interval of open) {
+      await this.closeOpenIntegrityInterval(stateId, interval.intervalType, now, 'formal_dropout');
+    }
+    await this.prisma.participantIntegrityState.update({
+      where: { id: stateId },
+      data: { hasFormalDropout: true, formalDropoutAt: now, formalDropoutReason: reason, currentState: 'DROPPED', stateStartedAt: now },
+    });
+    await this.prisma.experimentEvent.create({
+      data: { sessionId, participantId, role, eventType: 'formal_dropout_confirmed', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { reason } },
+    });
+    if (role === ParticipantRole.A) {
+      await this.prisma.session.update({
+        where: { id: sessionId },
+        data: { status: SessionStatus.TERMINATED, runtimePhase: RuntimePhase.END, currentSegmentEnds: now },
+      });
+      await this.prisma.experimentEvent.create({
+        data: { sessionId, participantId, role, eventType: 'team_early_termination_started', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { reason: 'role_a_formal_dropout' } },
+      });
+      await this.prisma.experimentEvent.create({
+        data: { sessionId, participantId, role, eventType: 'team_early_termination_completed', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { survivorRole: 'B', survivorCanContinue: false } },
+      });
+    }
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId }, select: { code: true } });
+    if (session) {
+      this.emitSessionEvent(session.code, { type: 'participant_formal_dropout', data: { participantId, role, reason } });
+      this.emitRuntimeInvalidated(session.code);
+    }
+  }
+
+  private integrityOutcome(
+    role: ParticipantRole,
+    participantId: string,
+    states: Array<{ participantId: string; role: ParticipantRole; hasFormalDropout: boolean }>,
+  ) {
+    const self = states.find((state) => state.participantId === participantId);
+    const partner = states.find((state) => state.participantId !== participantId);
+    if (self?.hasFormalDropout) return 'SELF_DROPPED';
+    if (role === ParticipantRole.B && partner?.role === ParticipantRole.A && partner.hasFormalDropout) return 'STOP_AFTER_A_DROPOUT';
+    if (role === ParticipantRole.A && partner?.role === ParticipantRole.B && partner.hasFormalDropout) return 'CONTINUE_AFTER_B_DROPOUT';
+    return 'ACTIVE';
+  }
+
+  private integrityQualityFlags(states: Array<{
+    hasInvalidInactivity: boolean;
+    hasOffscreenViolation: boolean;
+    hasConnectionLoss: boolean;
+    hasFormalDropout: boolean;
+  }>) {
+    return {
+      hasAnyParticipantInvalidInactivity: states.some((state) => state.hasInvalidInactivity),
+      hasAnyParticipantOffscreenViolation: states.some((state) => state.hasOffscreenViolation),
+      hasAnyParticipantConnectionLoss: states.some((state) => state.hasConnectionLoss),
+      hasAnyParticipantFormalDropout: states.some((state) => state.hasFormalDropout),
+      sessionDataUsable: !states.some((state) => state.hasInvalidInactivity || state.hasOffscreenViolation || state.hasFormalDropout),
+    };
+  }
+
+  private async assertRoleCanContinue(sessionId: string, role: ParticipantRole) {
+    const pairing = await this.prisma.pairing.findFirst({ where: { sessionId } });
+    if (!pairing) return;
+    const selfParticipantId = role === ParticipantRole.A ? pairing.participantAId : pairing.participantBId;
+    const partnerParticipantId = role === ParticipantRole.A ? pairing.participantBId : pairing.participantAId;
+    const states = await this.prisma.participantIntegrityState.findMany({ where: { sessionId } });
+    const self = states.find((state) => state.participantId === selfParticipantId);
+    const partner = states.find((state) => state.participantId === partnerParticipantId);
+    if (self?.hasFormalDropout) throw new BadRequestException('你已正式退出，不能继续修改或提交任务');
+    if (role === ParticipantRole.B && partner?.role === ParticipantRole.A && partner.hasFormalDropout) {
+      throw new BadRequestException('队友 A 已正式退出，本次实验不能继续');
+    }
+  }
+
+  private async closeSessionIntegrityIntervals(
+    tx: Prisma.TransactionClient,
+    session: Pick<Session, 'id' | 'experimentSnapshot'>,
+    endedAt: Date,
+    endReason: string,
+  ) {
+    const config = this.onlineIntegrityConfig(session.experimentSnapshot);
+    const intervals = await tx.onlineIntegrityInterval.findMany({ where: { sessionId: session.id, endedAt: null } });
+    for (const interval of intervals) {
+      const durationMs = Math.max(0, endedAt.getTime() - interval.startedAt.getTime());
+      const metadata = interval.metadata && typeof interval.metadata === 'object' && !Array.isArray(interval.metadata)
+        ? interval.metadata as Record<string, unknown> : {};
+      const authorizedDialog = Boolean(metadata.authorizedDialog)
+        && durationMs <= config.authorizedDialogMaxSeconds * 1000;
+      const isViolation = interval.intervalType === 'INACTIVITY'
+        || (interval.intervalType === 'OFFSCREEN' && !authorizedDialog && durationMs > config.offscreenViolationSeconds * 1000);
+      await tx.onlineIntegrityInterval.update({
+        where: { id: interval.id },
+        data: { endedAt, durationMs, endReason, isViolation, ...(interval.intervalType === 'INACTIVITY' ? { invalidEndedAt: endedAt } : {}) },
+      });
+      await tx.participantIntegrityState.update({
+        where: { id: interval.integrityStateId },
+        data: {
+          currentState: 'ACTIVE',
+          stateStartedAt: endedAt,
+          ...(interval.intervalType === 'INACTIVITY' ? { inactivityTotalMs: { increment: durationMs } } : {}),
+          ...(interval.intervalType === 'OFFSCREEN' ? { offscreenTotalMs: { increment: durationMs } } : {}),
+          ...(interval.intervalType === 'DISCONNECT' ? { disconnectTotalMs: { increment: durationMs } } : {}),
+          ...(interval.intervalType === 'OFFSCREEN' && isViolation ? { hasOffscreenViolation: true, offscreenViolationCount: { increment: 1 } } : {}),
+        },
+      });
+    }
   }
 
   private async ensureConfig(): Promise<RuntimeConfig> {

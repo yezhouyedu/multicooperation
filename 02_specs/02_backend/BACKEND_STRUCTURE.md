@@ -1,7 +1,9 @@
 # BACKEND_STRUCTURE.md
 
-> 状态：2026-07-01 已对齐当前实现
+> 状态：2026-08-23 已对齐九条件与线上质量实现
 > 位置：`02_specs/02_backend/BACKEND_STRUCTURE.md`
+
+当前增补：正式实验局使用 `nine_condition_block_v1`，每区组生成 A0-A8 各一次。线上质量 API 位于 `/experiment/session/:code/integrity/*`；`ParticipantIntegrityState` 保存当前状态与清洗 flags，`OnlineIntegrityInterval` 保存 `INACTIVITY/OFFSCREEN/DISCONNECT` 原始区间，`ExperimentEvent` 保存软提醒、剪贴板摘要、承诺与退出。前端覆盖层不是权限边界，A/B 退出后的继续权限由 `ExperimentService` 同时保护。
 
 ## 1. 后端现在负责什么
 
@@ -131,7 +133,7 @@
 - 教学引导需要点击任务2题目时，由前端临时显示 `practice_demo_sidetask` 演示题，不写入 `SideTaskPlan`
 - 正式 3 个工作段各生成 40 条任务2计划，总计 120 条
 - 提醒频率条件分为 `continuous` / `batch`
-- 两种条件下题目实际到达节奏相同，默认都是每 30 秒一条
+- 两种条件下题目实际到达节奏相同，具体间隔读取 Session 创建时固化的实验配置
 - `continuous / batch` 的差异体现在前端提醒频率，不体现在题目实际释放速率：continuous 对每条新题生成提醒 pulse，batch 按 admin 窗口检查待处理数后生成提醒 pulse
 - 叙事条件分为 `coop_narrative` / `neutral_info`
 - 服务端认定 `releasedAt`
@@ -359,7 +361,7 @@
 - 尽调员自动提交
 - 投资经理查看尽调员信息
 - 投资经理完成提交
-- 休息问卷提交
+- 工作段回顾与最终问卷提交
 - 副线 released / answered
 
 ---

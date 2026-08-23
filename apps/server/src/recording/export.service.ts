@@ -173,6 +173,10 @@ export class ExportService {
           include: { plan: { include: { item: true } } },
         },
         experimentEvents: { orderBy: { serverTime: 'asc' } },
+        integrityStates: {
+          include: { intervals: { orderBy: { startedAt: 'asc' } } },
+          orderBy: { role: 'asc' },
+        },
         randomizationAudit: true,
       },
     });
@@ -226,6 +230,7 @@ export class ExportService {
     const timestamps = this.buildTimestamps(session, participant, role);
     await this.storage.writeJson(join(participantDir, 'variables.json'), this.buildVariables(session, participant, role, timestamps));
     await this.storage.writeJson(join(participantDir, 'timestamps.json'), timestamps);
+    await this.storage.writeJson(join(participantDir, 'online_integrity.json'), this.buildOnlineIntegrity(session, participant.id));
     await this.writeQuestionnaires(participantDir, session, participant.id);
     await this.writePracticeRound(participantDir, session, participant.id, role);
     await this.writeFormalSegments(participantDir, session, participant.id, role);
@@ -566,6 +571,7 @@ export class ExportService {
         experimentCondition: session.experimentCondition,
         conditionAssignedAt: session.conditionAssignedAt?.toISOString() ?? null,
       },
+      qualityFlags: this.buildSessionIntegrityFlags(session),
     };
   }
 
@@ -774,60 +780,6 @@ export class ExportService {
 
   private async writeSelfCheck(outputDir: string, sessions: SessionExportRecord[]) {
     await this.writeDynamicSelfCheck(outputDir, sessions);
-    return;
-
-    const rows = [
-      ['session 元数据', 'Session, SessionSegmentState', 'session 创建/阶段推进', 'session_metadata.json', '已实现', '共享事实保存在 session 层'],
-      ['实验配置快照', 'Session.experimentSnapshot, RandomizationAudit', 'session 成组初始化', 'session_metadata.json, randomization.json', '已实现', 'admin 后续修改不影响旧 session'],
-      ['随机化 seed', 'RandomizationAudit', '角色/公司/实验模式随机化', 'randomization.json', '已实现', '含角色、公司、实验处理 seed'],
-      ['participant 元数据', 'Participant, Pairing, ExperimentEvent', '登录/ready/结束', 'participant_metadata.json', '已实现', 'A/B 分目录保存'],
-      ['测试题', 'QuestionnaireResponse', '测试题提交', 'questionnaires/practice_quiz.json', '已实现', '多次 attempt 保留'],
-      ['休息问卷', 'QuestionnaireResponse', '休息问卷提交', 'questionnaires/break_1.json, break_2.json', '已实现', '缺失写 missing=true'],
-      ['后测问卷', '暂未建模板', '后续新增后测流程', '预留 questionnaires/', '后续模块', '当前流程无后测页'],
-      ['练习轮答题', 'TaskAssignment, TaskSnapshot', '练习轮保存/提交/冻结', 'practice_round/', '已实现', '按练习公司拆分'],
-      ['正式段时间', 'SessionSegmentState', '工作段/休息段推进', 'formal_segments/*/segment_metadata.json', '已实现', '三段分别保存'],
-      ['公司材料索引', 'Company.materials', '材料导入/导出 join', 'company_metadata.json', '已实现', '保存材料 id/version/scope/storageKey'],
-      ['A/B 答题全文', 'TaskAssignment.aDraft/bDraft/bFeedbackDraft', '草稿保存/提交', 'answer_content.json', '已实现', '未填写字段保留为空对象'],
-      ['快照', 'TaskSnapshot', '解锁/段末冻结/恢复', 'snapshots.jsonl', '已实现', '按公司导出'],
-      ['A 5 分钟窗口', 'TaskAssignment', 'A task 激活/自动提交', 'company_metadata.json', '已实现', 'aStartedAt/deadline/submittedAt'],
-      ['B 查看 A 与提交', 'TaskAssignment, ExperimentEvent', 'view-a-info/view-a-materials/b-complete', 'company_metadata.json, events.jsonl', '已实现', 'A 尽调表与 A 原始材料分别记录首次解锁查看'],
-      ['B locked pool / PreA', 'RandomizationAudit.bAssignmentLog', 'B 分配公司', 'company_metadata.json, randomization.json', '已实现', '含候选池、seed、路径'],
-      ['主线 AI', 'AiMessageLog', 'AI 请求', 'companies/*/ai_chat.jsonl', '已实现', '按 participant/company/task 拆分'],
-      ['副线 AI', 'AiMessageLog', 'AI 请求', 'side_tasks/side_ai_chat.jsonl', '已实现', '按 participant 拆分'],
-      ['AI 耗时/错误', 'AiMessageLog', 'AI 请求完成/失败', 'ai_chat.jsonl', '已实现', 'latencyMs/providerStatus/errorMessage'],
-      ['图片附件', 'storage/attachments, AiMessageLog.attachments', 'AI 图片上传/粘贴', 'attachments/images + ai_chat.jsonl', '已实现', 'JSON 只保存索引'],
-      ['副线计划', 'SideTaskPlan, SideTaskSessionConfig', 'session 初始化/段调度', 'side_plan.json', '已实现', '计划可复制到 A/B 目录'],
-      ['副线释放/打开/作答', 'SideTaskExposureLog', '前端曝光/打开/作答', 'side_events.jsonl, side_responses.jsonl', '已实现', 'A/B 独立作答'],
-      ['variables.json', '导出后处理汇总', '导出生成', 'variables.json', '已实现', '核心处理变量与常用摘要'],
-      ['评分/gold fact', '无第一期来源', '后续评分模块', '无', '后续模块', '需要研究者维护金标准和评分表'],
-      ['复杂行为变量', 'ExperimentEvent 可扩展', '后续前端细粒度事件', 'events.jsonl', '后续模块', '滚动/focus/blur 未作为第一期'],
-      ['AI 采纳率', 'AI 日志 + 最终文本 + 后编码', '后处理', '无直接字段', '可后处理/后续模块', '需要相似度或人工编码'],
-    ];
-    const header = '| 文档变量 / 记录项 | 保存来源表或文件 | 写入触发点 | 导出位置 | 状态 | 备注与风险 |';
-    const sep = '|---|---|---|---|---|---|';
-    const body = rows.map((row) => `| ${row.join(' | ')} |`).join('\n');
-    await this.storage.writeJson(
-      join(outputDir, 'variable_implementation_summary.json'),
-      {
-        rawSaved: rows.filter((row) => row[4] === '已实现').map((row) => row[0]),
-        postProcessable: rows.filter((row) => row[4].includes('可后处理')).map((row) => row[0]),
-        missingSource: rows.filter((row) => row[4] === '缺失').map((row) => row[0]),
-        outOfPhaseOne: rows.filter((row) => row[4] === '后续模块').map((row) => row[0]),
-      },
-    );
-    await this.storage.writeJsonl(join(outputDir, 'variable_implementation_checklist.jsonl'), rows.map((row) => ({
-      variable: row[0],
-      source: row[1],
-      trigger: row[2],
-      exportLocation: row[3],
-      status: row[4],
-      notes: row[5],
-    })));
-    await this.storage.writeJson(join(outputDir, 'variable_implementation_checklist_meta.json'), {
-      markdownFilename: 'variable_implementation_checklist.md',
-    });
-    const fs = await import('fs/promises');
-    await fs.writeFile(join(outputDir, 'variable_implementation_checklist.md'), `${header}\n${sep}\n${body}\n`, 'utf8');
   }
 
   private async writeDynamicSelfCheck(outputDir: string, sessions: SessionExportRecord[]) {
@@ -1585,7 +1537,90 @@ export class ExportService {
     if (session.status !== 'COMPLETED') flags.push('session_not_completed');
     const practice = session.questionnaireAnswers.some((row) => row.participantId === participantId && row.phase === ExperimentPhase.PRACTICE);
     if (!practice) flags.push('missing_practice_quiz');
+    const integrity = session.integrityStates.find((state) => state.participantId === participantId);
+    if (integrity?.hasInvalidInactivity) flags.push('invalid_inactivity');
+    if (integrity?.hasOffscreenViolation) flags.push('offscreen_violation');
+    if (integrity?.hasConnectionLoss) flags.push('connection_loss');
+    if (integrity?.hasFormalDropout) flags.push('formal_dropout');
     return flags;
+  }
+
+  private buildSessionIntegrityFlags(session: SessionExportRecord) {
+    const states = session.integrityStates;
+    const invalid = states.some((state) => state.hasInvalidInactivity);
+    const offscreen = states.some((state) => state.hasOffscreenViolation);
+    const connectionLoss = states.some((state) => state.hasConnectionLoss);
+    const dropout = states.some((state) => state.hasFormalDropout);
+    return {
+      hasAnyParticipantInvalidInactivity: invalid,
+      hasAnyParticipantOffscreenViolation: offscreen,
+      hasAnyParticipantConnectionLoss: connectionLoss,
+      hasAnyParticipantFormalDropout: dropout,
+      sessionDataUsable: !(invalid || offscreen || dropout),
+    };
+  }
+
+  private buildOnlineIntegrity(session: SessionExportRecord, participantId: string) {
+    const state = session.integrityStates.find((item) => item.participantId === participantId) ?? null;
+    const snapshot = this.parseObject(session.experimentSnapshot);
+    const events = session.experimentEvents.filter((event) =>
+      event.participantId === participantId && (
+        event.eventType.startsWith('idle_prompt_') ||
+        event.eventType.startsWith('clipboard_') ||
+        event.eventType.includes('dropout') ||
+        event.eventType === 'integrity_commitment_completed'
+      ),
+    );
+    return {
+      schemaVersion: 1,
+      participantId,
+      sessionCode: session.code,
+      configSnapshot: this.parseObject(snapshot.onlineIntegrity),
+      qualitySummary: state ? {
+        currentState: state.currentState,
+        lastHeartbeatAt: state.lastHeartbeatAt?.toISOString() ?? null,
+        lastValidActivityAt: state.lastValidActivityAt?.toISOString() ?? null,
+        hasInvalidInactivity: state.hasInvalidInactivity,
+        hasOffscreenViolation: state.hasOffscreenViolation,
+        hasConnectionLoss: state.hasConnectionLoss,
+        hasFormalDropout: state.hasFormalDropout,
+        inactivityIntervalCount: state.inactivityIntervalCount,
+        offscreenIntervalCount: state.offscreenIntervalCount,
+        offscreenViolationCount: state.offscreenViolationCount,
+        disconnectIntervalCount: state.disconnectIntervalCount,
+        inactivityTotalMs: state.inactivityTotalMs,
+        offscreenTotalMs: state.offscreenTotalMs,
+        disconnectTotalMs: state.disconnectTotalMs,
+        formalDropoutAt: state.formalDropoutAt?.toISOString() ?? null,
+        formalDropoutReason: state.formalDropoutReason,
+        integrityCommitmentAt: state.integrityCommitmentAt?.toISOString() ?? null,
+        comprehensionPassedAt: state.comprehensionPassedAt?.toISOString() ?? null,
+        comprehensionAnswers: state.comprehensionAnswers,
+        finalSelfReport: state.finalSelfReport,
+      } : null,
+      intervals: (state?.intervals ?? []).map((interval) => ({
+        intervalId: interval.id,
+        intervalType: interval.intervalType,
+        role: interval.role,
+        segmentIndex: interval.segmentIndex,
+        taskAssignmentId: interval.taskAssignmentId,
+        companyId: interval.companyId,
+        startedAt: interval.startedAt.toISOString(),
+        endedAt: interval.endedAt?.toISOString() ?? null,
+        durationMs: interval.durationMs,
+        isViolation: interval.isViolation,
+        idleCountdownStartedAt: interval.idleCountdownStartedAt?.toISOString() ?? null,
+        promptShownAt: interval.promptShownAt?.toISOString() ?? null,
+        confirmationDeadlineAt: interval.confirmationDeadlineAt?.toISOString() ?? null,
+        confirmedAt: interval.confirmedAt?.toISOString() ?? null,
+        invalidStartedAt: interval.invalidStartedAt?.toISOString() ?? null,
+        invalidEndedAt: interval.invalidEndedAt?.toISOString() ?? null,
+        triggerReason: interval.triggerReason,
+        endReason: interval.endReason,
+        metadata: interval.metadata,
+      })),
+      events: events.map((event) => ({ eventType: event.eventType, serverTime: event.serverTime.toISOString(), clientTime: event.clientTime?.toISOString() ?? null, payload: event.payload })),
+    };
   }
 
   private durationMinutes(state?: { startedAt: Date | null; endsAt: Date | null } | null) {

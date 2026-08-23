@@ -10,6 +10,8 @@ import {
 
 const DEFAULT_INITIAL_BLOCKS = 60;
 const REFILL_BLOCKS = 10;
+const CONDITION_COUNT = 9;
+const DESIGN_VERSION = 'nine_condition_block_v1';
 
 @Injectable()
 export class ExperimentConditionAssignmentService {
@@ -24,6 +26,7 @@ export class ExperimentConditionAssignmentService {
           code,
           name: name?.trim() || code,
           masterSeed,
+          designVersion: DESIGN_VERSION,
           initialBlockCount: DEFAULT_INITIAL_BLOCKS,
         },
       });
@@ -36,6 +39,9 @@ export class ExperimentConditionAssignmentService {
     return this.prisma.$transaction(async (tx) => {
       const run = await tx.experimentRun.findUnique({ where: { id: runId } });
       if (!run) throw new NotFoundException('实验局不存在');
+      if (run.designVersion !== DESIGN_VERSION) {
+        throw new BadRequestException('该实验局属于旧七条件设计，不能重新启用；请创建新的九条件实验局');
+      }
       await tx.experimentRun.updateMany({
         where: { status: 'ACTIVE', id: { not: runId } },
         data: { status: 'CLOSED', closedAt: new Date() },
@@ -117,7 +123,7 @@ export class ExperimentConditionAssignmentService {
           _count: { _all: true },
         }),
       ]);
-      const currentBlockIndex = assigned === 0 ? 1 : Math.floor((assigned - 1) / 7) + 1;
+      const currentBlockIndex = assigned === 0 ? 1 : Math.floor((assigned - 1) / CONDITION_COUNT) + 1;
       return {
         ...run,
         progress: {
@@ -126,7 +132,7 @@ export class ExperimentConditionAssignmentService {
           sessionCount,
           available,
           currentBlockIndex,
-          claimedInCurrentBlock: assigned % 7 || (assigned > 0 ? 7 : 0),
+          claimedInCurrentBlock: assigned % CONDITION_COUNT || (assigned > 0 ? CONDITION_COUNT : 0),
           byCondition: Object.fromEntries(byCondition.map((row) => [row.experimentCondition, row._count._all])),
         },
       };
@@ -213,7 +219,7 @@ export class ExperimentConditionAssignmentService {
       globalPosition: slot.globalPosition,
       blockSeed: slot.blockSeed,
       assignedAt: slot.assignedAt ?? new Date(),
-      method: 'sequential_permuted_block_v1',
+      method: 'sequential_permuted_nine_condition_block_v1',
     };
   }
 }

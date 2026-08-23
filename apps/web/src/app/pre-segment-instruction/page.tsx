@@ -1,6 +1,7 @@
 'use client';
 
 import { useSessionRuntime } from '@/lib/session-runtime';
+import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -115,6 +116,7 @@ export default function PreSegmentInstructionPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
+      <OnlineIntegrityGuard bootstrap={bootstrap} runtime={runtime} />
       <nav className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5" style={{ boxShadow: 'var(--shadow-topbar)' }}>
         <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
       </nav>

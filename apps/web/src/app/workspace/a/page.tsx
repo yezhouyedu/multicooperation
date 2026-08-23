@@ -9,6 +9,7 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
+import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
@@ -105,6 +106,7 @@ export default function WorkspaceAPage() {
 
   return (
     <main className="h-screen w-screen overflow-hidden bg-[#f0f2f5] text-sm text-[#1d2129]">
+      <OnlineIntegrityGuard bootstrap={bootstrap} runtime={runtime} />
       <div className="flex h-full flex-col">
         <SessionTopbar
           roleLabel="A"

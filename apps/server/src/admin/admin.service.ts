@@ -219,6 +219,82 @@ export class AdminService {
     };
   }
 
+  async getOnlineIntegrityConfig() {
+    const config = await this.ensureExperimentConfig();
+    return { ok: true, config: this.serializeOnlineIntegrityConfig(config) };
+  }
+
+  async saveOnlineIntegrityConfig(input: {
+    enabled?: boolean;
+    idlePromptSeconds?: number;
+    idleConfirmationGraceSeconds?: number;
+    heartbeatIntervalSeconds?: number;
+    connectionLostGraceSeconds?: number;
+    dropoutTimeoutSeconds?: number;
+    offscreenViolationSeconds?: number;
+    fullscreenRequired?: boolean;
+    authorizedDialogMaxSeconds?: number;
+    pasteAfterOffscreenWindowSeconds?: number;
+  }) {
+    const heartbeatIntervalSeconds = this.integerInRange(input.heartbeatIntervalSeconds, 2, 60, 10);
+    const connectionLostGraceSeconds = this.integerInRange(input.connectionLostGraceSeconds, 5, 300, 30);
+    const dropoutTimeoutSeconds = this.integerInRange(input.dropoutTimeoutSeconds, 30, 3600, 180);
+    if (heartbeatIntervalSeconds >= connectionLostGraceSeconds) {
+      throw new BadRequestException('心跳间隔必须小于掉线宽限时间');
+    }
+    if (connectionLostGraceSeconds >= dropoutTimeoutSeconds) {
+      throw new BadRequestException('掉线宽限时间必须小于正式退出判定时间');
+    }
+    const config = await this.prisma.experimentConfig.update({
+      where: { id: 'default' },
+      data: {
+        onlineIntegrityEnabled: input.enabled !== false,
+        idlePromptSeconds: this.integerInRange(input.idlePromptSeconds, 10, 3600, 120),
+        idleConfirmationGraceSeconds: this.integerInRange(input.idleConfirmationGraceSeconds, 5, 300, 20),
+        heartbeatIntervalSeconds,
+        connectionLostGraceSeconds,
+        dropoutTimeoutSeconds,
+        offscreenViolationSeconds: this.integerInRange(input.offscreenViolationSeconds, 0, 60, 2),
+        fullscreenRequired: input.fullscreenRequired !== false,
+        authorizedDialogMaxSeconds: this.integerInRange(input.authorizedDialogMaxSeconds, 5, 600, 60),
+        pasteAfterOffscreenWindowSeconds: this.integerInRange(input.pasteAfterOffscreenWindowSeconds, 0, 600, 30),
+      },
+    });
+    return { ok: true, config: this.serializeOnlineIntegrityConfig(config) };
+  }
+
+  private serializeOnlineIntegrityConfig(config: {
+    onlineIntegrityEnabled: boolean;
+    idlePromptSeconds: number;
+    idleConfirmationGraceSeconds: number;
+    heartbeatIntervalSeconds: number;
+    connectionLostGraceSeconds: number;
+    dropoutTimeoutSeconds: number;
+    offscreenViolationSeconds: number;
+    fullscreenRequired: boolean;
+    authorizedDialogMaxSeconds: number;
+    pasteAfterOffscreenWindowSeconds: number;
+  }) {
+    return {
+      enabled: config.onlineIntegrityEnabled,
+      idlePromptSeconds: config.idlePromptSeconds,
+      idleConfirmationGraceSeconds: config.idleConfirmationGraceSeconds,
+      heartbeatIntervalSeconds: config.heartbeatIntervalSeconds,
+      connectionLostGraceSeconds: config.connectionLostGraceSeconds,
+      dropoutTimeoutSeconds: config.dropoutTimeoutSeconds,
+      offscreenViolationSeconds: config.offscreenViolationSeconds,
+      fullscreenRequired: config.fullscreenRequired,
+      authorizedDialogMaxSeconds: config.authorizedDialogMaxSeconds,
+      pasteAfterOffscreenWindowSeconds: config.pasteAfterOffscreenWindowSeconds,
+    };
+  }
+
+  private integerInRange(value: unknown, minimum: number, maximum: number, fallback: number) {
+    const numeric = Number(value);
+    if (!Number.isInteger(numeric)) return fallback;
+    return Math.min(maximum, Math.max(minimum, numeric));
+  }
+
   async saveExperimentConfig(input: {
     activeExperimentMode?: string;
     experimentModeSettings?: unknown;

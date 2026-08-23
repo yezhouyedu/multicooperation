@@ -1,6 +1,6 @@
 # apps/server
 
-这是 `multi cooperation` 项目的后端应用，负责实验运行时、自动配对、阶段引擎、草稿与快照、AI 接口、admin 配置与材料管理。
+这是 `multi cooperation` 项目的后端应用，负责实验运行时、自动配对、A0-A8 条件槽位分配、线上质量状态机、阶段引擎、草稿与快照、AI 接口、变量导出、admin 实验局与材料管理。
 
 ## 1. 技术基线
 
@@ -12,10 +12,11 @@
 
 - 手机号准入校验
 - 先按进入顺序完成配对，再在组内随机分配 A / B
+- 正式模式在配对事务内原子领取 A0-A8 九条件平衡区组槽位，并保存实验局、条件与线上质量参数快照
 - 维护 session、阶段切换、工作段 / 休息段推进
 - 维护 A 的 5 分钟窗口、A 信息解锁、B 查看 A 信息行为记录
 - 草稿保存、冻结快照、恢复链路
-- 主线 / 副线 AI 调用与消息日志
+- 任务1 / 任务2 AI 调用与消息日志；A0 前端不展示 AI，后端同时拒绝请求
 - 实验事件审计、变量记录、服务器导出任务
 - admin 配置、材料管理、题库自动导入、数据导出 zip
 
@@ -24,7 +25,7 @@
 - `src/auth/`
   - 登录与准入校验
 - `src/experiment/`
-  - 实验主运行时、阶段引擎、任务推进、SSE
+  - 实验条件、实验局区组分配、主运行时、阶段引擎、任务推进、SSE
 - `src/ai/`
   - AI 聊天接口与历史记录
 - `src/admin/`
@@ -105,6 +106,10 @@ corepack pnpm --filter server build
 - `GET /admin/experiment-config`
 - `POST /admin/experiment-config`
 - `GET/POST /admin/ai-settings`
+- `GET/POST /admin/experiment-runs`
+- `POST /admin/experiment-runs/:id/activate`
+- `POST /admin/experiment-runs/:id/close`
+- `DELETE /admin/experiment-runs/:id`
 
 ## 7. 环境变量
 
@@ -115,12 +120,14 @@ corepack pnpm --filter server build
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `STORAGE_ROOT`
+- `ADMIN_PASSWORD`
 
 说明：
 
 - 当前 AI 配置优先可从数据库 `AiSettings` 读取
 - 数据库为空时再回退 `.env`
-- 图片附件和导出包默认写入本地 `storage/`，后续上线可接 Docker volume、MinIO/S3 或其他对象存储
+- 本地未配置 `STORAGE_ROOT` 时使用项目 storage；生产固定使用 `STORAGE_ROOT=/app/storage`，由 Docker volume `multi-cooperation_server_storage` 持久化材料运行时副本、AI 图片附件和导出包
 
 ## 8. 当前协作约定
 

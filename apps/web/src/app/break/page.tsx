@@ -2,6 +2,7 @@
 
 import { QuestionnaireForm, type QuestionnaireAnswers } from '@/components/questionnaire-form';
 import { SessionTopbar } from '@/components/session-topbar';
+import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
@@ -76,6 +77,7 @@ export default function BreakPage() {
 
   return (
     <main className="flex h-screen flex-col bg-gradient-to-br from-[#f0f4f8] via-[#f5f7fa] to-[#e8edf2] text-[#1d2129]">
+      <OnlineIntegrityGuard bootstrap={bootstrap} runtime={runtime} />
       <SessionTopbar
         roleLabel={runtime?.assignedRole === 'A' ? 'A' : 'B'}
         currentLabel="工作段回顾"

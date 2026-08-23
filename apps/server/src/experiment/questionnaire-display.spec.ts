@@ -14,7 +14,7 @@ function buildQuestionnaire(input: {
   const session = {
     id: 'session-1',
     experimentCondition: input.condition,
-    experimentSnapshot: { aiEnabled: input.condition !== 'A0', experimentCondition: input.condition },
+    experimentSnapshot: { aiEnabled: !['A0', 'A7', 'A8'].includes(input.condition), experimentCondition: input.condition },
     tasks: input.tasks ?? [],
     aiMessages: input.aiMessages ?? [],
   };
@@ -60,6 +60,13 @@ describe('V2.2 questionnaire display logic', () => {
     expect(questionnaire.displayedItemCodes).not.toContain('POST-AI-01');
     expect(questionnaire.displayedItemCodes).not.toContain('POST-TECH-02');
     expect(questionnaire.displayedItemCodes).toContain('POST-AICHG-03B');
+  });
+
+  it.each(['A7', 'A8'])('treats new no-AI condition %s exactly as no AI in questionnaires', (condition) => {
+    const questionnaire = buildQuestionnaire({ condition, role: ParticipantRole.B, kind: 'post_survey', workSegment: null });
+    expect(questionnaire.displayedItemCodes).toContain('POST-B-02A');
+    expect(questionnaire.displayedItemCodes).not.toContain('POST-AI-01');
+    expect(questionnaire.displayedItemCodes).not.toContain('POST-TECH-02');
   });
 
   it('shows advanced image and behavior-dependent role-B items when supported by logs', () => {

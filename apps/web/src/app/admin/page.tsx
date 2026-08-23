@@ -15,7 +15,7 @@ const fetch = (input: RequestInfo | URL, init?: RequestInit) => {
   return url.includes('/admin/') ? adminFetch(input, init) : rawFetch(input, init);
 };
 
-type TabId = 'sessions' | 'participants' | 'config' | 'questionnaires' | 'materials' | 'sidefeed' | 'ai-settings';
+type TabId = 'sessions' | 'participants' | 'config' | 'integrity' | 'questionnaires' | 'materials' | 'sidefeed' | 'ai-settings';
 
 type SessionSummary = {
   id: string;
@@ -111,6 +111,19 @@ type ExperimentConfig = {
   feedbackNotificationDurationSec: number;
 };
 
+type OnlineIntegrityConfig = {
+  enabled: boolean;
+  idlePromptSeconds: number;
+  idleConfirmationGraceSeconds: number;
+  heartbeatIntervalSeconds: number;
+  connectionLostGraceSeconds: number;
+  dropoutTimeoutSeconds: number;
+  offscreenViolationSeconds: number;
+  fullscreenRequired: boolean;
+  authorizedDialogMaxSeconds: number;
+  pasteAfterOffscreenWindowSeconds: number;
+};
+
 type ExperimentRunSummary = {
   id: string;
   code: string;
@@ -134,7 +147,7 @@ type ExperimentRunSummary = {
 // Legacy modes remain readable for historical snapshots but are not exposed in the current admin UI.
 const MODE_META: Record<ExperimentMode, { title: string; random: string; fixed: string }> = {
   manual: { title: '手动 / 通用', random: '使用手动配置', fixed: '不领取正式实验条件槽位' },
-  formal: { title: '正式实验', random: '按匹配顺序领取 A0-A6 平衡区组槽位', fixed: '条件映射写入 Session 快照' },
+  formal: { title: '正式实验', random: '按匹配顺序领取 A0-A8 九条件平衡区组槽位', fixed: '条件映射写入 Session 快照' },
   ai_upgrade: { title: '历史模式：AI 能力', random: '读取历史快照', fixed: '不用于新 Session' },
   side_reminder: { title: '历史模式：提醒频率', random: '读取历史快照', fixed: '不用于新 Session' },
   coop_narrative: { title: '历史模式：合作信息', random: '读取历史快照', fixed: '不用于新 Session' },
@@ -158,6 +171,7 @@ const NAV_ITEMS: { id: TabId; label: string }[] = [
   { id: 'sessions', label: 'Session \u6982\u89c8' },
   { id: 'participants', label: '\u88ab\u8bd5\u540d\u5355' },
   { id: 'config', label: '\u5b9e\u9a8c\u914d\u7f6e' },
+  { id: 'integrity', label: '线上实验质量' },
   { id: 'questionnaires', label: '\u95ee\u5377\u914d\u7f6e' },
   { id: 'materials', label: '\u6750\u6599\u7ba1\u7406' },
   { id: 'sidefeed', label: '任务2调度' },
@@ -895,13 +909,15 @@ function SingleChoiceEditor({
 }
 
 const FORMAL_CONDITIONS = [
-  ['A0', '无 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
-  ['A1', 'BASIC 基础 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
-  ['A2', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
-  ['A3', 'BASIC 基础 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
-  ['A4', 'BASIC 基础 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
-  ['A5', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
-  ['A6', 'ADVANCED 高级 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+  [1, 'A0', '无 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  [2, 'A1', 'BASIC 基础 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  [3, 'A2', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'neutral_info 中性信息'],
+  [4, 'A7', '无 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+  [5, 'A3', 'BASIC 基础 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+  [6, 'A8', '无 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
+  [7, 'A4', 'BASIC 基础 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
+  [8, 'A6', 'ADVANCED 高级 AI', 'batch 低频提醒', 'neutral_info 中性信息'],
+  [9, 'A5', 'ADVANCED 高级 AI', 'continuous 高频提醒', 'coop_narrative 合作叙事'],
 ] as const;
 
 function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentMode; onChanged: () => Promise<void> }) {
@@ -968,8 +984,8 @@ function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentM
 
       <div className="overflow-x-auto border-y border-[#eaecf0] py-3">
         <table className="w-full min-w-[720px] text-left text-xs">
-          <thead className="text-[#86909c]"><tr><th className="py-2">条件</th><th>AI</th><th>任务2提醒</th><th>叙事</th></tr></thead>
-          <tbody>{FORMAL_CONDITIONS.map((row) => <tr key={row[0]} className="border-t border-[#f0f1f2]"><td className="py-2 font-semibold">{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td></tr>)}</tbody>
+          <thead className="text-[#86909c]"><tr><th className="py-2">论文条件</th><th>系统码</th><th>AI</th><th>任务2提醒</th><th>叙事</th></tr></thead>
+          <tbody>{FORMAL_CONDITIONS.map((row) => <tr key={row[1]} className="border-t border-[#f0f1f2]"><td className="py-2 font-semibold">条件 {row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>{row[4]}</td></tr>)}</tbody>
         </table>
       </div>
 
@@ -985,8 +1001,8 @@ function ExperimentRunPanel({ activeMode, onChanged }: { activeMode: ExperimentM
           <div key={run.id} className="grid gap-3 border-b border-[#eaecf0] py-3 lg:grid-cols-[1fr_auto]">
             <div>
               <div className="flex flex-wrap items-center gap-2 text-sm"><strong>{run.name}</strong><span className="text-[#86909c]">{run.code}</span><span>{run.status === 'ACTIVE' ? '正在分配' : run.status === 'CLOSED' ? '已暂停' : '未启动'}</span></div>
-              <div className="mt-1 text-xs text-[#4e5969]">区组 {run.progress.currentBlockIndex}，已领取 {run.progress.claimedInCurrentBlock}/7；累计分配 {run.progress.assigned}，关联 Session {run.progress.sessionCount}，完成 {run.progress.completed}，队列剩余 {run.progress.available}</div>
-              <div className="mt-1 text-xs text-[#86909c]">{FORMAL_CONDITIONS.map(([condition]) => `${condition}: ${run.progress.byCondition[condition] ?? 0}`).join('  ·  ')}</div>
+              <div className="mt-1 text-xs text-[#4e5969]">区组 {run.progress.currentBlockIndex}，已领取 {run.progress.claimedInCurrentBlock}/9；累计分配 {run.progress.assigned}，关联 Session {run.progress.sessionCount}，完成 {run.progress.completed}，队列剩余 {run.progress.available}</div>
+              <div className="mt-1 text-xs text-[#86909c]">{FORMAL_CONDITIONS.map(([, condition]) => `${condition}: ${run.progress.byCondition[condition] ?? 0}`).join('  ·  ')}</div>
             </div>
             <div className="flex items-center gap-2">
               {run.status !== 'ACTIVE' ? <button type="button" onClick={() => activateRun(run)} className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><Play size={14} />{run.status === 'CLOSED' ? '继续此实验局' : '激活正式实验'}</button> : null}
@@ -1310,6 +1326,71 @@ function FormalQuestionnaireSectionEditor({
   );
 }
 
+function OnlineIntegrityTab() {
+  const [config, setConfig] = useState<OnlineIntegrityConfig | null>(null);
+  const [status, setStatus] = useState('');
+
+  async function load() {
+    const response = await fetch(`${serverBaseUrl}/admin/online-integrity-config`, { cache: 'no-store' });
+    const data = (await response.json()) as { config: OnlineIntegrityConfig };
+    setConfig(data.config);
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  async function save() {
+    if (!config) return;
+    setStatus('保存中...');
+    const response = await fetch(`${serverBaseUrl}/admin/online-integrity-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const payload = (await response.json()) as { config?: OnlineIntegrityConfig; message?: string };
+    if (!response.ok || !payload.config) {
+      setStatus(payload.message ?? `保存失败（${response.status}）`);
+      return;
+    }
+    setConfig(payload.config);
+    setStatus('已保存；只影响之后新建的 Session，旧 Session 使用自己的参数快照。');
+  }
+
+  if (!config) return <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 text-sm text-[#86909c]">配置加载中...</div>;
+  const numberFields: Array<{ key: keyof OnlineIntegrityConfig; label: string; help: string; min: number }> = [
+    { key: 'idlePromptSeconds', label: '无操作提醒阈值（秒）', help: '正式工作段连续无有效操作多久后弹出“仍在参与实验吗？”', min: 10 },
+    { key: 'idleConfirmationGraceSeconds', label: '提醒确认期限（秒）', help: '期限内确认只记软提醒；超时才开启无效行为区间。', min: 5 },
+    { key: 'heartbeatIntervalSeconds', label: '心跳间隔（秒）', help: '浏览器在正式工作段更新服务器在线时间；必须小于掉线宽限。', min: 2 },
+    { key: 'connectionLostGraceSeconds', label: '掉线宽限（秒）', help: '最后心跳超过该值，服务器开启 DISCONNECT 区间。', min: 5 },
+    { key: 'dropoutTimeoutSeconds', label: '正式退出判定（秒）', help: '最后心跳超过该值，判为正式退出；必须大于掉线宽限。', min: 30 },
+    { key: 'offscreenViolationSeconds', label: '切屏违规阈值（秒）', help: '每次切屏都记录，持续时间严格超过该值才标记正式违规。', min: 0 },
+    { key: 'authorizedDialogMaxSeconds', label: '授权文件窗口上限（秒）', help: '高级 AI 选择图片导致的短暂失焦标为授权窗口，不算切屏违规。', min: 5 },
+    { key: 'pasteAfterOffscreenWindowSeconds', label: '切屏后粘贴关联窗口（秒）', help: '仅记录时间关联和字符数，不保存剪贴板原文。', min: 0 },
+  ];
+
+  return (
+    <div className="space-y-5 rounded-xl border border-[#e5e6eb] bg-white p-6 shadow-sm">
+      <div>
+        <div className="font-bold text-[#1d2129]">线上实验质量参数</div>
+        <p className="mt-1 text-xs leading-6 text-[#86909c]">仅在正式工作段启用。休息、指导、测试轮和问卷不监听。每个 Session 创建时会冻结一份参数快照，保证中途修改不会改变旧数据含义。</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="flex items-center justify-between rounded-lg border border-[#e5e6eb] p-4 text-sm"><span><strong>启用线上质量监测</strong><span className="mt-1 block text-xs text-[#86909c]">关闭后不启动全屏、切屏、无效行为与心跳状态机。</span></span><input type="checkbox" checked={config.enabled} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} /></label>
+        <label className="flex items-center justify-between rounded-lg border border-[#e5e6eb] p-4 text-sm"><span><strong>正式工作段强制全屏</strong><span className="mt-1 block text-xs text-[#86909c]">退出全屏会阻断操作，必须点击恢复；退出全屏本身不落库。</span></span><input type="checkbox" checked={config.fullscreenRequired} onChange={(e) => setConfig({ ...config, fullscreenRequired: e.target.checked })} /></label>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {numberFields.map((field) => (
+          <label key={field.key} className="rounded-lg border border-[#e5e6eb] p-4 text-sm">
+            <span className="font-semibold">{field.label}</span>
+            <input type="number" min={field.min} value={Number(config[field.key])} onChange={(e) => setConfig({ ...config, [field.key]: Number(e.target.value) })} className="mt-2 w-full rounded border border-[#d9dce1] px-3 py-2" />
+            <span className="mt-2 block text-xs leading-5 text-[#86909c]">{field.help}</span>
+          </label>
+        ))}
+      </div>
+      <div className="flex items-center gap-3"><button type="button" onClick={() => void save()} className="rounded bg-[#1e80ff] px-4 py-2 text-sm font-semibold text-white">保存线上质量参数</button>{status ? <span className="text-xs text-[#4e5969]">{status}</span> : null}</div>
+    </div>
+  );
+}
+
 function QuestionnaireConfigTab() {
   const [config, setConfig] = useState<ExperimentConfig | null>(null);
   const [status, setStatus] = useState('');
@@ -1404,11 +1485,11 @@ function QuestionnaireConfigTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#eef0f2]">
-              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">平台外报名阶段</td><td className="px-3 py-3">招募问卷</td><td className="px-3 py-3">A0-A6 共用，在处理分配、角色信息和材料展示前完成；不进入本系统。</td><td className="px-3 py-3">实验人员导入参与者手机号</td></tr>
+              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">平台外报名阶段</td><td className="px-3 py-3">招募问卷</td><td className="px-3 py-3">A0-A8 共用，在处理分配、角色信息和材料展示前完成；不进入本系统。</td><td className="px-3 py-3">实验人员导入参与者手机号</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/practice-quiz</td><td className="px-3 py-3">测试轮开始前测试题</td><td className="px-3 py-3">使用“实验配置”中的测试题模板和通过标准，不使用本页 V2.2 正式问卷。</td><td className="px-3 py-3">通过后进入测试轮 ready</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/break · 工作段 1/2 后</td><td className="px-3 py-3">第 1/2 段工作回顾</td><td className="px-3 py-3">每段 6 道共同题；A1-A6 且本人在刚结束工作段实际调用过任务1 AI 时，再增加 3 道该段 AI 体验题。</td><td className="px-3 py-3">提交后进入对应休息段</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 工作段 3 后</td><td className="px-3 py-3">第 3 段工作回顾</td><td className="px-3 py-3">与前两段使用同一套 6/9 题规则，单独显示为“第 3 段工作回顾”。</td><td className="px-3 py-3">提交后继续显示最终长问卷</td></tr>
-              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 最终阶段</td><td className="px-3 py-3">人口特征统计和其他信息采集问卷</td><td className="px-3 py-3">按 A/B 角色、A0-A6、任务1 AI 调用、图片上传、交接备注、查看 A 材料和反馈行为动态组装。</td><td className="px-3 py-3">提交后进入独立支付确认</td></tr>
+              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 最终阶段</td><td className="px-3 py-3">人口特征统计和其他信息采集问卷</td><td className="px-3 py-3">按 A/B 角色、A0-A8、任务1 AI 调用、图片上传、交接备注、查看 A 材料、反馈行为及线上行为自报动态组装。</td><td className="px-3 py-3">提交后进入独立支付确认</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 问卷后</td><td className="px-3 py-3">支付手机号确认（非问卷）</td><td className="px-3 py-3">只显示报名手机号掩码并记录确认状态；完整手机号不写入问卷答案和分析导出。</td><td className="px-3 py-3">确认后记录实验完成</td></tr>
             </tbody>
           </table>
@@ -1418,11 +1499,11 @@ function QuestionnaireConfigTab() {
           <div className="lg:pr-5">
             <div className="mb-1 text-sm font-semibold text-[#1d2129]">工作段回顾：6 + 3</div>
             <div>共同 6 题：脑力负荷、努力投入、时间压力、任务2干扰、输出信心、疲劳。</div>
-            <div className="mt-1">条件 3 题：任务1 AI 帮助感、校验成本、可靠性。A0 永不显示；A1-A6 仅在本人当段至少发送过一次任务1 AI 请求时显示。</div>
+            <div className="mt-1">条件 3 题：任务1 AI 帮助感、校验成本、可靠性。A0/A7/A8 永不显示；A1-A6 仅在本人当段至少发送过一次任务1 AI 请求时显示。</div>
           </div>
           <div className="lg:px-5">
             <div className="mb-1 text-sm font-semibold text-[#1d2129]">最终问卷：条件与角色</div>
-            <div>A0 隐藏实际 AI 体验和 AI 图片功能感知，但仍回答“更强 AI”假设题；A1-A6 的实际 AI 体验依据调用行为显示，图片帮助题还要求高级 AI 条件且实际上传过图片。</div>
+            <div>A0/A7/A8 隐藏实际 AI 体验和 AI 图片功能感知，但仍回答“更强 AI”假设题；A1-A6 的实际 AI 体验依据调用行为显示，图片帮助题还要求高级 AI 条件且实际上传过图片。</div>
             <div className="mt-1">A/B 各取自己的角色复盘；交接备注、A 原始材料和反馈相关题只在后台记录到对应行为时显示。</div>
           </div>
           <div className="lg:pl-5">
@@ -2090,6 +2171,7 @@ export default function AdminPage() {
         {activeTab === 'sessions' ? <SessionsTab /> : null}
         {activeTab === 'participants' ? <ParticipantsTab /> : null}
         {activeTab === 'config' ? <ConfigTab /> : null}
+        {activeTab === 'integrity' ? <OnlineIntegrityTab /> : null}
         {activeTab === 'questionnaires' ? <QuestionnaireConfigTab /> : null}
         {activeTab === 'materials' ? <MaterialsLibraryTab /> : null}
         {activeTab === 'sidefeed' ? <AdminSidefeedPanel /> : null}

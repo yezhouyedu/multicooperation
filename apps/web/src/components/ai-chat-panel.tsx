@@ -817,6 +817,7 @@ export function AiChatPanel({
                 multiple
                 disabled={isDisabled}
                 className="hidden"
+                onClick={() => window.dispatchEvent(new CustomEvent('experiment-authorized-file-dialog'))}
                 onChange={(event) => void handleFiles(event.target.files)}
               />
             </label>

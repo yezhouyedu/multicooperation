@@ -3,6 +3,7 @@
 import { QuestionnaireForm, type QuestionnaireAnswers } from '@/components/questionnaire-form';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime } from '@/lib/session-runtime';
+import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
 import { useEffect, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
@@ -83,6 +84,7 @@ export default function ExperimentEndPage() {
 
   return (
     <main className="flex min-h-screen flex-col bg-[#f0f2f5]">
+      <OnlineIntegrityGuard bootstrap={bootstrap} runtime={runtime} />
       <nav
         className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
         style={{ boxShadow: 'var(--shadow-topbar)' }}

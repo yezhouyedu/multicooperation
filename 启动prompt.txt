@@ -5,7 +5,7 @@
 项目根目录：
 `E:\Own_program\multi cooperation`
 
-当前日期口径：请以 `2026-06-08` 之后的项目文档和代码为准。旧聊天记录、旧方案、废案和 `04_archive/` 里的内容不能覆盖最新代码与最新 specs。
+当前日期口径：请以 `2026-08-23` 的最新项目文档和代码为准。旧聊天记录、七条件方案、实验 1/2/3、废案和 `04_archive/` 里的内容不能覆盖最新代码与最新 specs。
 
 ---
 
@@ -29,7 +29,8 @@
 - `01_rules/experiment_necessary.md` 是实验方法、论文回溯、实验必要口径相关真相源。
 - `02_specs/04_pre_deploy/数据库文件夹手册.md` 是当前变量导出包阅读真相源。
 - `02_specs/04_pre_deploy/变量记录与服务器导出方案.md` 是变量记录设计真相源。
-- `02_specs/03_execution/实验123计划.md` 是实验 1/2/3 模式切换真相源。
+- `02_specs/03_execution/实验条件与区组随机方案.md` 是 A0-A8 九条件与实验局随机化真相源。
+- `02_specs/03_execution/线上实验质量与行为监测方案.md` 是全屏、切屏、无效行为、掉线与 A/B 退出真相源。
 - `02_specs/05_server_deploy/README.md` 是服务器上线文档入口。
 - `02_specs/05_server_deploy/命令运行清单.md` 是当前运维命令真相源。
 - `02_specs/05_server_deploy/部署运行手册.md` 是 Docker / volume / 部署运行真相源。
@@ -50,7 +51,12 @@
 
 **长期实现 + 本地实测 + HTTPS 域名已部署 + 上线前收口。**
 
-2026-06-17 最新增补口径：
+2026-08-23 最新增补口径：
+
+- 新正式实验局固定使用 A0-A8 九条件平衡区组；A0-A6 含义不变，新增 A7（无 AI + 低频 + 中性）与 A8（无 AI + 高频 + 合作叙事）。
+- 正式工作段已接入线上质量状态机：120 秒无操作软提醒、20 秒确认、每次切屏区间、严格超过 2 秒违规、10 秒心跳、30 秒掉线、180 秒正式退出和全屏门禁。
+- A 正式退出后 B 停止且后端拒绝继续提交；B 正式退出后 A 继续全部剩余任务。
+- Admin 新增“线上实验质量”独立 Tab；参数按 Session 快照，导出新增 `online_integrity.json`。
 
 - 正式入口已经从裸 IP 继续推进到 HTTPS 域名：`https://aiseek.tech`，`/api/*` 通过 Nginx 反代到 server，`/admin` 通过 web 访问。
 - 生产 Docker Compose 当前包含 `postgres`、`server`、`web`、`nginx` 四类服务；Nginx 证书文件在服务器 `/etc/multi-cooperation/certs`，证书私钥不进 git。
@@ -107,7 +113,7 @@
 - 材料系统已经支持角色分层材料目录，不再只是早期 `P01 + 两份正式表单`。
 - 最终版公司材料库已经上线：正式公司 36 家，测试轮 1 家；正式公司每家公司总记录 12 份，其中参与者侧 11 份、研究员 1 份，单角色实际可见 6 份。
 - 最终版任务2题库已经上线：active 900 条，V1.0 修订版，新字段完整。
-- admin 已支持实验 1/2/3 互斥模式卡片。
+- Admin 正式入口只使用 `manual / formal`；旧实验 1/2/3 模式仅兼容历史测试数据。
 - 变量保存模块第一期已经实现：事件、内容、AI 聊天、任务2、图片附件、服务器导出 zip、自检表。
 - 线上裸 IP P0 已跑通，HTTPS 域名入口已部署：`https://aiseek.tech`。
 - 线上 HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排仍是正式实验前收口事项。
@@ -117,40 +123,15 @@
 
 ---
 
-## 4. 实验 1/2/3 当前实现口径
+## 4. 九条件与线上质量当前口径
 
-admin 同一时间只能选择一种模式：
-
-- `manual`：手动 / 通用
-- `ai_upgrade`：实验 1，AI 能力升级
-- `side_reminder`：实验 2，任务2提醒频率
-- `coop_narrative`：实验 3，合作叙事
-
-切换 admin 模式只影响新 session，旧 session 使用创建时保存的快照。
-
-默认固定变量按师兄口径：
-
-- AI：基础版
-- 任务2提醒：continuous 高频提醒
-- 叙事：neutral_info 中性信息
-
-实验 1：
-
-- 随机 `upgradeCohort = early_upgrade / late_upgrade`
-- early：段 1 BASIC，段 2 ADVANCED，段 3 ADVANCED
-- late：段 1 BASIC，段 2 BASIC，段 3 ADVANCED
-- 固定任务2提醒和叙事，默认 `continuous + neutral_info`
-
-实验 2：
-
-- 随机 `sideDispatchMode = continuous / batch`
-- 固定 AI 和叙事，默认 `BASIC + neutral_info`
-
-实验 3：
-
-- 随机 `narrativeGroup = coop_narrative / neutral_info`
-- 合作叙事组再随机主题顺序
-- 固定 AI 和任务2提醒，默认 `BASIC + continuous`
+- `manual` 仅用于调试；`formal` 从活动实验局原子领取 A0-A8 槽位。
+- 每个九条件区组各条件恰好一次，默认 60 个区组/540 槽位；旧七条件实验局不能重新启用。
+- A0/A7/A8 无 AI；A1/A3/A4 BASIC；A2/A5/A6 ADVANCED。
+- 正式工作段才启动全屏、切屏、无效行为与心跳；其他阶段不判定。
+- 每次切屏均记录，持续时间严格超过 Session 快照阈值才违规；默认 2 秒。
+- 数据库使用 `ParticipantIntegrityState + OnlineIntegrityInterval + ExperimentEvent`，清洗先看团队和个人 flags，再回溯区间。
+- 详细规则见 `实验条件与区组随机方案.md`、`线上实验质量与行为监测方案.md` 和 `数据库文件夹手册.md`。
 
 ---
 
@@ -201,7 +182,7 @@ participant 层保存个人事实：
 - 后测问卷
 - 内容质量评分
 - gold fact / gold issue
-- 滚动、focus/blur、复制粘贴、细粒度停留时间
+- 鼠标原始轨迹和按键原文（明确不采集）；focus/blur、复制粘贴摘要已经实现
 - AI 采纳率自动编码
 
 ---

@@ -306,6 +306,20 @@ export class AiService {
     }
 
     const phase = input.phase === 'practice' ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
+    if (phase === ExperimentPhase.FORMAL && participantId) {
+      const pairing = await this.prisma.pairing.findFirst({ where: { sessionId: session.id } });
+      if (!pairing || (pairing.participantAId !== participantId && pairing.participantBId !== participantId)) {
+        throw new BadRequestException('Participant 不属于当前 Session');
+      }
+      const participantRole = pairing.participantAId === participantId ? ParticipantRole.A : ParticipantRole.B;
+      const states = await this.prisma.participantIntegrityState.findMany({ where: { sessionId: session.id } });
+      const self = states.find((state) => state.participantId === participantId);
+      const roleAState = states.find((state) => state.role === ParticipantRole.A);
+      if (self?.hasFormalDropout) throw new BadRequestException('你已正式退出，不能继续调用 AI');
+      if (participantRole === ParticipantRole.B && roleAState?.hasFormalDropout) {
+        throw new BadRequestException('队友 A 已正式退出，本次实验不能继续');
+      }
+    }
     const segmentIndex = input.segmentIndex ?? 0;
     const requestId = `ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const attachmentLog: Array<Record<string, unknown>> = [];

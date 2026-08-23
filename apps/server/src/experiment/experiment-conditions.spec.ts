@@ -13,6 +13,8 @@ describe('experiment conditions', () => {
     ['A4', 'BASIC', 'continuous', 'coop_narrative'],
     ['A5', 'ADVANCED', 'continuous', 'coop_narrative'],
     ['A6', 'ADVANCED', 'batch', 'neutral_info'],
+    ['A7', 'NONE', 'batch', 'neutral_info'],
+    ['A8', 'NONE', 'continuous', 'coop_narrative'],
   ] as const)('maps %s to its fixed treatment', (condition, ai, dispatch, narrative) => {
     expect(experimentConditionDefinition(condition)).toMatchObject({
       aiCondition: ai,

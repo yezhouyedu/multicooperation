@@ -1,6 +1,6 @@
 # apps/web
 
-这是 `multi cooperation` 项目的前端应用，负责参与者实验主流程、测试题与同步准备页、A/B 工作台、休息问卷页和 admin 后台界面。
+这是 `multi cooperation` 项目的前端应用，负责参与者实验主流程、测试题与同步准备页、A/B 工作台、工作段回顾/最终问卷、支付确认和 admin 后台界面。
 
 ## 1. 技术基线
 
@@ -9,9 +9,9 @@
 - 主要职责：
   - 参与者登录与自动配对后的页面流转
   - A / B 主工作台
-  - 副线展开页
+  - 任务2展开页
   - 材料区阅读器
-  - 主线 / 副线 AI 聊天区
+  - 任务1 / 任务2 AI 聊天区
   - admin 管理后台
 
 ## 2. 关键目录
@@ -30,10 +30,12 @@
 - `/login`
 - `/waiting-room`
 - `/instruction`
+- `/instruction/task-preview`
 - `/ready`
 - `/practice-quiz`
 - `/practice`
 - `/break`
+- `/pre-segment-instruction`
 - `/workspace/a`
 - `/workspace/b`
 - `/workspace/b-waiting`
@@ -41,16 +43,18 @@
 - `/workspace/end`
 - `/admin`
 
+当前正式实验入口为 `manual / formal`；正式模式按实验局 A0-A8 九条件平衡区组槽位分配条件。参与者前台不显示实验条件编号。正式工作段使用全屏门禁、切屏/无效行为监听和心跳，其他阶段不判定。
+
 ## 4. 关键组件
 
 - `src/components/workbench-layout.tsx`
-  - A/B 主工作台与副线展开页的三区骨架
+  - A/B 主工作台与任务2展开页的三区骨架
 - `src/components/company-material-panel.tsx`
   - 材料区混合阅读器，支持 `txt / docx / pdf / xlsx`
 - `src/components/ai-chat-panel.tsx`
-  - 主线 / 副线 AI 聊天区
+  - 任务1 / 任务2 AI 聊天区
 - `src/components/sidetask-strip.tsx`
-  - 顶部副线入口与副线展开页入口
+  - 顶部任务2入口与任务2展开页入口
 - `src/components/session-topbar.tsx`
   - 顶栏与倒计时
 
