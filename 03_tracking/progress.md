@@ -2627,6 +2627,36 @@
 
 ---
 
+### 2026-08-23 九条件与线上实验质量闭环上线
+
+**最终业务口径**：
+- 正式实验固定为 A0-A8 九条件平衡区组；论文条件 1-9 与系统码分开展示，旧七条件实验局不能重新激活。
+- 正式工作段才监听线上质量：全部切屏区间落库，持续时间严格超过 2 秒才违规；120 秒无有效操作后弹窗，20 秒内明确确认只记软提醒，超时开启关键无效区间。
+- 正式工作段默认强制全屏；退出全屏阻断但不单独落库。10 秒心跳、30 秒掉线、180 秒正式退出，服务器每 5 秒主动扫描，关闭网页后仍可完成掉线/退出判定。
+- A 正式退出后 Session 进入 `TERMINATED` 且 B 停止；B 正式退出后 A 继续完成全部剩余流程。任务、问卷、任务2和正式 AI 写接口均有服务端退出保护。
+
+**实现与数据**：
+- 新增 Admin“线上实验质量”Tab 和 10 项参数；参数按 Session 冻结，不受后续 Admin 修改影响。
+- 新增 `ParticipantIntegrityState`、`OnlineIntegrityInterval`、`SessionStatus.TERMINATED` 与迁移 `20260823090000_nine_conditions_online_integrity`。
+- 新增规则承诺/理解确认、全屏门禁、切屏/无效/剪贴板摘要/心跳状态机、主动退出、A/B 异常闭合和最终四项线上行为自报。
+- 导出新增每名被试的 `online_integrity.json`、participant quality flags 和 session 团队 flags；数据库文件夹手册已覆盖新增全部列、事件、参数和清洗硬规则。
+- 系统提示词、根规则、APP_FLOW、PRD、前后端 README、执行计划、验收清单、变量/导出/问卷/段前指导语等当前文档已同步。
+
+**本地验证**：
+- Prisma 16 个迁移全部应用，`migrate status` 显示数据库最新；Admin API 正确读取 120+20、10/30/180、2 秒参数，并拒绝非法阈值组合。
+- 测试实验局生成 60 个九条件区组/540 槽位后已删除；server 5 个测试套件、28 项测试全过；server build 与 web production build（24 路由）通过；`git diff --check` 通过。
+- 真实数据库会话夹具验证：B 退出后 A=`CONTINUE_AFTER_B_DROPOUT` 且 Session 保持进行；A 退出后 B=`STOP_AFTER_A_DROPOUT` 且 Session=`TERMINATED`；后台将 200 秒无心跳 B 自动判退；2.072 秒切屏同时写入区间违规和参与者 flag。测试夹具全部清理。
+- ESLint 全库仍存在数百项历史类型/格式债务，本轮未扩大为重构；有效门禁采用测试、类型构建、真实迁移、API/数据库端到端和 diff 检查。
+
+**GitHub 与生产**：
+- 主实现提交 `f085d95 实现九条件与线上实验质量闭环` 已推送 GitHub `main` 并通过 git archive 全量部署生产。
+- 部署前 PostgreSQL 备份：`/opt/multi-cooperation/backups/multi_cooperation_before_f085d95_20260823_121808.dump`，346845 字节，SHA-256 `ae24ff1569602e906774494b7c7d0767d40633555a875335233b750f29c000ae`。
+- 生产迁移完成，两张线上质量表存在；活动九条件实验局为 `RUN-20260823042022-ACA8C9`，A0-A8 各 60 槽位、合计 540。
+- 生产 `https://aiseek.tech/api/health` 为 `ok`，`/admin` 为 200；postgres/server/web/nginx 四容器正常，Admin 线上质量参数为启用、120+20、10/30/180、严格超过 2 秒、强制全屏。
+- 未跟踪的 `.obsidian/`、`.playwright-cli/`、部署图片和本地 nginx 目录未纳入提交、未清理。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
