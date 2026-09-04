@@ -2685,6 +2685,14 @@
 
 ---
 
+### 2026-09-04 有效工作时间生产部署
+
+- 本地实现与文档以提交 `bf9268c` 推送至 GitHub `main`，随后通过 `upload-git-archive.ps1 -Service server -AllowDirty` 仅上传该提交并定向重建生产后端；未跟踪的证书目录、截图和工具缓存未进入归档。
+- 部署前将 PostgreSQL 备份至服务器 `/opt/multi-cooperation-backups/pre_effective_timing_20260904_1147.sql`（约 2.2 MB）；本次无 Prisma migration，未修改或删除生产 volume。
+- 生产 `server` 容器重新构建后进入 `healthy`，服务器内部 `/health` 与公网 `https://aiseek.tech/api/health` 均返回 200/`status=ok`，公网登录页返回 200；服务器源码已核对包含 `validEligibleWorkMs` 等新增有效时间字段。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
