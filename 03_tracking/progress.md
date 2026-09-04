@@ -2676,6 +2676,15 @@
 
 ---
 
+### 2026-09-04 线上质量区间与有效主副线时间导出
+
+- 保留原有 `eligibleWorkMs / totalMainTimeMs / totalSideTimeMs` 墙钟口径，新增 `validEligibleWorkMs / validMainTimeMs / validSideTimeMs`、有效占比和各类 `*ExcludedMs`，不静默改变旧导出字段含义。
+- 导出时扣除正式 `INACTIVITY`、违规 `OFFSCREEN`、`DISCONNECT` 和正式退出后的时段；重叠区间先求并集，只扣一次，短切屏、授权文件框和 120+20 秒正式无效前阶段不扣。
+- 有效时间同步进入 `variables.json.timing`、`timestamps.json.derived`、逐工作段、逐次副线和逐公司时间线；数据库原始区间、工作段和事件不修改，无需 Prisma migration。
+- 同步更新线上质量方案、变量导出方案、变量自检表和数据库文件夹手册；新增导出时间测试，server 全量 6 个测试套件、29 项测试与 build 通过。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
