@@ -120,7 +120,7 @@
 
 这份正式题库在：
 
-- **Excel 路径**：`E:\Own_program\multi cooperation\00_start_materials\第五次开会\C副线任务题库_V0.8.xlsx`
+- **当前正式 Excel 路径**：`E:\Own_program\multi cooperation\00_start_materials\第十次开会\任务2题库20260906.xlsx`（V1.5.1；旧 V0.8/V1.0 文件仅供历史追溯）
 
 > **关于 Excel 的定性说明**：
 > - 当前版本（V0.8）的**字段结构已经是最终版**，后续不会再加字段或改字段名
@@ -156,24 +156,27 @@
 
 ### 3.2 这份题库最重要的现成字段
 
-最有用的是这些：
+当前 V1.5.1 的 17 个字段为：
 
 - `item_id`
-- `pool_type`
 - `work_segment`
-- `surface_scenario`
-- `skeleton_type`
-- `narrative_category`
-- `narrative_subtype`
-- `direct_ai_flag`
 - `text`
 - `question`
 - `option_a`
 - `option_b`
 - `gold_answer`
+- `evidence_span`
+- `pool_type`
+- `content_theme`
+- `content_subtype`
+- `question_type`
+- `business_scenario`
+- `narrative_category`
+- `text_form`
+- `question_variant_id`
 - `difficulty`
-- `spillover_risk_flag`
-- `version`
+
+Admin 导入兼容 `题库` / `正式题库` 工作表名以及中英双语换行表头，并将新字段映射到既有 `SideTaskItem`。工作簿版本从“结论及修改清单”读取；本版为 V1.5.1。旧字段继续留在数据库和历史导出中，但 `direct_ai_flag` 不再承担正式抽样约束。
 
 ### 3.3 这些字段分别有什么用
 
@@ -530,6 +533,8 @@ admin 后面至少要能操作 4 类东西。
 其中这 `20 条合作叙事` 必须服从该段当前主题。  
 例如这段轮到 `互补分工`，就只能从该主题对应池里抽。
 
+V0.4 新增实际暴露硬约束：当前主题包含 5 个 `content_subtype`，每个 subtype 随机抽 4 题，合计 20 题。候选池允许各 subtype 总量略有差异，但导入时每个“工作段 × 主题 × subtype”不得少于 4 题。这样避免一次无分层随机恰好漏掉某个 subtype，导致团队间处理内容偏科。
+
 ### 8.2 与题库的对应关系
 
 普通中性从：
@@ -595,7 +600,7 @@ admin 后面至少要能操作 4 类东西。
 ┌──────────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
 │ 合作叙事池(段1,T2)   │     │ 合作叙事池(段2,T1)   │     │ 合作叙事池(段3,T3)   │
 │ 共60题可选           │     │ 共60题可选           │     │ 共60题可选           │
-│ 随机抽20题           │     │ 随机抽20题           │     │ 随机抽20题           │
+│ 5 subtype × 各随机4题 │     │ 5 subtype × 各随机4题 │     │ 5 subtype × 各随机4题 │
 ├──────────────────────┤     ├──────────────────────┤     ├──────────────────────┤
 │ 普通中性池(段1)      │     │ 普通中性池(段2)      │     │ 普通中性池(段3)      │
 │ 共120题可选          │     │ 共120题可选          │     │ 共120题可选          │

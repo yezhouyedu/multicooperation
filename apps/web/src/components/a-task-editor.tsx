@@ -270,7 +270,7 @@ export function ATaskEditor({
             <div className="mt-6 space-y-1 text-[13px] leading-7 text-[#4e5969]">
               <div className="font-semibold text-[#1d2129]">填写说明</div>
               <div>1. 仅依据给定材料填写，不要使用材料之外的知识进行推测。</div>
-              <div>2. A.1“基础数值摘录区”只填写材料中可直接提取的数值信息；如确实找不到，填写“材料未包含”。不允许重复用于 A.2。</div>
+              <div>2. A.1“基础数值摘录区”只填写材料中可直接提取的数值信息；如确实找不到，填写“材料未包含”。不会重复用于A.2。</div>
               <div>3. A.2“材料线索记录区”按材料顺序填写。每读完一份材料，判断是否发现与投资判断有关的机会线索或风险线索。</div>
               <div>4. A.3“给B的总体交接备注”为可选项，用于填写跨材料关联提示、可信度说明、建议B优先核验事项，或尚未坐实但值得注意的线索。</div>
             </div>
@@ -482,8 +482,8 @@ export function ATaskEditor({
             <h3 className="text-[16px] font-bold">五、绩效说明</h3>
             <div className="space-y-3 rounded-lg border border-[#dde1e7] bg-[#f8fafc] px-4 py-4 text-[13px] leading-7 text-[#4e5969]">
               <div>
-                <div className="font-semibold text-[#1d2129]">你的个人绩效按你完成的公司累计，主要来自A.1和A.2。</div>
-                <p>A.1基础数值摘录中，每填对一个基础数值可得分。</p>
+                <div className="font-semibold text-[#1d2129]">你在任务1中的个人绩效按你经手处理并有提交记录的公司累计，得分来自A.1和A.2。</div>
+                <p>A.1基础数值摘录中，同时填对指标名和记录可得分。</p>
                 <p>A.2材料线索记录中，每正确判断一份材料是否存在机会线索或风险线索可得分。选择“有”时，证据片段与材料内容相关可加分。</p>
               </div>
               <div>
@@ -494,7 +494,7 @@ export function ATaskEditor({
               <p>A.3总体交接备注不直接计入A个人绩效，但可能帮助B完成公司判断任务，从而提高团队绩效。</p>
               <div>
                 <div className="font-semibold text-[#1d2129]">团队绩效提醒</div>
-                <p>团队绩效只计算B完整提交的公司。B最终投资建议是否正确、重要机会和重要风险是否覆盖、普通机会和普通风险数量是否准确，会影响团队绩效。</p>
+                <p>团队绩效计算A和B均经手处理并由提交记录的公司。最终投资建议是否正确、重要机会和重要风险是否覆盖、普通机会和普通风险数量是否准确，会影响团队绩效。</p>
               </div>
             </div>
           </section>

@@ -28,7 +28,7 @@ type InstructionType =
   | (typeof NEUTRAL_INSTRUCTION_TYPES)[number]
   | (typeof COOP_INSTRUCTION_TYPES)[number];
 type InstructionPlanSnapshot = {
-  version: 'pre_segment_instruction_v1';
+  version: 'pre_segment_instruction_v2';
   durationSeconds: number;
   orderType: 'fixed_neutral_order' | 'neutral_order' | 'theme_order';
   orderValue: string;
@@ -38,17 +38,22 @@ type InstructionPlanSnapshot = {
 };
 const FIXED_NEUTRAL_ORDER = ['neutral_1', 'neutral_2', 'neutral_3'] as InstructionType[];
 const INSTRUCTION_TEXT_IDS: Record<InstructionType, string> = {
-  neutral_1: 'INSTR_NEUTRAL_1_V1',
-  neutral_2: 'INSTR_NEUTRAL_2_V1',
-  neutral_3: 'INSTR_NEUTRAL_3_V1',
-  complementarity: 'INSTR_COMPLEMENTARITY_V1',
-  verification_trace: 'INSTR_VERIFICATION_TRACE_V1',
-  shared_responsibility: 'INSTR_SHARED_RESPONSIBILITY_V1',
+  neutral_1: 'INSTR_NEUTRAL_1_V2',
+  neutral_2: 'INSTR_NEUTRAL_2_V2',
+  neutral_3: 'INSTR_NEUTRAL_3_V2',
+  complementarity: 'INSTR_COMPLEMENTARITY_V2',
+  verification_trace: 'INSTR_VERIFICATION_TRACE_V2',
+  shared_responsibility: 'INSTR_SHARED_RESPONSIBILITY_V2',
 };
 const THEME_TO_INSTRUCTION: Record<string, InstructionType> = {
-  '浜掕ˉ鍒嗗伐': 'complementarity',
-  '楠岃瘉鐣欑棔': 'verification_trace',
-  '鍏卞悓璐ｄ换': 'shared_responsibility',
+  '互补分工': 'complementarity',
+  '验证留痕': 'verification_trace',
+  '共同责任': 'shared_responsibility',
+};
+const COOP_SUBTYPES: Record<string, string[]> = {
+  '互补分工': ['C1_divided_information', 'C2_handoff_value', 'C3_integration', 'C4_complementary_roles', 'C5_redundancy_boundary'],
+  '验证留痕': ['V1_source_link', 'V2_version_history', 'V3_change_log', 'V4_targeted_verification', 'V5_avoid_full_recheck'],
+  '共同责任': ['S1_joint_approval', 'S2_sequential_responsibility', 'S3_role_accountability', 'S4_selective_crosscheck', 'S5_escalation_feedback'],
 };
 
 type ExperimentSnapshot = {
@@ -441,7 +446,7 @@ export class AuthService {
         select: { id: true, itemCode: true },
       });
 
-      let coopItems: { id: string; itemCode: string }[] = [];
+      let coopItems: { id: string; itemCode: string; narrativeSubtype: string | null }[] = [];
       if (narrativeGroup === 'coop_narrative' && segmentTheme) {
         coopItems = await sidetaskTx.sideTaskItem.findMany({
           where: {
@@ -451,7 +456,7 @@ export class AuthService {
             narrativeCategory: segmentTheme,
             itemCode: { notIn: Array.from(usedItemCodes) },
           },
-          select: { id: true, itemCode: true },
+          select: { id: true, itemCode: true, narrativeSubtype: true },
         });
       }
 
@@ -464,17 +469,11 @@ export class AuthService {
           `段${workSegment}普通中性池不足：需要${neutralCount}题，仅有${neutralItems.length}题可用`,
         );
       }
-      if (coopItems.length < coopCount) {
-        throw new Error(
-          `段${workSegment}合作叙事池(${segmentTheme ?? 'N/A'})不足：需要${coopCount}题，仅有${coopItems.length}题可用`,
-        );
-      }
-
       // Sample using seeded random
       const sampleSeed = `${sessionId}:segment:${workSegment}`;
       const sampledNeutral: { id: string; itemCode: string }[] = this.sampleWithSeed(neutralItems, neutralCount, sampleSeed);
       const sampledCoop: { id: string; itemCode: string }[] = coopCount > 0
-        ? this.sampleWithSeed(coopItems, coopCount, `${sampleSeed}:coop`)
+        ? this.sampleBalancedCoopItems(coopItems, segmentTheme, workSegment, `${sampleSeed}:coop`)
         : [];
 
       // Track used items
@@ -507,6 +506,25 @@ export class AuthService {
   private sampleWithSeed<T>(items: T[], count: number, seed: string): T[] {
     const shuffled = this.shuffleWithSeed(items, seed);
     return shuffled.slice(0, count);
+  }
+
+  private sampleBalancedCoopItems(
+    items: { id: string; itemCode: string; narrativeSubtype: string | null }[],
+    theme: string | null,
+    workSegment: number,
+    seed: string,
+  ): { id: string; itemCode: string }[] {
+    const expectedSubtypes = theme ? COOP_SUBTYPES[theme] : undefined;
+    if (!expectedSubtypes) {
+      throw new Error(`段${workSegment}合作叙事主题无法识别：${theme ?? 'N/A'}`);
+    }
+    return expectedSubtypes.flatMap((subtype) => {
+      const candidates = items.filter((item) => item.narrativeSubtype === subtype);
+      if (candidates.length < 4) {
+        throw new Error(`段${workSegment}合作叙事池(${theme}/${subtype})不足：需要4题，仅有${candidates.length}题可用`);
+      }
+      return this.sampleWithSeed(candidates, 4, `${seed}:${subtype}`).map(({ id, itemCode }) => ({ id, itemCode }));
+    });
   }
 
   private buildExperimentSnapshot(
@@ -637,7 +655,7 @@ export class AuthService {
     if (narrativeGroup === 'coop_narrative') {
       orderType = 'theme_order';
       order = themeOrder.map((theme) => THEME_TO_INSTRUCTION[theme] ?? 'complementarity');
-    } else if (mode === 'coop_narrative' && narrativeGroup === 'neutral_info') {
+    } else if (narrativeGroup === 'neutral_info' && (mode === 'formal' || mode === 'coop_narrative')) {
       orderType = 'neutral_order';
       seeds.instructionOrderSeed = this.generateSeed();
       order = this.shuffleWithSeed([...NEUTRAL_INSTRUCTION_TYPES], seeds.instructionOrderSeed);
@@ -650,7 +668,7 @@ export class AuthService {
       3: order[2] ?? 'neutral_3',
     } as Record<'1' | '2' | '3', InstructionType>;
     return {
-      version: 'pre_segment_instruction_v1',
+      version: 'pre_segment_instruction_v2',
       durationSeconds: 15,
       orderType,
       orderValue,

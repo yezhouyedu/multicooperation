@@ -10,10 +10,10 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 
 // ========== 文字内容完全来自原始文档，一个字都不能改 ==========
 
-// 通用指导语 7.5改.docx，按原文顺序拆分为网页层级。
+// 第十次会议 A/B 第一页指导语线上实验修订版，按原文顺序拆分为网页层级。
 const generalInstructions = [
   { text: '本实验由测试轮和三个正式工作段组成。测试轮用于熟悉页面和操作，不计入绩效。正式任务中，你将与另一名参与者组成两人团队。系统随机分配角色 A 和角色 B，角色在整个实验过程中保持不变。' },
-  { text: '实验包含任务 1 和任务 2。' },
+  { text: '实验中每个正式工作段包含任务 1 和任务 2。' },
 ];
 
 const informationDefinitions = [
@@ -81,7 +81,9 @@ function TaskOneContent() {
   return (
     <div className="space-y-6 text-[14px] leading-[1.9] text-[#4e5969]">
       <div className="space-y-3">
-        <p>角色 A 和角色 B 分别阅读同一家公司的不同材料，并完成各自的任务。</p>
+        <p>任务 1 以两人团队为单位完成同一家公司的信息处理和判断。角色 A 和角色 B 分别获得该公司的不同材料、完成不同的任务，两人的工作共同对应同一家公司的最终处理结果。</p>
+        <p>角色 A先处理自己可见的材料，提取其中的信息并完成自己的任务表。角色 A 提交的信息会在规定时间后向角色 B 开放，成为角色 B 后续可以查看和使用的信息。</p>
+        <p>角色 B同时处理自己可见的材料。在角色 A 信息开放后，角色 B 可以根据需要查看角色 A 提交的信息和相关材料，并决定是否将这些信息用于自己的判断。角色 B 最终形成并提交该公司的整体判断结果。</p>
         <p className="border-l-2 border-[#1e80ff] pl-4">作答时只能依据页面当前可见的材料、已经开放的信息和页面提供的工具，不要使用材料之外的知识进行推测。</p>
       </div>
 
@@ -105,7 +107,7 @@ function TaskOneContent() {
         <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">任务 1 计分规则</h3>
         <div className="space-y-3">
           <p><span className="font-semibold text-[#1d2129]">个人绩效：</span>根据每个参与者所完成的任务分别计算（角色 A 和角色 B 的任务不同，各自计分）。</p>
-          <p><span className="font-semibold text-[#1d2129]">团队绩效：</span>仅依据角色 B 提交的材料包来评定，但评定出的团队绩效分数，会同时作为角色 A 和角色 B 的团队报酬（即两人共享同一团队绩效分）。</p>
+          <p><span className="font-semibold text-[#1d2129]">团队绩效：</span>团队绩效反映两名成员共同完成的公司处理结果。角色 A 负责前序材料的信息处理，其提交内容在规定时间后成为角色 B 可以使用的信息；角色 B 在此基础上形成该公司的最终处理结果。每家公司的团队绩效根据这一最终结果计算，所得团队绩效分由角色 A 和角色 B 共同获得。</p>
           <p>具体得分规则将在各任务表单末尾详细列出。</p>
         </div>
       </div>
@@ -134,7 +136,7 @@ function TaskTwoAndCompensationContent() {
         <h3 className="mb-3 text-[14px] font-semibold text-[#1d2129]">报酬</h3>
         <p>总报酬由三部分构成：</p>
         <div className="my-3 border-l-4 border-[#1e80ff] bg-[#f4f9ff] px-4 py-3 text-center text-[15px] font-semibold text-[#1d2129]">
-          总报酬 = 固定报酬（25元）+ 个人绩效报酬 + 团队绩效报酬
+          总报酬 = 固定报酬（20元）+ 个人绩效报酬 + 团队绩效报酬
         </div>
         <div className="space-y-2">
           <p>正式任务中所获得的绩效分，会按统一比例折算成现金。</p>
@@ -340,9 +342,21 @@ export default function InstructionPage() {
               </section>
 
               <section className="border-t border-[#f0f2f5] py-7">
-                <SectionHeader num="五" title="知情同意说明" />
-                <div className="rounded-lg border border-[#e8f3ff] bg-[#f4f9ff] px-5 py-4 text-[14px] leading-[2] text-[#4e5969]">
-                  本实验用于学术研究，所有数据仅用于学术研究和实验质量检查，研究报告中不会展示能够直接识别你个人身份的信息。本实验不评价你的个人能力，也不涉及真实投资建议。测试轮不计入正式绩效，正式任务中的绩效分会按统一规则折算为报酬。参加实验是自愿的，点击“我已阅读，进入下一步”，即表示你已阅读并理解以上说明，并同意参加本实验。
+                <SectionHeader num="五" title="线上实验参与规则" />
+                <div className="space-y-3 text-[14px] leading-[1.9] text-[#4e5969]">
+                  <p>1. 正式工作段内，请持续参与实验，不要长时间离开电脑，也不要处理与实验无关的事务。</p>
+                  <p>2. 处理实验内容时，只能使用实验网站当前向你提供的材料和功能，不得使用实验网站之外的工具，包括AI、计算器、搜索引擎等帮助处理实验内容，也不得请他人帮助完成实验任务。</p>
+                  <p>3. 实验网站可能记录长时间没有平台内操作、离开实验页面等情况。持续或严重偏离上述要求时，本次实验可能被判定为未完成，但是也不需要为了保持操作记录而反复点击、滚动页面或切换任务。</p>
+                  <p>4. 如果出现短暂网络问题，请保持实验页面打开并尽快恢复连接。网络或实验平台本身的技术故障不会直接作为违反实验规则处理。</p>
+                  <p className="font-medium text-[#1d2129]">主动中途退出，或者被正式判定为未完成实验时，将无法获得实验报酬。</p>
+                </div>
+              </section>
+
+              <section className="border-t border-[#f0f2f5] py-7">
+                <SectionHeader num="六" title="规则确认和知情同意说明" />
+                <div className="space-y-3 rounded-lg border border-[#e8f3ff] bg-[#f4f9ff] px-5 py-4 text-[14px] leading-[2] text-[#4e5969]">
+                  <p>□ 我已阅读并理解上述参与规则。在接下来的实验中，我会持续参与，并只使用实验网站当前提供的材料和功能处理实验任务，不使用网站之外的工具、其他设备或他人帮助。</p>
+                  <p>□本实验用于学术研究，所有数据仅用于学术研究和实验质量检查，研究报告中不会展示能够直接识别你个人身份的信息。本实验不评价你的个人能力，也不涉及真实投资建议。测试轮不计入正式绩效，正式任务中的绩效分会按统一规则折算为报酬。参加实验是自愿的，点击“我已阅读，进入下一步”，即表示你已阅读并理解以上说明，并同意参加本实验。</p>
                 </div>
               </section>
             </div>

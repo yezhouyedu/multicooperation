@@ -42,15 +42,26 @@ function isAnswered(item: QuestionnaireItem, value: AnswerValue | undefined) {
   return value !== undefined && String(value).trim() !== '';
 }
 
+function isVisible(item: QuestionnaireItem, answers: QuestionnaireAnswers) {
+  if (!item.showIf) return true;
+  return String(answers[item.showIf.code] ?? '') === item.showIf.equals;
+}
+
 export function QuestionnaireForm({ questionnaire, submitting = false, submitLabel = '提交问卷', onSubmit }: Props) {
   const [answers, setAnswers] = useState<QuestionnaireAnswers>({});
   const [followups, setFollowups] = useState<Record<string, string>>({});
-  const sections = useMemo(
+  const baseSections = useMemo(
     () =>
       questionnaire.sections?.length
         ? questionnaire.sections.map((section) => ({ ...section, title: safeSectionTitle(section.title) }))
         : [{ title: safeSectionTitle(questionnaire.title), items: questionnaire.items }],
     [questionnaire.items, questionnaire.sections, questionnaire.title],
+  );
+  const sections = useMemo(
+    () => baseSections
+      .map((section) => ({ ...section, items: section.items.filter((item) => isVisible(item, answers)) }))
+      .filter((section) => section.items.length > 0),
+    [answers, baseSections],
   );
   const allItems = useMemo(() => sections.flatMap((section) => section.items), [sections]);
   const canSubmit = useMemo(() => allItems.every((item) => isAnswered(item, answers[item.code])), [allItems, answers]);
@@ -67,9 +78,12 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
 
   async function handleSubmit() {
     if (!canSubmit || submitting) return;
-    const payload: QuestionnaireAnswers = { ...answers };
+    const visibleCodes = new Set(allItems.map((item) => item.code));
+    const payload: QuestionnaireAnswers = Object.fromEntries(
+      Object.entries(answers).filter(([code]) => visibleCodes.has(code)),
+    );
     for (const [code, value] of Object.entries(followups)) {
-      if (value.trim()) payload[`${code}__followup`] = value.trim();
+      if (visibleCodes.has(code) && value.trim()) payload[`${code}__followup`] = value.trim();
     }
     await onSubmit(payload);
   }

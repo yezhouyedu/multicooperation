@@ -86,6 +86,7 @@ export type QuestionnaireItem = {
     prompt: string;
     triggerText: string;
   };
+  showIf?: { code: string; equals: string };
 };
 
 export type QuestionnaireTemplate = {

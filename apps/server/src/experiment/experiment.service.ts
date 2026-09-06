@@ -1430,6 +1430,19 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     });
     if (existing) return { ok: true, duplicate: true };
 
+    const answerObject = answers && typeof answers === 'object' && !Array.isArray(answers)
+      ? answers as Record<string, unknown>
+      : {};
+    const submittedSections = active.questionnaire.sections.map((section: any) => ({
+      ...section,
+      items: section.items.filter((item: any) => this.questionnaireItemVisible(item, answerObject)),
+    })).filter((section: any) => section.items.length > 0);
+    const submittedItems = submittedSections.flatMap((section: any) => section.items);
+    const submittedCodes = new Set(submittedItems.map((item: any) => item.code));
+    const submittedAnswers = Object.fromEntries(Object.entries(answerObject).filter(([key]) => {
+      const baseCode = key.endsWith('__followup') ? key.slice(0, -'__followup'.length) : key;
+      return submittedCodes.has(baseCode);
+    }));
     const payload = {
       kind: active.kind,
       templateVersion: active.questionnaire.templateVersion,
@@ -1439,10 +1452,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       segmentIndex: active.segmentIndex,
       workSegment: active.questionnaire.workSegment ?? null,
       submittedAt: new Date().toISOString(),
-      displayedItemCodes: active.questionnaire.displayedItemCodes,
+      displayedItemCodes: submittedItems.map((item: any) => item.code),
       displayContext: active.questionnaire.displayContext,
-      items: active.questionnaire.items,
-      answers,
+      items: submittedItems,
+      answers: submittedAnswers,
     };
 
     await this.prisma.questionnaireResponse.create({
@@ -1456,11 +1469,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (active.kind === 'post_survey') {
-      const answerObject = answers && typeof answers === 'object' && !Array.isArray(answers)
-        ? answers as Record<string, unknown>
-        : {};
       const selfReport = Object.fromEntries(
-        Object.entries(answerObject).filter(([key]) => key.startsWith('POST-ONLINE-')),
+        Object.entries(submittedAnswers).filter(([key]) => key.startsWith('POST-INT-') || key.startsWith('POST-ONLINE-')),
       );
       await this.prisma.participantIntegrityState.updateMany({
         where: { sessionId: synced.session.id, participantId },
@@ -3949,7 +3959,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const aiChangeSection = sectionWith('POST-AICHG-01');
     const strategySection = sectionWith('POST-STR-02');
     const sideTaskSection = sectionWith('MC2-01');
-    const onlineSelfReportSection = sectionWith('POST-ONLINE-01');
+    const onlineSelfReportSection = sectionWith('POST-INT-01') ?? sectionWith('POST-ONLINE-01');
     const narrativeSection = sectionWith('MC3-02');
     const imageSection = sectionWith('MC1-03');
     const techSection = sectionWith('POST-TECH-01');
@@ -3984,8 +3994,13 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     if (narrativeItem) narrativeItem.options = this.deterministicOptionOrder(narrativeItem.options, shuffleKey);
     if (display.aiAvailable && imageSection) result.push(imageSection);
     if (techSection) techSection.items = techSection.items.filter((item: any) => item.code === 'POST-TECH-02' ? display.aiAvailable : item.code === 'POST-TECH-04' ? role === ParticipantRole.B : true);
-    result.push(aiChangeSection, strategySection, sideTaskSection, onlineSelfReportSection, narrativeSection, techSection, demographicSection, paymentSection);
+    result.push(aiChangeSection, strategySection, sideTaskSection, narrativeSection, techSection, demographicSection, onlineSelfReportSection, paymentSection);
     return result.filter((section: any) => section?.items?.length);
+  }
+
+  private questionnaireItemVisible(item: any, answers: Record<string, unknown>) {
+    if (!item?.showIf) return true;
+    return String(answers[item.showIf.code] ?? '') === String(item.showIf.equals ?? '');
   }
 
   private buildQuestionnaireDisplayContext(session: RuntimeSession, participantId: string, workSegment: number | null) {
@@ -4382,13 +4397,13 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       const template = await this.prisma.questionnaireTemplate.upsert({
         where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
         update: {
-          title: '三章实验正式问卷 V2.2',
+          title: '三章实验正式问卷 V3.0',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
         create: {
           id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-          title: '三章实验正式问卷 V2.2',
+          title: '三章实验正式问卷 V3.0',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
@@ -4454,10 +4469,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     } else if (config.activeQuestionnaireTemplateId !== FORMAL_QUESTIONNAIRE_TEMPLATE_ID) {
       const template = await this.prisma.questionnaireTemplate.upsert({
         where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
-        update: { title: '三章实验正式问卷 V2.2', items: formalQuestionnaireTemplateJson(), isActive: true },
+        update: { title: '三章实验正式问卷 V3.0', items: formalQuestionnaireTemplateJson(), isActive: true },
         create: {
           id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-          title: '三章实验正式问卷 V2.2',
+          title: '三章实验正式问卷 V3.0',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },

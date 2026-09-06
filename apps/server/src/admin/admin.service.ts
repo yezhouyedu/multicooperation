@@ -324,13 +324,13 @@ export class AdminService {
     const template = await this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V2.2',
+        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V3.0',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V2.2',
+        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V3.0',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
@@ -1583,13 +1583,13 @@ export class AdminService {
     return this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: '三章实验正式问卷 V2.2',
+        title: '三章实验正式问卷 V3.0',
         items: formalQuestionnaireTemplateJson(),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: '三章实验正式问卷 V2.2',
+        title: '三章实验正式问卷 V3.0',
         isActive: true,
         items: formalQuestionnaireTemplateJson(),
       },

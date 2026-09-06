@@ -18,7 +18,7 @@ function buildQuestionnaire(input: {
     tasks: input.tasks ?? [],
     aiMessages: input.aiMessages ?? [],
   };
-  const template = { id: 'template-v2-2', title: 'V2.2', items: formalQuestionnaireTemplate };
+  const template = { id: 'template-v3-0', title: 'V3.0', items: formalQuestionnaireTemplate };
   return (service as any).buildFormalQuestionnaire(session, template, input.kind, {
     mode: 'formal',
     role: input.role,
@@ -28,7 +28,7 @@ function buildQuestionnaire(input: {
   });
 }
 
-describe('V2.2 questionnaire display logic', () => {
+describe('V3.0 questionnaire display logic', () => {
   it('hides segment AI items for A0 even when a legacy AI row exists', () => {
     const questionnaire = buildQuestionnaire({
       condition: 'A0',
@@ -82,5 +82,21 @@ describe('V2.2 questionnaire display logic', () => {
       'POST-AI-04', 'POST-B-03', 'POST-B-04', 'POST-B-05', 'MC1-03',
     ]));
     expect(questionnaire.displayedItemCodes).not.toContain('POST-B-02A');
+  });
+
+  it('places online implementation self-report after demographics and before payment', () => {
+    const questionnaire = buildQuestionnaire({ condition: 'A0', role: ParticipantRole.A, kind: 'post_survey', workSegment: null });
+    const codes = questionnaire.displayedItemCodes;
+    expect(codes.indexOf('POST-INT-01')).toBeGreaterThan(codes.indexOf('DEMO-08'));
+    expect(codes.indexOf('POST-INT-02')).toBeLessThan(codes.indexOf('POST-PAY-02'));
+  });
+
+  it('shows the abnormal-type follow-up only when POST-INT-01 is yes', () => {
+    const service = new ExperimentService({} as never, {} as never);
+    const item = formalQuestionnaireTemplate.postSurvey.commonSections
+      .flatMap((section) => section.items)
+      .find((candidate) => candidate.code === 'POST-INT-03');
+    expect((service as any).questionnaireItemVisible(item, { 'POST-INT-01': '没有' })).toBe(false);
+    expect((service as any).questionnaireItemVisible(item, { 'POST-INT-01': '有' })).toBe(true);
   });
 });

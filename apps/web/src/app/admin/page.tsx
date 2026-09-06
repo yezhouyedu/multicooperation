@@ -53,6 +53,7 @@ type FormalQuestionnaireItem = {
   maxLabel?: string;
   maxLength?: number;
   followup?: { prompt: string; triggerText: string };
+  showIf?: { code: string; equals: string };
 };
 type FormalQuestionnaireSection = { title: string; description?: string; items: FormalQuestionnaireItem[] };
 type FormalQuestionnaireTemplate = {
@@ -1049,7 +1050,7 @@ function ConfigTab() {
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
-        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '三章实验正式问卷 V2.2',
+        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '三章实验正式问卷 V3.0',
         questionnaireItems: currentConfig.questionnaireTemplate?.items ?? null,
         practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
         practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
@@ -1469,7 +1470,7 @@ function QuestionnaireConfigTab() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded bg-blue-50 px-2 py-1 font-semibold text-[#1e80ff]">V2.2</span>
+            <span className="rounded bg-blue-50 px-2 py-1 font-semibold text-[#1e80ff]">V3.0</span>
             <span className="rounded bg-gray-100 px-2 py-1 text-[#4e5969]">{template.version}</span>
           </div>
         </div>
@@ -1486,7 +1487,7 @@ function QuestionnaireConfigTab() {
             </thead>
             <tbody className="divide-y divide-[#eef0f2]">
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">平台外报名阶段</td><td className="px-3 py-3">招募问卷</td><td className="px-3 py-3">A0-A8 共用，在处理分配、角色信息和材料展示前完成；不进入本系统。</td><td className="px-3 py-3">实验人员导入参与者手机号</td></tr>
-              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/practice-quiz</td><td className="px-3 py-3">测试轮开始前测试题</td><td className="px-3 py-3">使用“实验配置”中的测试题模板和通过标准，不使用本页 V2.2 正式问卷。</td><td className="px-3 py-3">通过后进入测试轮 ready</td></tr>
+              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/practice-quiz</td><td className="px-3 py-3">测试轮开始前测试题</td><td className="px-3 py-3">使用“实验配置”中的测试题模板和通过标准，不使用本页 V3.0 正式问卷。</td><td className="px-3 py-3">通过后进入测试轮 ready</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/break · 工作段 1/2 后</td><td className="px-3 py-3">第 1/2 段工作回顾</td><td className="px-3 py-3">每段 6 道共同题；A1-A6 且本人在刚结束工作段实际调用过任务1 AI 时，再增加 3 道该段 AI 体验题。</td><td className="px-3 py-3">提交后进入对应休息段</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 工作段 3 后</td><td className="px-3 py-3">第 3 段工作回顾</td><td className="px-3 py-3">与前两段使用同一套 6/9 题规则，单独显示为“第 3 段工作回顾”。</td><td className="px-3 py-3">提交后继续显示最终长问卷</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 最终阶段</td><td className="px-3 py-3">人口特征统计和其他信息采集问卷</td><td className="px-3 py-3">按 A/B 角色、A0-A8、任务1 AI 调用、图片上传、交接备注、查看 A 材料、反馈行为及线上行为自报动态组装。</td><td className="px-3 py-3">提交后进入独立支付确认</td></tr>
@@ -1503,12 +1504,12 @@ function QuestionnaireConfigTab() {
           </div>
           <div className="lg:px-5">
             <div className="mb-1 text-sm font-semibold text-[#1d2129]">最终问卷：条件与角色</div>
-            <div>A0/A7/A8 隐藏实际 AI 体验和 AI 图片功能感知，但仍回答“更强 AI”假设题；A1-A6 的实际 AI 体验依据调用行为显示，图片帮助题还要求高级 AI 条件且实际上传过图片。</div>
+            <div>A0/A7/A8 隐藏实际 AI 体验和 AI 图片功能感知，但仍回答统一 AI 工具反事实题；A1-A6 的实际 AI 体验依据调用行为显示，图片帮助题还要求高级 AI 条件且实际上传过图片。</div>
             <div className="mt-1">A/B 各取自己的角色复盘；交接备注、A 原始材料和反馈相关题只在后台记录到对应行为时显示。</div>
           </div>
           <div className="lg:pl-5">
             <div className="mb-1 text-sm font-semibold text-[#1d2129]">固定顺序与审查边界</div>
-            <div>最终顺序为：合作信念 → 角色复盘 → AI 实际体验 → AI 能力变化预期 → 任务策略 → 任务2感知 → 文本主题 → AI 图片功能 → 界面体验 → 人口统计 → 报酬清晰度。</div>
+            <div>最终顺序为：合作信念 → 角色复盘 → AI 实际体验 → AI 能力变化预期 → 任务策略 → 任务2感知 → 文本主题 → AI 图片功能 → 界面体验 → 人口统计 → 线上实施情况 → 报酬清晰度。</div>
             <div className="mt-1 font-medium text-[#cf1322]">本页可修改题干、选项和量表端点；跳题条件由 server 依据题号执行。修改题号或希望改变显示范围时必须同步修改并测试后端规则。</div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 
-export const FORMAL_QUESTIONNAIRE_TEMPLATE_ID = 'three-chapter-questionnaire-v2-2';
+export const FORMAL_QUESTIONNAIRE_TEMPLATE_ID = 'three-chapter-questionnaire-v3-0';
 
 type ItemType = 'scale' | 'single' | 'multi' | 'number' | 'text';
 type QuestionnaireItem = {
@@ -17,6 +17,7 @@ type QuestionnaireItem = {
   maxLabel?: string;
   options?: string[];
   maxLength?: number;
+  showIf?: { code: string; equals: string };
 };
 
 const agreement = (code: string, prompt: string, construct: string, order: number, reverse = false): QuestionnaireItem => ({
@@ -69,7 +70,7 @@ const section = (title: string, items: QuestionnaireItem[], description?: string
 
 export const formalQuestionnaireTemplate = {
   schemaVersion: 2,
-  version: 'three_chapter_v2_2_20260711',
+  version: 'three_chapter_v3_0_20260816',
   title: '人口特征统计和其他信息采集问卷',
   recruitmentExcluded: true,
   segmentSurvey: section('工作段回顾', [
@@ -94,7 +95,7 @@ export const formalQuestionnaireTemplate = {
         agreement('POST-RESP-01', '使用 AI 辅助完成任务后，最终判断仍由使用者负责。', '使用者责任', 5),
         agreement('POST-RESP-02', '在团队任务中，即使使用 AI，最终结果仍需要两名成员共同负责。', '团队共同责任', 6),
         agreement('POST-BYP-01-R', '在类似任务中，如果 AI 已给出较完整的答案，另一名成员的信息通常不会再明显改变我的判断。', 'AI绕过队友信念', 7, true),
-      ], '以下问题请结合本次任务以及你对类似任务的理解作答。即使本次没有提供 AI，也请根据你的判断回答涉及 AI 的题目。'),
+      ], '以下问题请结合刚才的任务体验，以及你对类似任务的理解作答。题目中如出现 AI，请按题目描述的情境作答。'),
       section('AI 事后信念与实际使用体验', [
         agreement('POST-AI-01', '本次实验中，任务 1 的 AI 对我完成任务有帮助。', 'AI总体帮助', 1),
         agreement('POST-AI-02', '任务 1 的 AI 帮助我更快整理文字材料。', 'AI文字材料帮助', 2),
@@ -105,12 +106,12 @@ export const formalQuestionnaireTemplate = {
         agreement('POST-AI-08', '在类似任务中，AI 更适合协助整理信息，而不是替我作出最终判断。', 'AI任务边界', 7),
       ]),
       section('AI 能力变化预期', [
-        scale('POST-AICHG-01', '设想在类似任务中可以使用世界前沿 AI，你预计自己完成任务 1 的速度会怎样变化？', '速度变化预期', 1, '明显变慢', '明显变快'),
-        scale('POST-AICHG-02', '设想在类似任务中可以使用世界前沿 AI，你预计自己完成的任务 1 内容准确性会怎样变化？', '质量变化预期', 2, '明显下降', '明显提高'),
-        scale('POST-AICHG-03A', '设想在类似任务中可以使用世界前沿 AI，你预计自己为角色 B 整理可直接使用信息的投入会怎样变化？', '交接投入变化预期', 3, '明显减少', '明显增加'),
-        scale('POST-AICHG-03B', '设想在类似任务中可以使用世界前沿 AI，你预计自己查看或使用角色 A 信息的需要会怎样变化？', '上游信息使用变化预期', 4, '明显减少', '明显增加'),
-        scale('POST-AICHG-04', '设想在类似任务中可以使用世界前沿 AI，你预计自己投入任务 2 的时间会怎样变化？', '任务2时间变化预期', 5, '明显减少', '明显增加'),
-      ], '以下问题是假设情境。请设想在类似任务中可以使用能力更强的 AI。若本次没有提供 AI，可理解为加入 AI 辅助；若本次提供了 AI，可理解为使用比本次更强的版本。'),
+        scale('POST-AICHG-01', '请设想：在刚才这类任务中，你可以使用一种能够协助你更好地完成信息处理的 AI 工具。与刚才实际采用的工作方式相比，你预计自己完成任务 1 的速度会怎样变化？', '速度变化预期', 1, '明显变慢', '明显变快'),
+        scale('POST-AICHG-02', '请设想：在刚才这类任务中，你可以使用一种能够协助你更好地完成信息处理的 AI 工具。与刚才实际采用的工作方式相比，你预计自己在任务 1 中形成的内容准确性会怎样变化？', '质量变化预期', 2, '明显下降', '明显提高'),
+        scale('POST-AICHG-03A', '请设想：在刚才这类任务中，你可以使用一种能够协助你更好地完成信息处理的 AI 工具。与刚才实际采用的工作方式相比，你预计自己用于整理角色 B 可以直接使用的信息以及撰写交接备注的时间和精力会怎样变化？', '交接投入变化预期', 3, '明显减少', '明显增加'),
+        scale('POST-AICHG-03B', '请设想：在刚才这类任务中，你可以使用一种能够协助你更好地完成信息处理的 AI 工具。与刚才实际采用的工作方式相比，你预计自己查看、核验或使用角色 A 信息的程度会怎样变化？', '上游信息使用变化预期', 4, '明显减少', '明显增加'),
+        scale('POST-AICHG-04', '请设想：在刚才这类任务中，你可以使用一种能够协助你更好地完成信息处理的 AI 工具。与刚才实际采用的工作方式相比，你预计自己用于任务 2 的时间会怎样变化？', '任务2时间变化预期', 5, '明显减少', '明显增加'),
+      ]),
       section('任务策略、切换恢复与整体体验', [
         agreement('POST-STR-02', '任务 2 的个人奖励让我更愿意投入时间。', '任务2奖励吸引', 1),
         agreement('POST-STR-03', '为了完成更多任务 2，我有时减少了对任务 1 材料的检查。', '任务1核查牺牲', 2),
@@ -125,12 +126,15 @@ export const formalQuestionnaireTemplate = {
         single('MC2-01', '就你的实际感受而言，任务 2 的新题在可作答列表中出现的方式更接近哪一种？', '主观到达方式感知', 1, ['一题一题陆续出现', '多题集中出现', '没有注意', '无法判断']),
         scale('MC2-02', '你看到任务 2 提醒的频率如何？', '提醒频率感知', 2, '很低', '很高'),
       ]),
-      section('线上实验行为自报', [
-        single('POST-ONLINE-01', '正式工作段中，你是否曾使用本平台以外的资源辅助完成任务？', '平台外资源自报', 1, ['没有', '有，使用了搜索引擎或网页资料', '有，使用了其他 AI 工具', '有，询问了他人或使用即时通讯', '有，使用了其他资源']),
-        single('POST-ONLINE-02', '正式工作段中，你是否曾离开电脑或明显分心？', '离开与分心自报', 2, ['没有', '有 1 次', '有 2 次及以上', '不确定']),
-        single('POST-ONLINE-03', '正式工作段中，你是否曾使用手机、平板或另一台电脑查看与任务有关的信息？', '第二设备自报', 3, ['没有', '有', '不愿回答']),
-        agreement('POST-ONLINE-04', '我已如实报告正式工作段中的平台外行为和分心情况。', '行为自报真实性', 4),
-      ], '这些回答用于数据质量判断，不会保存你查看过的具体内容。请按实际情况回答。'),
+      section('线上实施情况', [
+        single('POST-INT-01', '正式工作段中，除下一题单独询问的实验网站外 AI 使用外，你是否出现过其他与实验要求不一致的情况？例如较长时间离开实验、使用实验网站之外的网页或软件帮助处理任务，或请他人帮助。', '总体异常自报', 1, ['没有', '有']),
+        single('POST-INT-02', '正式工作段中，你是否使用过实验网站之外的 AI 工具帮助处理实验任务？这里包括通过其他网页、软件或设备使用的生成式 AI。', '外部 AI 专项自报', 2, ['没有', '有']),
+        {
+          ...single('POST-INT-03', '如果出现过其他与实验要求不一致的情况，以下哪些情况曾经发生？', '异常类型诊断', 3, ['较长时间离开实验页面或电脑', '使用搜索引擎、其他网页或软件帮助处理任务', '使用手机或其他设备帮助处理任务', '请他人帮助处理任务', '其他']),
+          type: 'multi' as const,
+          showIf: { code: 'POST-INT-01', equals: '有' },
+        },
+      ], '本部分回答用于评估线上实验实施情况，请按照实际情况作答。如实回答本身不会改变已经产生的实验报酬。'),
       section('文本主题识别', [{
         code: 'MC3-02',
         prompt: '以下哪些主题在工作段开始前或休息后阅读的文本中出现过？请选择你确实记得的内容。',

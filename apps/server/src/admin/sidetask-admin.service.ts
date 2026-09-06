@@ -9,90 +9,130 @@ export class SideTaskAdminService {
 
   async importExcel(filePath: string) {
     const workbook = XLSX.readFile(filePath);
-    const sheetName = '正式题库';
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) {
-      throw new BadRequestException(`Excel 中未找到名为"${sheetName}"的 sheet`);
+    const sheetName = ['正式题库', '题库'].find((name) => workbook.Sheets[name]);
+    if (!sheetName) {
+      throw new BadRequestException('Excel 中未找到名为“正式题库”或“题库”的 sheet');
     }
-
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
-    if (rows.length === 0) {
+    const sheet = workbook.Sheets[sheetName];
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+    if (matrix.length < 2) {
       throw new BadRequestException('题库 sheet 为空');
     }
-
-    let created = 0;
-    let updated = 0;
-    const importedItemCodes: string[] = [];
-
-    for (const row of rows) {
-      const itemCode = String(row['item_id'] ?? '').trim();
-      if (!itemCode) continue;
-      importedItemCodes.push(itemCode);
-
-      const poolType = String(row['pool_type'] ?? '').trim();
-      const workSegment = Number(row['work_segment']);
-      const directAiRaw = String(row['direct_ai_flag'] ?? '').trim();
-      const directAiFlag = directAiRaw === '是' || directAiRaw === '1' || directAiRaw.toLowerCase() === 'true';
-      const spilloverRaw = String(row['spillover_risk_flag'] ?? '').trim();
-      const spilloverRiskFlag = spilloverRaw !== 'PASS' && spilloverRaw !== '';
-
-      const data: Prisma.SideTaskItemCreateInput = {
-        itemCode,
-        poolType,
-        workSegment: isNaN(workSegment) ? 1 : workSegment,
-        eventArchetype: this.toNullable(row['event_archetype']),
-        eventChain: this.toNullable(row['event_chain']),
-        surfaceScenario: this.toNullable(row['surface_scenario']),
-        languageVariant: this.toNullable(row['language_variant']),
-        skeletonType: this.toNullable(row['skeleton_type']),
-        narrativeCategory: this.toNullable(row['narrative_category']),
-        narrativeSubtype: this.toNullable(row['narrative_subtype']),
-        directAiFlag,
-        text: String(row['text'] ?? ''),
-        question: String(row['question'] ?? ''),
-        questionVariantId: this.toNullable(row['question_variant_id']),
-        optionA: String(row['option_a'] ?? ''),
-        optionB: String(row['option_b'] ?? ''),
-        goldAnswer: this.toNullable(row['gold_answer']),
-        evidenceSpan: this.toNullable(row['evidence_span']),
-        distractorType: this.toNullable(row['distractor_type']),
-        distractorNote: this.toNullable(row['distractor_note']),
-        narrativeComponents: this.toNullable(row['narrative_components']),
-        spilloverRiskFlag,
-        spilloverRiskNote: this.toNullable(row['spillover_risk_note']),
-        difficulty: this.toNullable(row['difficulty']),
-        version: this.toNullable(row['version']),
-        isActive: true,
-      };
-
-      const existing = await this.prisma.sideTaskItem.findUnique({
-        where: { itemCode },
-        select: { id: true },
-      });
-
-      if (existing) {
-        await this.prisma.sideTaskItem.update({
-          where: { itemCode },
-          data,
-        });
-        updated++;
-      } else {
-        await this.prisma.sideTaskItem.create({ data });
-        created++;
-      }
+    const headers = matrix[0].map((value) => this.normalizeHeader(value));
+    const requiredHeaders = ['item_id', 'work_segment', 'text', 'question', 'option_a', 'option_b', 'gold_answer', 'pool_type', 'narrative_category', 'content_subtype'];
+    const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+    if (missingHeaders.length > 0) {
+      throw new BadRequestException(`题库缺少必要字段：${missingHeaders.join(', ')}`);
     }
+    const rows = matrix.slice(1)
+      .map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index]])) as Record<string, unknown>)
+      .filter((row) => Object.values(row).some((value) => String(value ?? '').trim()));
+    if (rows.length === 0) throw new BadRequestException('题库 sheet 为空');
 
-    const deactivated = importedItemCodes.length
-      ? await this.prisma.sideTaskItem.updateMany({
+    const detectedVersion = this.detectWorkbookVersion(workbook) ?? 'imported';
+    const parsed = rows.map((row, index) => this.parseImportRow(row, index + 2, detectedVersion));
+    this.validateImportRows(parsed);
+
+    const importedItemCodes = parsed.map((item) => item.itemCode);
+    const existing = await this.prisma.sideTaskItem.findMany({
+      where: { itemCode: { in: importedItemCodes } },
+      select: { itemCode: true },
+    });
+    const existingCodes = new Set(existing.map((item) => item.itemCode));
+    const created = importedItemCodes.filter((code) => !existingCodes.has(code)).length;
+    const updated = importedItemCodes.length - created;
+
+    const deactivated = await this.prisma.$transaction(async (tx) => {
+      for (const item of parsed) {
+        const { itemCode, ...data } = item;
+        await tx.sideTaskItem.upsert({
+          where: { itemCode },
+          update: data,
+          create: { itemCode, ...data },
+        });
+      }
+      return tx.sideTaskItem.updateMany({
           where: {
             itemCode: { notIn: importedItemCodes },
             isActive: true,
           },
           data: { isActive: false },
-        })
-      : { count: 0 };
+        });
+    }, { timeout: 120_000 });
 
-    return { ok: true, total: rows.length, created, updated, deactivated: deactivated.count };
+    return { ok: true, sheetName, version: detectedVersion, total: parsed.length, created, updated, deactivated: deactivated.count };
+  }
+
+  private normalizeHeader(value: unknown) {
+    const lines = String(value ?? '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    return (lines.at(-1) ?? '').toLowerCase();
+  }
+
+  private detectWorkbookVersion(workbook: XLSX.WorkBook) {
+    const summary = workbook.Sheets['结论及修改清单'];
+    const firstCell = summary?.A1?.v;
+    return String(firstCell ?? '').match(/V\d+(?:\.\d+)*/i)?.[0] ?? null;
+  }
+
+  private parseImportRow(row: Record<string, unknown>, rowNumber: number, detectedVersion: string) {
+    const itemCode = String(row['item_id'] ?? '').trim();
+    const workSegment = Number(row['work_segment']);
+    const directAiRaw = String(row['direct_ai_flag'] ?? '').trim().toLowerCase();
+    const spilloverRaw = String(row['spillover_risk_flag'] ?? '').trim();
+    if (!itemCode) throw new BadRequestException(`题库第 ${rowNumber} 行缺少 item_id`);
+    return {
+      itemCode,
+      poolType: String(row['pool_type'] ?? '').trim(),
+      workSegment,
+      eventArchetype: this.toNullable(row['event_archetype'] ?? row['content_theme']),
+      eventChain: this.toNullable(row['event_chain']),
+      surfaceScenario: this.toNullable(row['surface_scenario'] ?? row['business_scenario']),
+      languageVariant: this.toNullable(row['language_variant'] ?? row['text_form']),
+      skeletonType: this.toNullable(row['skeleton_type'] ?? row['question_type']),
+      narrativeCategory: this.toNullable(row['narrative_category']),
+      narrativeSubtype: this.toNullable(row['narrative_subtype'] ?? row['content_subtype']),
+      directAiFlag: directAiRaw === '是' || directAiRaw === '1' || directAiRaw === 'true',
+      text: String(row['text'] ?? '').trim(),
+      question: String(row['question'] ?? '').trim(),
+      questionVariantId: this.toNullable(row['question_variant_id']),
+      optionA: String(row['option_a'] ?? '').trim(),
+      optionB: String(row['option_b'] ?? '').trim(),
+      goldAnswer: this.toNullable(row['gold_answer']),
+      evidenceSpan: this.toNullable(row['evidence_span']),
+      distractorType: this.toNullable(row['distractor_type']),
+      distractorNote: this.toNullable(row['distractor_note']),
+      narrativeComponents: this.toNullable(row['narrative_components'] ?? row['content_theme']),
+      spilloverRiskFlag: spilloverRaw !== 'PASS' && spilloverRaw !== '',
+      spilloverRiskNote: this.toNullable(row['spillover_risk_note']),
+      difficulty: this.toNullable(row['difficulty']),
+      version: this.toNullable(row['version']) ?? detectedVersion,
+      isActive: true,
+    } satisfies Prisma.SideTaskItemCreateInput;
+  }
+
+  private validateImportRows(rows: Array<Prisma.SideTaskItemCreateInput & { itemCode: string }>) {
+    const codes = new Set<string>();
+    for (const item of rows) {
+      if (codes.has(item.itemCode)) throw new BadRequestException(`题库存在重复 item_id：${item.itemCode}`);
+      codes.add(item.itemCode);
+      if (![1, 2, 3].includes(item.workSegment)) throw new BadRequestException(`${item.itemCode} 的 work_segment 必须为 1、2 或 3`);
+      if (!['普通中性池', '合作叙事池'].includes(item.poolType)) throw new BadRequestException(`${item.itemCode} 的 pool_type 无效`);
+      if (!item.text || !item.question || !item.optionA || !item.optionB) throw new BadRequestException(`${item.itemCode} 的正文、题干或选项不完整`);
+      if (!['A', 'B'].includes(item.goldAnswer ?? '')) throw new BadRequestException(`${item.itemCode} 的 gold_answer 必须为 A 或 B`);
+    }
+    for (const segment of [1, 2, 3]) {
+      const neutralCount = rows.filter((item) => item.workSegment === segment && item.poolType === '普通中性池').length;
+      if (neutralCount < 40) throw new BadRequestException(`工作段 ${segment} 普通中性池不足 40 题`);
+      for (const [theme, prefix] of [['互补分工', 'C'], ['验证留痕', 'V'], ['共同责任', 'S']] as const) {
+        for (let subtype = 1; subtype <= 5; subtype += 1) {
+          const count = rows.filter((item) => item.workSegment === segment
+            && item.poolType === '合作叙事池'
+            && item.narrativeCategory === theme
+            && item.narrativeSubtype?.startsWith(`${prefix}${subtype}_`)).length;
+          if (count < 4) throw new BadRequestException(`工作段 ${segment} 的 ${theme}/${prefix}${subtype} 候选题不足 4 题`);
+        }
+      }
+    }
   }
 
   async listItems(filters: {
