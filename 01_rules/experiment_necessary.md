@@ -1,6 +1,6 @@
 # experiment_necessary.md
 
-## 2026-08-23 九条件与线上质量必要口径
+## 2026-09-06 九条件、随机暴露与线上质量必要口径
 
 - 实验条件以 AB 团队/Session 为单位，最终 A0-A8 定义以 `02_specs/03_execution/实验条件与区组随机方案.md` 为准。
 - 每个区组必须恰好包含 A0-A8 各一次；区组排列由 seed 确定并可复现，条件、角色、公司顺序各用独立 seed。
@@ -62,7 +62,7 @@
 
 ### 1.6 B 查看行为
 
-- B 在 A 信息开放前，可以先看自己的材料、写草稿，并在非 A0 条件下使用 AI
+- B 在 A 信息开放前，可以先看自己的材料、写草稿，并仅在 A1-A6 条件下使用 AI；A0/A7/A8 无 AI
 - 只有 `A 已提交 && bCanSubmitAt <= now` 后，B 才能查看 A 信息、解锁 A 原始材料和提交
 - “是否查看过 A 信息”不作为提交门槛
 - 但“是否查看过”“何时查看”仍然是需要保存的实验行为变量
@@ -75,6 +75,10 @@
 
 - `experimentRunId`
 - `experimentCondition`（当前 A0-A8；旧测试数据可为 A0-A6）
+- `instructionOrderSeed`、`themeOrderSeed`、三个工作段实际指导语文本 ID 与展示顺序
+- 合作叙事条件下，每段任务2当前主题的 5 个 `content_subtype` 各 4 题及实际曝光记录
+- V3.0 问卷的 `displayedItemCodes`、条件跳题上下文和线上实施自报
+- 无效行为、切屏、掉线、正式退出、排除时长和有效任务1/任务2时间
 - `conditionAssignedAt`
 - `blockIndex`
 - `positionInBlock`

@@ -1000,6 +1000,12 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       return { ok: true, interval: closed };
     }
 
+    const clipboardTask = input.eventType.startsWith('clipboard_') && typeof payload.taskAssignmentId === 'string'
+      ? await this.prisma.taskAssignment.findFirst({
+          where: { id: payload.taskAssignmentId, sessionId: session.id },
+          select: { id: true, companyId: true },
+        })
+      : null;
     const safePayload = input.eventType.startsWith('clipboard_')
       ? {
           charCount: Math.max(0, Math.min(100000, Number(payload.charCount) || 0)),
@@ -1007,6 +1013,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           classification: ['platform_internal', 'platform_external', 'unknown'].includes(String(payload.classification))
             ? String(payload.classification) : 'unknown',
           afterOffscreen: Boolean(payload.afterOffscreen),
+          taskAssignmentId: clipboardTask?.id ?? null,
+          companyId: clipboardTask?.companyId ?? null,
         }
       : { clientTime: clientTime?.toISOString() ?? null };
     await this.prisma.experimentEvent.create({
@@ -1017,6 +1025,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         eventType: input.eventType,
         phase: ExperimentPhase.FORMAL,
         segmentIndex: session.currentSegmentIndex,
+        taskAssignmentId: clipboardTask?.id ?? null,
+        companyId: clipboardTask?.companyId ?? null,
         clientTime,
         payload: safePayload as Prisma.InputJsonValue,
       },
@@ -4245,6 +4255,14 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         });
         if (!existing) {
           const startedAt = new Date(state.lastHeartbeatAt.getTime() + config.connectionLostGraceSeconds * 1000);
+          await this.closeOpenIntegrityInterval(
+            state.id,
+            'OFFSCREEN',
+            startedAt,
+            'superseded_by_disconnect',
+            undefined,
+            config,
+          );
           await this.prisma.onlineIntegrityInterval.create({
             data: {
               sessionId,

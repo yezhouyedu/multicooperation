@@ -40,8 +40,8 @@
 
 | 层     | 技术                                                   |
 | ------ | ------------------------------------------------------ |
-| 前端   | Next.js 15 + React 19 + Tailwind CSS v4                |
-| 后端   | NestJS + Prisma 6 + PostgreSQL 16                      |
+| 前端   | Next.js 16.2.4 + React 19.2.4 + Tailwind CSS v4        |
+| 后端   | NestJS 11 + Prisma 6.16.2 + PostgreSQL 16              |
 | AI     | 阿里云千问（qwen-turbo / qwen3.6-plus）                |
 | 部署   | Docker Compose（生产式单机部署，Nginx HTTPS 反向代理） |
 | 包管理 | pnpm（monorepo workspace）                             |
@@ -64,7 +64,8 @@ multi cooperation/
 │   ├── 02_backend/           # 后端规格
 │   ├── 03_execution/         # 执行验收
 │   ├── 04_pre_deploy/        # 上线前数据准备
-│   └── 05_server_deploy/     # 服务器部署
+│   ├── 05_server_deploy/     # 服务器部署
+│   └── 06_resilience/        # 韧性、故障恢复与研究记录
 ├── 03_tracking/              # 进度跟踪
 ├── 04_archive/               # 归档
 └── storage/                  # 运行态存储
@@ -131,7 +132,7 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -
 | ------------------------------------------------------------------------------ | ----------------------------- |
 | [APP_FLOW.md](02_specs/00_overview/APP_FLOW.md)                                   | 实验主流程真相源              |
 | [PROJECT_RULES.md](01_rules/PROJECT_RULES.md)                                     | 协作规则                      |
-| [progress.md](03_tracking/progress.md)                                            | 项目进度真相源                |
+| [progress.md](03_tracking/progress.md)                                            | 项目实施时间线                |
 | [实验条件与区组随机方案.md](02_specs/03_execution/实验条件与区组随机方案.md)      | A0-A8 与实验局区组随机真相源  |
 | [线上实验质量与行为监测方案.md](02_specs/03_execution/线上实验质量与行为监测方案.md) | 全屏、切屏、无效行为、掉线与退出真相源 |
 | [实验123计划.md](02_specs/03_execution/实验123计划.md)                            | 旧 session 历史兼容说明       |
@@ -148,7 +149,8 @@ powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -
 
 - ✅ P0 服务器裸 IP 部署完成
 - ✅ P1 域名 + HTTPS + Nginx 反向代理已接入：`https://aiseek.tech`
-- ✅ A0-A8 九条件区组随机、V2.2 问卷与实验局管理已实现
+- ✅ A0-A8 九条件区组随机、V3.0 问卷与实验局管理已实现
+- ✅ V0.4 段前指导语顺序随机和任务2 V1.5.1 题库已实现
 - ✅ 正式工作段线上质量状态机、数据库区间与导出 JSON 已实现
 - ⏳ 双被试三段人工验收、备份恢复演练、导出审查与公网端口收口
 

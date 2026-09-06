@@ -69,8 +69,10 @@ Admin 后续切换模式、实验局或配置，不得改变已创建 session �
 | A4 | BASIC | continuous | coop_narrative |
 | A5 | ADVANCED | continuous | coop_narrative |
 | A6 | ADVANCED | batch | neutral_info |
+| A7 | NONE | batch | neutral_info |
+| A8 | NONE | continuous | coop_narrative |
 
-A0 必须满足：
+A0/A7/A8 必须满足：
 
 - `aiEnabled=false`、`aiCondition=NONE`。
 - 测试轮与正式段都不向参与者展示任务1或任务2 AI。
@@ -130,4 +132,4 @@ A0-A8 的实际 AI、提醒、叙事与指导语暴露必须和 session 快照�
 - 内容质量评分与人工评分员流程。
 - gold fact / gold issue 金标准。
 - AI 采纳率自动编码。
-- 更细的滚动、focus/blur、复制粘贴和逐操作停留时间。
+- 更细的滚动、原始高频 focus/blur 和逐操作停留时间。正式 `OFFSCREEN` 区间与剪贴板摘要已经保存，不属于此后续项。

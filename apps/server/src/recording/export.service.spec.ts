@@ -2,6 +2,27 @@ import { ExperimentPhase, ParticipantRole } from '@prisma/client';
 import { ExportService } from './export.service';
 
 describe('ExportService integrity-adjusted timing', () => {
+  it('exports the B five-minute submission gate for each company', () => {
+    const service = new ExportService({} as never, {} as never);
+    const bCanSubmitAt = new Date('2026-08-23T00:05:00.000Z');
+    const metadata = (service as any).buildCompanyMetadata(
+      { randomizationAudit: null },
+      {
+        id: 'task-1',
+        companyId: 'company-1',
+        phase: ExperimentPhase.FORMAL,
+        sequenceIndex: 1,
+        snapshots: [],
+        bSequenceIndex: 1,
+        bCanSubmitAt,
+        company: { id: 'company-1', name: 'P01', roundLabel: 'P01', materials: [] },
+      },
+      ParticipantRole.B,
+    );
+
+    expect(metadata.timing.bCanSubmitAt).toBe(bCanSubmitAt.toISOString());
+  });
+
   it('keeps raw timing and subtracts the union of invalid, disconnected, and post-dropout time', () => {
     const service = new ExportService({} as never, {} as never);
     const at = (seconds: number) =>

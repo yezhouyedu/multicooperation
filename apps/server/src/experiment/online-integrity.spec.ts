@@ -78,4 +78,90 @@ describe('online integrity state machine', () => {
       hasFormalDropout: false,
     }])).toMatchObject({ hasAnyParticipantInvalidInactivity: true, sessionDataUsable: false });
   });
+
+  it('closes an open offscreen interval when a disconnect interval starts', async () => {
+    const prisma = {
+      participantIntegrityState: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'state-1',
+          participantId: 'participant-1',
+          role: ParticipantRole.A,
+          lastHeartbeatAt: new Date('2026-08-23T00:00:00.000Z'),
+          hasFormalDropout: false,
+        }]),
+        update: jest.fn(),
+      },
+      onlineIntegrityInterval: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+    const closeSpy = jest.spyOn(service as any, 'closeOpenIntegrityInterval').mockResolvedValue(null);
+
+    await (service as any).evaluateConnectionStates(
+      'session-1',
+      config,
+      new Date('2026-08-23T00:00:31.000Z'),
+    );
+
+    expect(closeSpy).toHaveBeenCalledWith(
+      'state-1',
+      'OFFSCREEN',
+      new Date('2026-08-23T00:00:30.000Z'),
+      'superseded_by_disconnect',
+      undefined,
+      config,
+    );
+    expect(prisma.onlineIntegrityInterval.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ intervalType: 'DISCONNECT', startedAt: new Date('2026-08-23T00:00:30.000Z') }),
+    }));
+  });
+
+  it('stores validated task and company context for clipboard events', async () => {
+    const prisma = {
+      participantIntegrityState: {
+        upsert: jest.fn().mockResolvedValue({ id: 'state-1', hasFormalDropout: false }),
+      },
+      taskAssignment: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'task-1', companyId: 'company-1' }),
+      },
+      experimentEvent: { create: jest.fn() },
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+    jest.spyOn(service as any, 'getIntegrityContext').mockResolvedValue({
+      session: {
+        id: 'session-1',
+        runtimePhase: 'FORMAL_WORK',
+        currentSegmentIndex: 2,
+      },
+      role: ParticipantRole.A,
+      config,
+    });
+
+    await service.recordIntegrityEvent('SESSION', {
+      participantId: 'participant-1',
+      eventType: 'clipboard_paste',
+      payload: {
+        charCount: 12,
+        contentHash: 'hash-1',
+        classification: 'platform_external',
+        afterOffscreen: true,
+        taskAssignmentId: 'task-1',
+        companyId: 'untrusted-company-id',
+      },
+    });
+
+    expect(prisma.taskAssignment.findFirst).toHaveBeenCalledWith({
+      where: { id: 'task-1', sessionId: 'session-1' },
+      select: { id: true, companyId: true },
+    });
+    expect(prisma.experimentEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        taskAssignmentId: 'task-1',
+        companyId: 'company-1',
+        payload: expect.objectContaining({ taskAssignmentId: 'task-1', companyId: 'company-1' }),
+      }),
+    }));
+  });
 });

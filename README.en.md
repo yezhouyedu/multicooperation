@@ -2,142 +2,97 @@
 
 > English | [中文](README.md)
 
-A full-stack experimental platform for studying human-AI collaboration in a "Due Diligence Analyst — Investment Manager" cooperative scenario.
+Multi Cooperation is a full-stack A/B collaboration experiment platform for studying how AI capability, Task 2 reminder frequency, and cooperation narratives affect human-AI teamwork.
 
-## Overview
+## Current experiment
 
-This platform supports dual-participant experiments: one participant plays the "Due Diligence Analyst" (responsible for due diligence), and the other plays the "Investment Manager" (responsible for investment decisions). Through randomized role assignment, company sequencing, AI upgrade timing, side task reminder frequency, and cooperative narrative variables, the system supports crossed experimental conditions.
+Two participants are paired in arrival order and then randomly assigned role A or B. A formal session atomically claims one slot from an A0-A8 balanced block. Condition assignment, role assignment, company order, and instruction order use separate auditable seeds.
 
-### Core Features
+The participant flow is:
 
-- **Participant Experiment Flow**: Login → Auto-pairing → Instructions → Quiz → Practice round (with tutorial) → 3 formal work segments + 2 break questionnaire segments → End
-- **Unified Runtime & Stage Engine**: Real-time SSE state push with automatic stage switching, countdowns, and A-info unlocking
-- **A/B Workbench Three-Panel Layout**: Materials panel (txt/docx/pdf/xlsx hybrid viewer), Answer panel (structured forms), AI panel (streaming output, Markdown, image upload)
-- **Draft/Snapshot/Restore System**: Cross-segment content freezing and automatic restoration
-- **AI Context System**: Basic/Advanced AI, main/side task isolation, company isolation, phase isolation
-- **Side Task System**: 900-question bank, continuous/batch reminder frequency, neutral/cooperative narrative groups
-- **Admin Backend**: Experiment mode switching (Experiment 1/2/3), material management, question import, export jobs
-- **Variable Recording & Server Export**: A/B directory partitioned archiving, event/content/AI/side-task complete recording, zip export + dynamic self-check
+`login → pairing → instructions → task preview → practice quiz → practice round → formal ready → three pre-segment instructions and work segments → segment surveys and breaks → final survey → payment confirmation`
 
-### Experiment 1/2/3
+The production participant interface uses only “role A/B” and “Task 1/Task 2”. Older role names and Experiment 1/2/3 labels are retained only for historical data compatibility.
 
-| Experiment | Randomized Variable | Fixed Variables |
-|------------|---------------------|-----------------|
-| Exp 1: AI Capability Upgrade | `upgradeCohort` (early/late) | Side: continuous + neutral narrative |
-| Exp 2: Side Task Reminder Frequency | `sideDispatchMode` (continuous/batch) | Basic AI + neutral narrative |
-| Exp 3: Cooperative Narrative | `narrativeGroup` (coop/neutral) + theme order | Basic AI + continuous side tasks |
+## Formal conditions
 
-## Tech Stack
+| Paper condition | Code | AI | Task 2 reminder | Narrative |
+|---:|---|---|---|---|
+| 1 | A0 | None | continuous | neutral information |
+| 2 | A1 | BASIC | continuous | neutral information |
+| 3 | A2 | ADVANCED | continuous | neutral information |
+| 4 | A7 | None | batch | neutral information |
+| 5 | A3 | BASIC | batch | neutral information |
+| 6 | A8 | None | continuous | cooperation narrative |
+| 7 | A4 | BASIC | continuous | cooperation narrative |
+| 8 | A6 | ADVANCED | batch | neutral information |
+| 9 | A5 | ADVANCED | continuous | cooperation narrative |
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 15 + React 19 + Tailwind CSS v4 |
-| Backend | NestJS + Prisma 6 + PostgreSQL 16 |
-| AI | Alibaba Cloud Qwen (qwen-turbo / qwen3.6-plus) |
-| Deployment | Docker Compose (production-style single-server) |
-| Package Manager | pnpm (monorepo workspace) |
+Each nine-session block contains every condition once. Claimed slots are never recycled after withdrawal or cancellation. A0, A7, and A8 have no participant-facing AI and the server rejects AI requests for those sessions.
 
-## Project Structure
+## Implemented capabilities
 
-```
-multi cooperation/
-├── apps/
-│   ├── web/                  # Next.js frontend
-│   └── server/               # NestJS backend
-├── infra/                    # Infrastructure (Docker, etc.)
-├── packages/                 # Shared packages (reserved)
-├── scripts/                  # Scripts (start/stop/deploy)
-├── 00_start_materials/       # Source materials (not tracked)
-├── 01_rules/                 # Collaboration rules
-├── 02_specs/                 # Specification documents
-│   ├── 00_overview/          # Overview (APP_FLOW, PRD, etc.)
-│   ├── 01_frontend/          # Frontend specs
-│   ├── 02_backend/           # Backend specs
-│   ├── 03_execution/         # Execution & acceptance
-│   ├── 04_pre_deploy/        # Pre-deploy data preparation
-│   └── 05_server_deploy/     # Server deployment
-├── 03_tracking/              # Progress tracking
-├── 04_archive/               # Archive
-└── storage/                  # Runtime storage
-```
+- SSE-backed runtime and synchronized stage transitions.
+- Role-specific materials, structured Task 1 forms, and BASIC/ADVANCED AI panels.
+- A shared 900-item Task 2 bank with continuous or batch reminders.
+- V0.4 pre-segment instruction randomization and V3.0 questionnaires.
+- Fullscreen gating, all off-screen intervals, a strict greater-than-two-second violation threshold, 120+20 second inactivity handling, heartbeats, disconnects, and role-specific dropout closure.
+- Structured database records plus participant-scoped export packages containing content, AI, Task 2, questionnaires, timestamps, and online-integrity data.
+- Admin management for formal runs, A0-A8 blocks, timing, online-integrity parameters, materials, questionnaires, Task 2 imports, and exports.
 
-## Quick Start
+## Technology
 
-### Local Development
+| Layer | Current implementation |
+|---|---|
+| Web | Next.js 16.2.4, React 19.2.4, Tailwind CSS 4 |
+| Server | NestJS 11, Express 5, Prisma 6.16.2 |
+| Database | PostgreSQL 16 |
+| Realtime | Server-Sent Events |
+| Deployment | Docker Compose and Nginx HTTPS reverse proxy |
+| Package manager | pnpm workspace |
+
+## Local development
 
 ```powershell
-# Install dependencies
 corepack pnpm install
-
-# Start database
 docker compose up -d postgres
-
-# Generate Prisma Client
 corepack pnpm --filter server prisma:generate
-
-# Initialize database
 corepack pnpm --filter server prisma migrate dev
-
-# Seed test data
 corepack pnpm --filter server prisma:seed
-
-# Start dev servers
 corepack pnpm run dev:local
 ```
 
-Or use the one-click startup script:
+Local endpoints:
+
+- Web: `http://localhost:3000`
+- Server: `http://localhost:3001`
+- Admin: `http://localhost:3000/admin`
+
+## Production
+
+The current public endpoint is `https://aiseek.tech`; `/api/*` is proxied to the server through Nginx.
 
 ```powershell
-启动本地开发环境.bat
+powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-git-archive.ps1 -Service all
 ```
 
-### Access URLs
-
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend | http://localhost:3001 |
-| Admin | http://localhost:3000/admin |
-
-### Production Deployment
-
-```powershell
-# Upload to server
-powershell -ExecutionPolicy Bypass -File scripts/deploy/upload-project.ps1 -User ubuntu
-
-# Create production environment variables
-powershell -ExecutionPolicy Bypass -File scripts/deploy/create-prod-env.ps1 -User ubuntu
-```
-
-Then SSH into the server:
-
-```bash
-cd /opt/multi-cooperation
-sudo bash scripts/deploy/deploy-prod.sh
-```
-
-See `02_specs/05_server_deploy/运维命令快速参考.md` for运维 commands.
+Use [deployment commands](02_specs/05_server_deploy/命令运行清单.md), the [deployment runbook](02_specs/05_server_deploy/部署运行手册.md), and the [HTTPS runbook](02_specs/05_server_deploy/HTTPS部署/HTTPS域名接入方案.md). Do not run commands that delete production Docker volumes.
 
 ## Documentation
 
-| Document | Purpose |
-|----------|---------|
-| [APP_FLOW.md](02_specs/00_overview/APP_FLOW.md) | Experiment main flow (source of truth) |
-| [PROJECT_RULES.md](01_rules/PROJECT_RULES.md) | Collaboration rules |
-| [progress.md](03_tracking/progress.md) | Project progress (source of truth) |
-| [实验123计划.md](02_specs/03_execution/实验123计划.md) | Experiment 1/2/3 mode switching |
-| [变量记录与服务器导出方案.md](02_specs/04_pre_deploy/变量记录与服务器导出方案.md) | Variable recording design |
-| [数据库文件夹手册.md](02_specs/04_pre_deploy/数据库文件夹手册.md) | Export package reading guide |
-| [运维命令快速参考.md](02_specs/05_server_deploy/运维命令快速参考.md) | Server运维 commands |
+- [Experiment flow](02_specs/00_overview/APP_FLOW.md)
+- [Project rules](01_rules/PROJECT_RULES.md)
+- [Implementation timeline](03_tracking/progress.md)
+- [A0-A8 design](02_specs/03_execution/实验条件与区组随机方案.md)
+- [Online integrity](02_specs/03_execution/线上实验质量与行为监测方案.md)
+- [Questionnaires](02_specs/03_execution/问卷流程方案.md)
+- [Pre-segment instructions](02_specs/03_execution/段前指导语方案.md)
+- [Export package manual](02_specs/04_pre_deploy/数据库文件夹手册.md)
 
-## Current Status
+## Current status
 
-**Phase: Long-term implementation + Local testing + Pre-launch wrap-up**
-
-- ✅ P0 Server bare IP deployment completed
-- ⏳ P1 Awaiting ICP approval → Domain + HTTPS
-- ⏳ P2 Pre-experiment backup, rehearsal,运维 wrap-up
+The implementation, HTTPS deployment, nine-condition randomization, V3.0 questionnaires, V0.4 instruction plan, and online-integrity state machine are live. A complete two-participant, three-segment rehearsal, backup restoration drill, export review, and closure of public fallback ports remain formal-launch checks.
 
 ## License
 
-This project is for academic research purposes only.
+Academic research use only. No public license is granted.

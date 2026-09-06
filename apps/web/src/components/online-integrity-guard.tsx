@@ -27,7 +27,7 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   const offscreenActiveRef = useRef(false);
   const lastOffscreenEndedAtRef = useRef<number | null>(null);
   const authorizedDialogUntilRef = useRef(0);
-  const lastCopyHashRef = useRef<string | null>(null);
+  const recentCopyHashesRef = useRef<string[]>([]);
   const currentTaskRef = useRef(runtime?.currentTask ?? null);
   currentTaskRef.current = runtime?.currentTask ?? null;
 
@@ -78,6 +78,16 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
 
     lastActivityRef.current = Date.now();
     setFullscreenBlocked(config.fullscreenRequired && !document.fullscreenElement);
+
+    const copyHashStorageKey = `online-integrity-copy-hashes:${bootstrap.sessionCode}:${bootstrap.participantId}`;
+    try {
+      const storedHashes = JSON.parse(window.sessionStorage.getItem(copyHashStorageKey) ?? '[]');
+      recentCopyHashesRef.current = Array.isArray(storedHashes)
+        ? storedHashes.filter((value): value is string => typeof value === 'string').slice(-50)
+        : [];
+    } catch {
+      recentCopyHashesRef.current = [];
+    }
 
     const heartbeat = () => {
       void fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/integrity/heartbeat`, {
@@ -171,15 +181,32 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
       const text = event.clipboardData?.getData('text/plain') || document.getSelection()?.toString() || '';
       if (!text) return;
       void hashText(text).then((contentHash) => {
-        lastCopyHashRef.current = contentHash;
-        void postEvent('clipboard_copy', { charCount: text.length, contentHash, classification: 'platform_internal', afterOffscreen: false });
+        recentCopyHashesRef.current = [...recentCopyHashesRef.current.filter((value) => value !== contentHash), contentHash].slice(-50);
+        try {
+          window.sessionStorage.setItem(copyHashStorageKey, JSON.stringify(recentCopyHashesRef.current));
+        } catch {}
+        void postEvent('clipboard_copy', {
+          charCount: text.length,
+          contentHash,
+          classification: 'platform_internal',
+          afterOffscreen: false,
+          taskAssignmentId: currentTaskRef.current?.id ?? null,
+          companyId: currentTaskRef.current?.company?.id ?? null,
+        });
       });
     };
     const onPaste = (event: ClipboardEvent) => {
       const text = event.clipboardData?.getData('text/plain') || '';
       void hashText(text).then((contentHash) => {
         const afterOffscreen = Boolean(lastOffscreenEndedAtRef.current && Date.now() - lastOffscreenEndedAtRef.current <= config.pasteAfterOffscreenWindowSeconds * 1000);
-        void postEvent('clipboard_paste', { charCount: text.length, contentHash, classification: contentHash === lastCopyHashRef.current ? 'platform_internal' : 'platform_external', afterOffscreen });
+        void postEvent('clipboard_paste', {
+          charCount: text.length,
+          contentHash,
+          classification: recentCopyHashesRef.current.includes(contentHash) ? 'platform_internal' : 'platform_external',
+          afterOffscreen,
+          taskAssignmentId: currentTaskRef.current?.id ?? null,
+          companyId: currentTaskRef.current?.company?.id ?? null,
+        });
       });
     };
     document.addEventListener('copy', onCopy);

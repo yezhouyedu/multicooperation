@@ -10,6 +10,8 @@
 3. `lessons.md`
 4. 与当前模块相关的规范文档
 
+同时先读根目录 `README.md`、`02_specs/README.md` 和 `02_specs/00_overview/APP_FLOW.md`。再按任务读取：实验规则看 `03_execution/`，数据与导出看 `04_pre_deploy/`，生产操作看 `05_server_deploy/`。`00_start_materials/` 与 `04_archive/` 只作来源追溯。
+
 ## Core Rules
 - 文档第一，代码第二
 - 先 interrogation，再文档，再 implementation

@@ -4,7 +4,7 @@
 
 ## 1. 技术基线
 
-- 框架：Next.js
+- 框架：Next.js 16.2.4 + React 19.2.4
 - 目录：`app router`
 - 主要职责：
   - 参与者登录与自动配对后的页面流转
@@ -45,12 +45,14 @@
 
 当前正式实验入口为 `manual / formal`；正式模式按实验局 A0-A8 九条件平衡区组槽位分配条件。参与者前台不显示实验条件编号。正式工作段使用全屏门禁、切屏/无效行为监听和心跳，其他阶段不判定。
 
+A0/A7/A8 不渲染 AI 区，测试轮教学为 4 步；A1-A6 渲染 AI 区，测试轮教学为 5 步。ADVANCED 支持图片和材料区截图附件，BASIC 不支持图片。
+
 ## 4. 关键组件
 
 - `src/components/workbench-layout.tsx`
   - A/B 主工作台与任务2展开页的三区骨架
 - `src/components/company-material-panel.tsx`
-  - 材料区混合阅读器，支持 `txt / docx / pdf / xlsx`
+  - 材料区混合阅读器，支持 `txt / docx / pdf / xlsx` 与页面内截图
 - `src/components/ai-chat-panel.tsx`
   - 任务1 / 任务2 AI 聊天区
 - `src/components/sidetask-strip.tsx`
