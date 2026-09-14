@@ -45,6 +45,11 @@ fi
 step "[4/8] Starting services ($TARGET)"
 if [ "$TARGET" = "all" ]; then
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
+  # The archive uploader can replace the bind-mounted nginx config inode.
+  # Recreate nginx so it never remains attached to the previous inode.
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate nginx
+elif [ "$TARGET" = "nginx" ]; then
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --force-recreate nginx
 else
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d "$TARGET"
 fi

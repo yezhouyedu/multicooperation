@@ -2765,6 +2765,29 @@
 
 ---
 
+### 2026-09-14 Admin 新版材料库导入与上传链路修复
+
+**故障定位与实现**：
+- 师兄选择的新材料库压缩包为 45.36 MiB，解压后实际为 701 个文件、67.76 MiB；生产 Nginx 原通用上限为 `client_max_body_size 50m`，日志明确记录 `POST /api/admin/companies/library/replace-upload` 在约 68.86-71.25 MB 时被 Nginx 以 413 拒绝。页面随后把 Nginx 的 HTML 错误页当 JSON 解析，才显示 `Unexpected token '<'`；材料结构当时尚未进入后端校验。
+- 只对受 Admin 鉴权保护的整库上传端点放宽为 `200m` 并把读写超时设为 10 分钟，其他接口继续保持 50 MB；前端以 190 MiB/1000 文件为安全线，并为 413、非 JSON 响应和误选上级目录提供中文提示。
+- 发现 git archive/rsync 会替换宿主机 Nginx 配置 inode，单纯 reload 的既有容器仍可能读取旧挂载；部署脚本已在 `all/nginx` 部署时强制重建 nginx。线上 `nginx -T` 已确认精确端点为 200m，70 MiB 探针由原 413 变为后端鉴权 401，证明请求能穿过 Nginx。
+
+**材料校验、备份与正式导入**：
+- 使用与生产相同的扫描器预检 `admin材料库上传_20260913`：37 家公司全部有效，其中 36 个正式案例 P01-P36、1 个测试轮 P37；每家公司均为 1 份共享材料、5 份 A 材料、5 份 B 材料、1 份研究材料。
+- 导入前完整备份位于 `/opt/multi-cooperation-backups/20260914_173427_pre_material_20260913/`：`database.dump` 348 KiB，SHA-256 `4b0f4cfe7d7224c051971dfb89fddd313aafec96cb2a6d0031f827d8db3fc094`；`server_storage.tar.gz` 114 MiB，SHA-256 `8d9df783bea55a391b0d086db9e656592d2ca4ed07a2e0cd4d0b2205eceeb22e`。
+- 受保护 Admin API 正式接收 701 个文件/67.76 MiB 并返回 `totalImported=37`。数据库复核为 formal 36、practice 1、每家 12 份、合计 444 份有效材料；服务器同时在 `storage/material_backups/` 生成 37 个 `upload-all` 公司级备份目录，共备份旧材料 444 份/约 101 MiB。
+- 对数据库当前引用的 444 份线上文件逐一与本地新版计算大小和 SHA-256：444/444 存在，0 大小差异、0 哈希差异。公网 API 健康检查和登录页均为 200，postgres/server/nginx healthy，web 正常运行。
+
+**AI 条件核对**：
+- 生产数据库当前 BASIC=`qwen3.5-35b-a3b`、ADVANCED=`qwen3.7-max`，上下文消息上限均为 20；根 README 已改为说明模型以 Admin/数据库配置为准，避免继续把旧环境变量示例当生产现状。
+- 两者在文本综合能力和任务复杂度定位上有清晰梯度，足以作为低/高能力操纵；但阿里云当前文档把滚动别名 `qwen3.7-max` 标为纯文本，而后续固定快照 `qwen3.7-max-2026-06-08` 才明确支持图像/视频。高级组图片输入能力是否必须作为实验处理的一部分，需要在正式实验前由研究决策冻结，本轮未擅自切换生产模型。
+
+**代码与发布**：
+- 主修复提交 `2c890a8 修复材料整库上传容量与错误提示` 已推送 GitHub `main` 并完成生产 web/server/nginx 部署；本记录与 Nginx 强制重建补丁随后提交。
+- 本地 web production build（24 路由）和 `git diff --check` 通过；未跟踪的 `.obsidian/`、`.playwright-cli/`、部署图片和本地证书目录未纳入 Git、未清理，用户原有数据库文件夹手册改动也未混入本轮提交。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。

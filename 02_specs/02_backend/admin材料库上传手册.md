@@ -227,6 +227,7 @@ participant/
 - 前端按文件本体合计 `190 MB` 作为安全线（为 multipart 元数据预留空间），后端单次最多接收 `1000` 个文件；超过任一上限会在上传前给出中文提示。
 - 选择目录时，应直接选择“里面包含 `正式/` 和 `测试轮/`”的材料库文件夹。不要选择同时包含压缩包、旧版材料、解压副本或其他项目文件的上级目录。
 - 如果看到 `413 Request Entity Too Large`，或者旧页面提示 `Unexpected token '<'` / “不是有效 JSON”，说明请求先被 Nginx 拒绝，尚未进入材料结构校验。先检查所选目录的解压后总大小和 Nginx 实际配置。
+- 修改这条 Nginx 规则后必须重建 nginx 容器，不能只假定 `nginx -s reload` 足够：git archive/rsync 部署可能替换宿主机配置文件的 inode，既有容器仍会挂在旧 inode 上。当前 `deploy-prod.sh all/nginx` 已强制重建 nginx，部署后仍应以 `nginx -T` 和一个超过 50 MB 的受控请求验证实际生效值。
 
 ---
 
