@@ -2799,6 +2799,40 @@
 
 ---
 
+### 2026-09-14 B 反馈发送快照与 A 原始材料公司级可见时长
+
+**反馈发送快照**：
+- B 提交反馈时，前端把当前 `taskId` 交给服务端；服务端校验其为当前 Session 中已分配给 B 的任务，并使用数据库任务记录覆盖客户端公司归属。
+- `b_feedback_to_a` 的事件 payload 新增 `feedbackContext`：`sourceTaskAssignmentId/sourceCompanyId` 保存 B 反馈针对的任务与公司，`aActiveTaskAssignmentIdAtSend/aActiveCompanyIdAtSend` 保存发送瞬间 A 正在处理的任务与公司；A 当时没有活动任务时写 `null`。
+- 没有新增“A 收到反馈时间”；事件自身的 `serverTime` 即反馈发送时间。导出在 B 对应公司的 `company_metadata.json.task.feedbackSendContext` 中补充人类可读的 `sourceCompanyCode/aActiveCompanyCodeAtSend`。
+
+**A 原始材料可见时长**：
+- B 解锁 A 原始材料后，仅当当前标签属于 A 原始材料且实验网页可见、获得焦点时累计；A 材料之间切换不中断。
+- 切到 B/共享材料或 A 信息、进入反馈页、换公司、失焦/最小化、工作段结束、页面退出时结束区间；恢复后仍停留在 A 材料时开启新区间。
+- 原始事件为 `b_a_original_material_view_started/ended`，使用相同 `exposureId` 配对；服务端校验事件必须来自当前 Session 的 B 与真实任务，并以任务表回填公司。
+- 导出到每家公司 `company_metadata.json.timing.bAOriginalMaterialsVisibleMs`；重叠区间先求并集。未正常闭合时只裁剪到 B 提交、工作段结束、正式退出、切屏或下一家公司等可信边界，并在 `bAOriginalMaterialsVisibleQualityFlags` 标记；没有安全终点的区间不计入。
+- 该指标只代表 A 原始材料在前台可见且获焦的累计时间，不能证明真实阅读、注视或理解。
+
+**文档与数据库口径**：
+- 未新增 Prisma 表或列，不需要 migration；两项原始记录继续进入 `ExperimentEvent`，分析友好派生值在 Admin 导出时生成。
+- 根/前后端 README、`APP_FLOW.md`、`PRD.md`、变量总表、后端结构、变量持久化、导出方案、时间戳方案、终审清单、变量自检表、`启动prompt.txt` 与数据库文件夹手册已同步；数据库手册同时纳入此前已完成的剪贴板事件位置、哈希判定和分析漏洞说明。
+- “线上实验方案”第 6 节对应的既有退出/掉线逻辑本轮没有修改。
+
+**本地验证**：
+- Server 全量 9 个测试套件、47 项测试通过；新增覆盖反馈快照、A 空窗、伪造公司覆盖、错误参与者拒绝、区间重叠去重、未闭合裁剪，以及并发首次创建线上质量状态时 Prisma `P2002` 竞态恢复。
+- Server build、web production build（24 个路由）与 `git diff --check` 通过；20 个并发 runtime 请求全部返回 200，修复后服务端无 `P2002`。
+- 双浏览器真实流程中，B 解锁并查看 A 原始材料、在 A 材料间切换后于段末闭合；实际导出 `bAOriginalMaterialsVisibleMs=59805`。另一 Session 实际发送反馈后，导出同时包含 B 源任务/公司与发送瞬间 A 活动任务/公司。
+- Web lint 仍受既有依赖缺失 `eslint-module-utils/resolve` 阻塞；Server lint 仍有全库历史格式/类型债务，本轮没有借机自动改写无关代码，以测试、类型构建、真实 API/数据库/导出流程作为发布门禁。
+
+**GitHub 与生产**：
+- 主实现提交 `bd4dd33 实现反馈发送快照与A材料查看时长` 已推送 GitHub `main`，并通过 git archive 固定快照全量部署生产 web/server/nginx。
+- 部署前 PostgreSQL 备份：`/opt/multi-cooperation/backups/db/predeploy_20260914_215914_bd4dd33.sql.gz`，约 269 KiB，SHA-256 `f8802d8c4ace6a7bd734a32fa6f9f2774931affa1d95a60d94677f7ba9ff3482`；生产 volume 未删除或重建。
+- 服务器三份关键源码与 Git `bd4dd33` 归档的 SHA-256 完全一致；postgres/server/nginx healthy，web 正常运行，近 5 分钟服务日志没有业务异常。
+- 公网 `/api/health`、`/login`、`/admin` 均返回 200，`www` 正确跳转主域名；Playwright 实际加载登录页与管理页均无控制台或页面错误。
+- 未跟踪的 `.obsidian/`、`.playwright-cli/`、部署图片和本地证书目录未纳入 Git、未清理。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
