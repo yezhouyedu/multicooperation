@@ -2788,6 +2788,17 @@
 
 ---
 
+### 2026-09-14 高级 AI 图片能力实测与多模态快照切换
+
+- 使用生产数据库中的真实高级模型 endpoint/API key，对一张本地程序生成、左红右蓝且不含项目或参与者信息的 PNG 发起与项目相同格式的 `image_url` 请求；测试不经过实验 Session，不写入实验 AI 消息或事件。
+- 原生产滚动别名 `qwen3.7-max` 实测返回 HTTP 400 / `invalid_parameter_error`，错误为 `Unexpected item type in content`，确认当前别名不能接受图片消息。
+- 在改配置前先以候选 `qwen3.7-max-2026-06-08` 请求同一张图片，HTTP 200，回答“左=红色；右=蓝色”，证明目标快照能够读取并正确理解图片。
+- 变更前 PostgreSQL 备份位于 `/opt/multi-cooperation-backups/20260914_182306_pre_qwen37_vision/database.dump`，约 347 KiB，SHA-256 `669d029d79781402c9eea671de705aab9d2963fe8dfac5a64ee5cefe3a93f131`。
+- 生产 `AiSettings.advancedModel` 已从 `qwen3.7-max` 固定为 `qwen3.7-max-2026-06-08`；基础模型继续为 `qwen3.5-35b-a3b`，其他 endpoint、API key、上下文上限和显示名称均未修改，也无需重启后端。
+- 切换后再次从生产数据库读取当前模型并复测图片：HTTP 200，约 3.08 秒，仍准确回答“左=红色；右=蓝色”；公网 API 健康检查为 200。根 README 的当前生产模型说明已同步。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
