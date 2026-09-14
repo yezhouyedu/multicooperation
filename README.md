@@ -42,7 +42,7 @@
 | ------ | ------------------------------------------------------ |
 | 前端   | Next.js 16.2.4 + React 19.2.4 + Tailwind CSS v4        |
 | 后端   | NestJS 11 + Prisma 6.16.2 + PostgreSQL 16              |
-| AI     | 阿里云千问（qwen-turbo / qwen3.6-plus）                |
+| AI     | 阿里云百炼（模型由 Admin/数据库配置；当前生产为 qwen3.5-35b-a3b / qwen3.7-max） |
 | 部署   | Docker Compose（生产式单机部署，Nginx HTTPS 反向代理） |
 | 包管理 | pnpm（monorepo workspace）                             |
 

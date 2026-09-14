@@ -1936,8 +1936,19 @@ function MaterialsLibraryTab() {
       return;
     }
 
-    const body = new FormData();
     const fileArray = Array.from(files);
+    const totalBytes = fileArray.reduce((sum, file) => sum + file.size, 0);
+    const uploadSafeLimitBytes = 190 * 1024 * 1024;
+    if (totalBytes > uploadSafeLimitBytes) {
+      window.alert(`所选文件夹解压后共 ${(totalBytes / 1024 / 1024).toFixed(1)} MB，超过整库上传安全上限 190 MB。请确认没有误选包含压缩包、旧材料或重复副本的上级目录。`);
+      return;
+    }
+    if (fileArray.length > 1000) {
+      window.alert(`所选文件夹包含 ${fileArray.length} 个文件，超过整库上传上限 1000 个。请确认没有误选上级目录。`);
+      return;
+    }
+
+    const body = new FormData();
     const relativePaths = uploadRelativePaths(files);
     fileArray.forEach((file, index) => {
       body.append('files', file, relativePaths[index]);
@@ -1954,7 +1965,22 @@ function MaterialsLibraryTab() {
         body,
       });
       const text = await response.text();
-      const data = text ? JSON.parse(text) as { totalImported?: number; message?: string } : {};
+      let data: { totalImported?: number; message?: string } = {};
+      if (text) {
+        try {
+          data = JSON.parse(text) as { totalImported?: number; message?: string };
+        } catch {
+          if (!response.ok) {
+            const message = response.status === 413
+              ? '材料文件夹解压后的总大小超过服务器上传限制。请确认选择的是直接包含“正式/测试轮”的材料库文件夹，而不是包含压缩包、旧材料或重复副本的上级目录。'
+              : `材料上传失败（HTTP ${response.status}），服务器返回了非 JSON 错误页。`;
+            window.alert(message);
+            setStatus('替换失败');
+            return;
+          }
+          throw new Error('材料上传成功响应格式异常，请刷新材料管理页核对导入结果。');
+        }
+      }
       if (!response.ok) {
         window.alert(data.message || text || '材料结构不符合要求，请检查后重新上传。');
         setStatus('替换失败');
