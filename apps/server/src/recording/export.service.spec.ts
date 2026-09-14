@@ -2,6 +2,132 @@ import { ExperimentPhase, ParticipantRole } from '@prisma/client';
 import { ExportService } from './export.service';
 
 describe('ExportService integrity-adjusted timing', () => {
+  it('exports feedback send context with readable company codes', () => {
+    const service = new ExportService({} as never, {} as never);
+    const metadata = (service as any).buildCompanyMetadata(
+      {
+        randomizationAudit: null,
+        pairings: [{ participantBId: 'participant-b' }],
+        experimentEvents: [
+          {
+            participantId: 'participant-b',
+            taskAssignmentId: 'b-task-1',
+            companyId: 'b-company-1',
+            eventType: 'b_feedback_to_a',
+            serverTime: new Date('2026-09-14T12:00:00.000Z'),
+            payload: {
+              feedbackContext: {
+                sourceTaskAssignmentId: 'b-task-1',
+                sourceCompanyId: 'b-company-1',
+                aActiveTaskAssignmentIdAtSend: 'a-task-6',
+                aActiveCompanyIdAtSend: 'a-company-6',
+              },
+            },
+          },
+        ],
+        integrityStates: [],
+        segmentStates: [],
+        tasks: [
+          {
+            id: 'b-task-1',
+            companyId: 'b-company-1',
+            company: { id: 'b-company-1', name: 'B公司', roundLabel: 'P01', materials: [] },
+          },
+          {
+            id: 'a-task-6',
+            companyId: 'a-company-6',
+            company: { id: 'a-company-6', name: 'A公司', roundLabel: 'P06', materials: [] },
+          },
+        ],
+      },
+      {
+        id: 'b-task-1',
+        companyId: 'b-company-1',
+        phase: ExperimentPhase.FORMAL,
+        sequenceIndex: 1,
+        snapshots: [],
+        bSequenceIndex: 1,
+        company: { id: 'b-company-1', name: 'B公司', roundLabel: 'P01', materials: [] },
+      },
+      ParticipantRole.B,
+    );
+
+    expect(metadata.task.feedbackSendContext).toEqual({
+      sourceTaskAssignmentId: 'b-task-1',
+      sourceCompanyId: 'b-company-1',
+      sourceCompanyCode: 'P01',
+      aActiveTaskAssignmentIdAtSend: 'a-task-6',
+      aActiveCompanyIdAtSend: 'a-company-6',
+      aActiveCompanyCodeAtSend: 'P06',
+    });
+  });
+
+  it('sums company-level A-material exposure intervals without double counting overlaps', () => {
+    const service = new ExportService({} as never, {} as never);
+    const at = (seconds: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, seconds));
+    const metadata = (service as any).buildCompanyMetadata(
+      {
+        randomizationAudit: null,
+        pairings: [{ participantBId: 'participant-b' }],
+        experimentEvents: [
+          { participantId: 'participant-b', taskAssignmentId: 'task-1', eventType: 'b_a_original_material_view_started', serverTime: at(10), payload: { exposureId: 'view-1' } },
+          { participantId: 'participant-b', taskAssignmentId: 'task-1', eventType: 'b_a_original_material_view_started', serverTime: at(15), payload: { exposureId: 'view-2' } },
+          { participantId: 'participant-b', taskAssignmentId: 'task-1', eventType: 'b_a_original_material_view_ended', serverTime: at(20), payload: { exposureId: 'view-1' } },
+          { participantId: 'participant-b', taskAssignmentId: 'task-1', eventType: 'b_a_original_material_view_ended', serverTime: at(25), payload: { exposureId: 'view-2' } },
+        ],
+        integrityStates: [],
+        segmentStates: [],
+        tasks: [],
+      },
+      {
+        id: 'task-1',
+        companyId: 'company-1',
+        phase: ExperimentPhase.FORMAL,
+        sequenceIndex: 1,
+        snapshots: [],
+        bSequenceIndex: 1,
+        company: { id: 'company-1', name: 'P01', roundLabel: 'P01', materials: [] },
+      },
+      ParticipantRole.B,
+    );
+
+    expect(metadata.timing.bAOriginalMaterialsVisibleMs).toBe(15_000);
+    expect(metadata.timing.bAOriginalMaterialsVisibleQualityFlags).toEqual([]);
+  });
+
+  it('caps an unclosed A-material exposure at B completion and flags it', () => {
+    const service = new ExportService({} as never, {} as never);
+    const at = (seconds: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, seconds));
+    const metadata = (service as any).buildCompanyMetadata(
+      {
+        randomizationAudit: null,
+        pairings: [{ participantBId: 'participant-b' }],
+        experimentEvents: [
+          { participantId: 'participant-b', taskAssignmentId: 'task-1', eventType: 'b_a_original_material_view_started', serverTime: at(10), payload: { exposureId: 'view-open' } },
+        ],
+        integrityStates: [],
+        segmentStates: [],
+        tasks: [],
+      },
+      {
+        id: 'task-1',
+        companyId: 'company-1',
+        phase: ExperimentPhase.FORMAL,
+        sequenceIndex: 1,
+        snapshots: [],
+        bSequenceIndex: 1,
+        bCompletedAt: at(30),
+        company: { id: 'company-1', name: 'P01', roundLabel: 'P01', materials: [] },
+      },
+      ParticipantRole.B,
+    );
+
+    expect(metadata.timing.bAOriginalMaterialsVisibleMs).toBe(20_000);
+    expect(metadata.timing.bAOriginalMaterialsVisibleQualityFlags).toEqual([
+      'unclosed_b_a_material_view_interval',
+    ]);
+  });
+
   it('exports the B five-minute submission gate for each company', () => {
     const service = new ExportService({} as never, {} as never);
     const bCanSubmitAt = new Date('2026-08-23T00:05:00.000Z');

@@ -37,7 +37,7 @@ Each nine-session block contains every condition once. Claimed slots are never r
 - A shared 900-item Task 2 bank with continuous or batch reminders.
 - V0.4 pre-segment instruction randomization and V3.0 questionnaires.
 - Fullscreen gating, all off-screen intervals, a strict greater-than-two-second violation threshold, 120+20 second inactivity handling, heartbeats, disconnects, and role-specific dropout closure.
-- Structured database records plus participant-scoped export packages containing content, AI, Task 2, questionnaires, timestamps, and online-integrity data.
+- Structured database records plus participant-scoped export packages containing content, AI, Task 2, questionnaires, timestamps, online-integrity data, feedback send context, and company-level foreground exposure to A's original materials.
 - Admin management for formal runs, A0-A8 blocks, timing, online-integrity parameters, materials, questionnaires, Task 2 imports, and exports.
 
 ## Technology

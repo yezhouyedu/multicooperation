@@ -10,7 +10,7 @@
   - 参与者登录与自动配对后的页面流转
   - A / B 主工作台
   - 任务2展开页
-  - 材料区阅读器
+  - 材料区阅读器，以及 B 查看 A 原始材料时的公司级前台可见区间记录
   - 任务1 / 任务2 AI 聊天区
   - admin 管理后台
 
@@ -53,6 +53,8 @@ A0/A7/A8 不渲染 AI 区，测试轮教学为 4 步；A1-A6 渲染 AI 区，测
   - A/B 主工作台与任务2展开页的三区骨架
 - `src/components/company-material-panel.tsx`
   - 材料区混合阅读器，支持 `txt / docx / pdf / xlsx` 与页面内截图
+- `src/lib/use-b-a-material-exposure.ts`
+  - 当 B 的活动标签属于 A 原始材料且网页可见、获焦时记录公司级开始/结束事件；A 材料之间切换不中断
 - `src/components/ai-chat-panel.tsx`
   - 任务1 / 任务2 AI 聊天区
 - `src/components/sidetask-strip.tsx`

@@ -159,6 +159,8 @@ const TIMESTAMP_EVENT_TYPES = new Set([
   'side_activity',
   'ai_wait_started',
   'ai_wait_ended',
+  'b_a_original_material_view_started',
+  'b_a_original_material_view_ended',
 ]);
 
 @Injectable()
@@ -815,25 +817,54 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`Participant with role ${input.role} has not joined yet`);
     }
 
+    const rawPayload =
+      input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+        ? { ...(input.payload as Record<string, unknown>) }
+        : {};
+    const taskId =
+      typeof rawPayload.taskId === 'string' ? rawPayload.taskId : '';
+    const task = taskId
+      ? await this.prisma.taskAssignment.findFirst({
+          where: { id: taskId, sessionId: session.id },
+          select: { id: true, companyId: true, phase: true, bSequenceIndex: true },
+        })
+      : null;
+
+    let persistedPayload = input.payload ?? null;
+    if (input.stage === 'b_feedback_to_a') {
+      if (input.role !== ParticipantRole.B || !task || task.bSequenceIndex === null) {
+        throw new BadRequestException('B 反馈缺少有效的来源任务');
+      }
+      const activeATask = await this.prisma.taskAssignment.findFirst({
+        where: {
+          sessionId: session.id,
+          phase: task.phase,
+          aStartedAt: { not: null },
+          aSubmittedAt: null,
+        },
+        orderBy: { aStartedAt: 'desc' },
+        select: { id: true, companyId: true },
+      });
+      persistedPayload = {
+        ...rawPayload,
+        feedbackContext: {
+          sourceTaskAssignmentId: task.id,
+          sourceCompanyId: task.companyId,
+          aActiveTaskAssignmentIdAtSend: activeATask?.id ?? null,
+          aActiveCompanyIdAtSend: activeATask?.companyId ?? null,
+        },
+      } as Prisma.InputJsonValue;
+    }
+
     const progress = await this.prisma.taskProgress.create({
       data: {
         sessionId: session.id,
         participantId: participant.id,
         stage: input.stage,
-        payload: input.payload,
+        payload: persistedPayload ?? Prisma.JsonNull,
       },
     });
 
-    const taskId =
-      input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
-        ? String((input.payload as Record<string, unknown>).taskId ?? '')
-        : '';
-    const task = taskId
-      ? await this.prisma.taskAssignment.findFirst({
-          where: { id: taskId, sessionId: session.id },
-          select: { id: true, companyId: true, phase: true },
-        })
-      : null;
     await this.audit.record({
       sessionId: session.id,
       participantId: participant.id,
@@ -843,7 +874,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       eventType: input.stage,
       phase: task?.phase ?? session.currentPhase ?? null,
       segmentIndex: session.currentSegmentIndex,
-      payload: input.payload ?? null,
+      payload: persistedPayload,
     });
 
     const eventPayload = {
@@ -1106,6 +1137,17 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       ? session.tasks.find((item) => item.id === input.taskAssignmentId)
       : null;
     if (input.taskAssignmentId && !task) throw new BadRequestException('Task assignment does not belong to this session');
+    const isAMaterialExposureEvent =
+      input.eventType === 'b_a_original_material_view_started' ||
+      input.eventType === 'b_a_original_material_view_ended';
+    if (isAMaterialExposureEvent) {
+      const pairing = session.pairings[0];
+      if (!task || input.role !== ParticipantRole.B || pairing?.participantBId !== input.participantId) {
+        throw new BadRequestException('A 原始材料查看事件必须来自当前 Session 的 B 任务');
+      }
+      const exposureId = typeof payload.exposureId === 'string' ? payload.exposureId.trim() : '';
+      if (!exposureId) throw new BadRequestException('A 原始材料查看事件缺少 exposureId');
+    }
 
     const phase = input.phase
       ? `${input.phase}`.toUpperCase() === 'PRACTICE'
@@ -1117,7 +1159,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         sessionId: session.id,
         participantId: input.participantId,
         taskAssignmentId: input.taskAssignmentId ?? null,
-        companyId: input.companyId ?? task?.companyId ?? null,
+        companyId: task?.companyId ?? input.companyId ?? null,
         sideTaskPlanId: input.sideTaskPlanId ?? null,
         role: input.role ?? null,
         eventType: input.eventType,
@@ -4174,11 +4216,23 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     role: ParticipantRole,
     now: Date,
   ) {
-    return this.prisma.participantIntegrityState.upsert({
-      where: { sessionId_participantId: { sessionId, participantId } },
-      update: {},
-      create: { sessionId, participantId, role, lastHeartbeatAt: now, lastValidActivityAt: now },
-    });
+    try {
+      return await this.prisma.participantIntegrityState.upsert({
+        where: { sessionId_participantId: { sessionId, participantId } },
+        update: {},
+        create: { sessionId, participantId, role, lastHeartbeatAt: now, lastValidActivityAt: now },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return this.prisma.participantIntegrityState.findUniqueOrThrow({
+          where: { sessionId_participantId: { sessionId, participantId } },
+        });
+      }
+      throw error;
+    }
   }
 
   private async closeOpenIntegrityInterval(

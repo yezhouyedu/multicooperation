@@ -39,6 +39,9 @@
 - `aInfoUnlockedAt`
 - `bOpenedAInfoAt`
 - `bCanSubmitAt`：B 被分配当前公司后满 5 分钟的开放时刻；B 查看 A 信息、解锁 A 原始材料和提交都以此作为门槛之一
+- `bViewedAMaterialsAt`：B 首次点击解锁 A 原始材料的时间
+- `bAOriginalMaterialsVisibleMs`：B 在该公司中让 A 原始材料标签保持网页前台可见且获焦的累计毫秒数；不是眼动或实际阅读时长
+- `feedbackSendContext`：B 确认发送反馈时，B 来源任务/公司与 A 当时活动任务/公司的服务端快照
 - `aSubmittedAt`
 - `bCompletedAt`
 - `taskFrozenAt`

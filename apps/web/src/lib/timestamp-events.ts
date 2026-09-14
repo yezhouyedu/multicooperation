@@ -18,14 +18,15 @@ export function createClientEventId(prefix: string) {
 }
 
 export async function recordTimestampEvent(input: TimestampEventInput) {
-  if (!input.participantId) return;
+  if (!input.participantId) return false;
   const payload = {
     ...(input.payload ?? {}),
     clientEventId: input.payload?.clientEventId ?? createClientEventId(input.eventType),
   };
-  await fetch(`${serverBaseUrl}/experiment/session/${input.sessionCode}/timestamps/event`, {
+  const response = await fetch(`${serverBaseUrl}/experiment/session/${input.sessionCode}/timestamps/event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
     body: JSON.stringify({
       participantId: input.participantId,
       eventType: input.eventType,
@@ -38,5 +39,6 @@ export async function recordTimestampEvent(input: TimestampEventInput) {
       segmentIndex: input.segmentIndex ?? undefined,
       payload,
     }),
-  }).catch(() => {});
+  }).catch(() => null);
+  return Boolean(response?.ok);
 }

@@ -891,6 +891,11 @@ export class ExportService {
     role: ParticipantRole | null,
   ) {
     const materials = normalizeMaterials(task.company.materials);
+    const aMaterialExposure = this.bAOriginalMaterialsVisibleSummary(
+      session,
+      task,
+      role,
+    );
     return {
       company: {
         companyId: task.companyId,
@@ -910,6 +915,7 @@ export class ExportService {
         bSequenceIndex: task.bSequenceIndex,
         bAssignmentPath: this.bAssignmentPath(session, task.id),
         bAssignmentDetail: this.bAssignmentDetail(session, task.id),
+        feedbackSendContext: this.feedbackSendContext(session, task, role),
       },
       materials: {
         companyId: task.companyId,
@@ -945,6 +951,8 @@ export class ExportService {
         bCanSubmitAt: task.bCanSubmitAt?.toISOString() ?? null,
         bViewedAInfoAt: task.bViewedAInfoAt?.toISOString() ?? null,
         bViewedAMaterialsAt: task.bViewedAMaterialsAt?.toISOString() ?? null,
+        bAOriginalMaterialsVisibleMs: aMaterialExposure.visibleMs,
+        bAOriginalMaterialsVisibleQualityFlags: aMaterialExposure.qualityFlags,
         bCompletedAt: task.bCompletedAt?.toISOString() ?? null,
       },
       aiState: {
@@ -1792,6 +1800,168 @@ export class ExportService {
       unknown
     > | null;
     return detail?.assignedAt ?? null;
+  }
+
+  private feedbackSendContext(
+    session: SessionExportRecord,
+    task: SessionExportRecord['tasks'][number],
+    role: ParticipantRole | null,
+  ) {
+    if (role !== ParticipantRole.B) return null;
+    const participantBId = session.pairings?.[0]?.participantBId ?? null;
+    const event = (session.experimentEvents ?? [])
+      .filter(
+        (item) =>
+          item.eventType === 'b_feedback_to_a' &&
+          item.taskAssignmentId === task.id &&
+          (!participantBId || item.participantId === participantBId),
+      )
+      .at(-1);
+    if (!event) return null;
+
+    const context = this.parseObject(
+      this.parseObject(event.payload).feedbackContext,
+    );
+    const sourceTaskAssignmentId =
+      typeof context.sourceTaskAssignmentId === 'string'
+        ? context.sourceTaskAssignmentId
+        : event.taskAssignmentId;
+    const sourceCompanyId =
+      typeof context.sourceCompanyId === 'string'
+        ? context.sourceCompanyId
+        : event.companyId;
+    const aActiveTaskAssignmentIdAtSend =
+      typeof context.aActiveTaskAssignmentIdAtSend === 'string'
+        ? context.aActiveTaskAssignmentIdAtSend
+        : null;
+    const aActiveCompanyIdAtSend =
+      typeof context.aActiveCompanyIdAtSend === 'string'
+        ? context.aActiveCompanyIdAtSend
+        : null;
+    const sourceTask =
+      (session.tasks ?? []).find(
+        (item) => item.id === sourceTaskAssignmentId,
+      ) ?? task;
+    const activeATask = (session.tasks ?? []).find(
+      (item) => item.id === aActiveTaskAssignmentIdAtSend,
+    );
+
+    return {
+      sourceTaskAssignmentId,
+      sourceCompanyId,
+      sourceCompanyCode: sourceTask?.company
+        ? this.companyCode(sourceTask.company)
+        : null,
+      aActiveTaskAssignmentIdAtSend,
+      aActiveCompanyIdAtSend,
+      aActiveCompanyCodeAtSend: activeATask?.company
+        ? this.companyCode(activeATask.company)
+        : null,
+    };
+  }
+
+  private bAOriginalMaterialsVisibleSummary(
+    session: SessionExportRecord,
+    task: SessionExportRecord['tasks'][number],
+    role: ParticipantRole | null,
+  ) {
+    if (role !== ParticipantRole.B)
+      return { visibleMs: null, qualityFlags: [] as string[] };
+    const participantBId = session.pairings?.[0]?.participantBId ?? null;
+    const relevantEvents = (session.experimentEvents ?? []).filter(
+      (event) =>
+        event.taskAssignmentId === task.id &&
+        (!participantBId || event.participantId === participantBId) &&
+        (event.eventType === 'b_a_original_material_view_started' ||
+          event.eventType === 'b_a_original_material_view_ended'),
+    );
+    const groups = new Map<
+      string,
+      {
+        start?: (typeof relevantEvents)[number];
+        end?: (typeof relevantEvents)[number];
+      }
+    >();
+    for (const event of relevantEvents) {
+      const exposureId = this.payloadString(event.payload, 'exposureId');
+      if (!exposureId) continue;
+      const group = groups.get(exposureId) ?? {};
+      if (event.eventType === 'b_a_original_material_view_started') {
+        if (!group.start || event.serverTime < group.start.serverTime) group.start = event;
+      } else if (
+        !group.end ||
+        event.serverTime > group.end.serverTime
+      ) {
+        group.end = event;
+      }
+      groups.set(exposureId, group);
+    }
+
+    const qualityFlags = new Set<string>();
+    const intervals: Array<{ start: number; end: number }> = [];
+    for (const group of groups.values()) {
+      if (!group.start) continue;
+      const start = group.start.serverTime.getTime();
+      let end = group.end?.serverTime.getTime() ?? null;
+      if (end === null) {
+        qualityFlags.add('unclosed_b_a_material_view_interval');
+        end = this.bAOriginalMaterialFallbackEnd(
+          session,
+          task,
+          participantBId,
+          group.start,
+        );
+      }
+      if (end === null || end <= start) {
+        qualityFlags.add('invalid_b_a_material_view_interval');
+        continue;
+      }
+      intervals.push({ start, end });
+    }
+
+    const visibleMs = this.mergeTimeIntervals(intervals).reduce(
+      (sum, interval) => sum + interval.end - interval.start,
+      0,
+    );
+    return { visibleMs, qualityFlags: [...qualityFlags] };
+  }
+
+  private bAOriginalMaterialFallbackEnd(
+    session: SessionExportRecord,
+    task: SessionExportRecord['tasks'][number],
+    participantBId: string | null,
+    startEvent: SessionExportRecord['experimentEvents'][number],
+  ) {
+    const start = startEvent.serverTime.getTime();
+    const candidates: number[] = [];
+    const addCandidate = (value: Date | null | undefined) => {
+      if (value && value.getTime() > start) candidates.push(value.getTime());
+    };
+    addCandidate(task.bCompletedAt);
+    addCandidate(
+      (session.segmentStates ?? []).find(
+        (state) => state.segmentIndex === startEvent.segmentIndex,
+      )?.completedAt,
+    );
+    const integrityState = (session.integrityStates ?? []).find(
+      (state) =>
+        !participantBId || state.participantId === participantBId,
+    );
+    addCandidate(integrityState?.formalDropoutAt);
+    for (const interval of integrityState?.intervals ?? []) {
+      if (interval.intervalType === 'OFFSCREEN') addCandidate(interval.startedAt);
+    }
+    for (const event of session.experimentEvents ?? []) {
+      if (
+        event.serverTime.getTime() > start &&
+        (!participantBId || event.participantId === participantBId) &&
+        event.eventType === 'b_a_original_material_view_started' &&
+        event.taskAssignmentId !== task.id
+      ) {
+        addCandidate(event.serverTime);
+      }
+    }
+    return candidates.length > 0 ? Math.min(...candidates) : null;
   }
 
   private bAssignedAtDate(session: SessionExportRecord, taskId: string) {

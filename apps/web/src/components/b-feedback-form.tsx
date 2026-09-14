@@ -184,6 +184,7 @@ export function BFeedbackForm({
     setSubmitting(true);
     setError('');
     const submitPayload = {
+      taskId,
       companyName,
       companyNo,
       sendFeedback: q1 === '是',
@@ -205,7 +206,7 @@ export function BFeedbackForm({
       if (!res.ok) throw new Error('提交失败');
 
       if (q1 === '是') {
-        await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
+        const feedbackResponse = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
           method: 'POST',
           headers: idempotencyHeaders(`progress:${sessionCode}:${taskId}:b_feedback_to_a`, {
             'Content-Type': 'application/json',
@@ -214,6 +215,7 @@ export function BFeedbackForm({
             role: 'B',
             stage: 'b_feedback_to_a',
             payload: {
+              taskId,
               companyName,
               companyNo,
               helpfulness: q3,
@@ -223,6 +225,7 @@ export function BFeedbackForm({
             },
           }),
         });
+        if (!feedbackResponse.ok) throw new Error('反馈发送失败');
       }
       onSubmitted();
     } catch (err) {

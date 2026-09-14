@@ -11,6 +11,7 @@ import { WorkbenchLayout } from '@/components/workbench-layout';
 import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft, type CompanyData, type MaterialItem } from '@/lib/session-runtime';
+import { useBAOriginalMaterialExposure } from '@/lib/use-b-a-material-exposure';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -227,6 +228,19 @@ export default function WorkspaceBPage() {
     () => (!runtime?.bHasViewedAMaterials ? aMaterials.map((item) => item.id) : []),
     [aMaterials, runtime?.bHasViewedAMaterials],
   );
+  const aMaterialIds = useMemo(() => aMaterials.map((item) => item.id), [aMaterials]);
+  useBAOriginalMaterialExposure({
+    sessionCode: bootstrap?.sessionCode,
+    participantId: bootstrap?.participantId,
+    taskAssignmentId: runtime?.currentTask?.id,
+    companyId: runtime?.currentTask?.company?.id,
+    phase: runtime?.phase === 'practice' ? 'practice' : 'formal',
+    segmentIndex: runtime?.segmentIndex,
+    activeItemKey: activeSidebarKey,
+    aMaterialIds,
+    unlocked: Boolean(runtime?.bHasViewedAMaterials),
+    enabled: runtime?.phase === 'practice' || runtime?.phase === 'formal_work',
+  });
   const isPractice = runtime?.phase === 'practice';
   const bReadyAtMs = runtime?.currentTask?.bCanSubmitAt ? new Date(runtime.currentTask.bCanSubmitAt).getTime() : null;
   const bRemainingSeconds = bReadyAtMs ? Math.max(0, Math.ceil((bReadyAtMs - nowMs) / 1000)) : 0;
