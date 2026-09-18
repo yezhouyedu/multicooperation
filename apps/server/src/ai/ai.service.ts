@@ -288,13 +288,23 @@ export class AiService {
 
   private async resolveChatContext(input: ChatInput): Promise<ResolvedChatContext> {
     const session = await this.prisma.session.findUnique({ where: { code: input.sessionCode } });
-    const experimentSnapshot = session?.experimentSnapshot && typeof session.experimentSnapshot === 'object'
+    if (!session) throw new BadRequestException('Session 不存在');
+
+    const phase = input.phase === 'practice' ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
+    if (
+      phase === ExperimentPhase.PRACTICE
+      || session.currentPhase === ExperimentPhase.PRACTICE
+      || input.segmentIndex === 0
+    ) {
+      throw new BadRequestException('测试轮仅用于熟悉任务流程，不能调用 AI');
+    }
+
+    const experimentSnapshot = session.experimentSnapshot && typeof session.experimentSnapshot === 'object'
       ? session.experimentSnapshot as Record<string, unknown>
       : null;
     if (experimentSnapshot?.aiEnabled === false || experimentSnapshot?.aiCondition === 'NONE') {
       throw new BadRequestException('当前实验条件不提供 AI 辅助');
     }
-    if (!session) throw new BadRequestException('Session 不存在');
 
     const participantId = input.participantId ?? null;
     const contextType = input.contextType ?? 'main';
@@ -305,7 +315,6 @@ export class AiService {
       throw new BadRequestException('基础 AI 模式不支持图片上传');
     }
 
-    const phase = input.phase === 'practice' ? ExperimentPhase.PRACTICE : ExperimentPhase.FORMAL;
     if (phase === ExperimentPhase.FORMAL && participantId) {
       const pairing = await this.prisma.pairing.findFirst({ where: { sessionId: session.id } });
       if (!pairing || (pairing.participantAId !== participantId && pairing.participantBId !== participantId)) {

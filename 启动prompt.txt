@@ -107,7 +107,8 @@
 - B 每接到一家公司都有自己的 5 分钟处理窗口；只有 A 已提交且 `bCanSubmitAt <= now` 后，B 才能查看 A 信息、解锁 A 原始材料和提交。
 - B 可以提前看自己材料、写草稿、用 AI；是否点击过“查看 A 信息”要记录，但不再作为提交门槛。
 - B 首次解锁 A 原始材料继续记 `bViewedAMaterialsAt`；解锁后查看时另由成对事件计算 `bAOriginalMaterialsVisibleMs`，A 材料之间切换不中断，切出页面或换到其他标签立即暂停。
-- 测试轮固定默认变量：基础 AI、continuous 高频任务2提醒、neutral_info 中性信息。
+- 测试轮不开放真实 AI 调用：A1-A6 仅显示禁用的 AI 区用于认识位置和用途，A0/A7/A8 不显示 AI 区；进入正式工作段后，才按 Session 领取的 A0-A8 快照启用 NONE / BASIC / ADVANCED。
+- 测试轮真实任务2题数固定为 0，只显示不计分、不进入正式变量的前端教学演示题；continuous / batch 与 neutral_info / coop_narrative 的真实题目释放和处理从正式工作段开始，因此不再把测试轮概括为“固定 continuous + neutral_info”。
 - 测试轮只是一家公司；测试轮到时或完成后进入正式阶段 ready，不直接进入正式工作段。
 - 正式工作段默认 20 分钟；休息段默认 5 分钟；A 单家公司窗口固定 5 分钟。
 - 任务2系统已经是正式队列式系统，不是原型。

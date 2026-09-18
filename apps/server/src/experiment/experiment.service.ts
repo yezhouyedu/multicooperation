@@ -1670,10 +1670,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           task.bCanSubmitAt && task.bCanSubmitAt > now
             ? task.bCanSubmitAt
             : (task.bCanSubmitAt ?? now),
-        bPostAAiLevel: task.bPostAAiLevel ?? this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+        bPostAAiLevel: task.bPostAAiLevel ?? this.getTaskAiLevel(synced.config, session.currentSegmentIndex, session),
         crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary({
           ...task,
-          bPostAAiLevel: task.bPostAAiLevel ?? this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+          bPostAAiLevel: task.bPostAAiLevel ?? this.getTaskAiLevel(synced.config, session.currentSegmentIndex, session),
         }),
         aRemainingSeconds: this.computeRemainingSeconds(task.aDeadlineAt),
       },
@@ -1716,7 +1716,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           tx,
           session.id,
           allTasks,
-          this.getCurrentAiLevel(synced.config, session.currentSegmentIndex, session),
+          this.getTaskAiLevel(synced.config, session.currentSegmentIndex, session),
         );
       }
 
@@ -2003,7 +2003,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
                 currentATask.bCanSubmitAt && currentATask.bCanSubmitAt > snapshotAt
                   ? currentATask.bCanSubmitAt
                   : (currentATask.bCanSubmitAt ?? snapshotAt),
-              bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+              bPostAAiLevel: this.getTaskAiLevel(config, session.currentSegmentIndex, session),
               crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
               aRemainingSeconds: 0,
             },
@@ -2053,7 +2053,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             practiceTask,
             session.currentSegmentEnds,
             now,
-            this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+            this.getTaskAiLevel(config, session.currentSegmentIndex, session),
           );
         }
       }
@@ -2072,7 +2072,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
               currentATask,
               session.currentSegmentEnds,
               now,
-              this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+              this.getTaskAiLevel(config, session.currentSegmentIndex, session),
             );
           }
         }
@@ -2089,7 +2089,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             tx,
             session.id,
             formalTasks,
-            this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+            this.getTaskAiLevel(config, session.currentSegmentIndex, session),
           );
         }
       }
@@ -2170,7 +2170,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             currentATask.bCanSubmitAt && currentATask.bCanSubmitAt > snapshotAt
               ? currentATask.bCanSubmitAt
               : (currentATask.bCanSubmitAt ?? snapshotAt),
-          bPostAAiLevel: this.getCurrentAiLevel(config, session.currentSegmentIndex, session),
+          bPostAAiLevel: this.getTaskAiLevel(config, session.currentSegmentIndex, session),
           crossUpgradeBoundaryFlag: this.hasCrossUpgradeBoundary(currentATask),
           aRemainingSeconds: 0,
         },
@@ -2251,7 +2251,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           bCanSubmitAt: aEndsAt,
           aDeadlineAt: null,
           aRemainingSeconds: 0,
-          aAiLevelAtWindow: this.getCurrentAiLevel(config, 0),
+          aAiLevelAtWindow: this.getTaskAiLevel(config, 0, session),
         },
       });
       if (pairing.participantAId) {
@@ -2877,7 +2877,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           practiceTask,
           endsAt,
           now,
-          this.getCurrentAiLevel(config, 0),
+          this.getTaskAiLevel(config, 0, session),
         );
       }
 
@@ -2973,7 +2973,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         practiceTask,
         endsAt,
         now,
-        this.getCurrentAiLevel(config, 0),
+        this.getTaskAiLevel(config, 0),
       );
     }
 
@@ -3039,7 +3039,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         currentATask,
         workEnds,
         now,
-        this.getCurrentAiLevel(config, segmentIndex, sessionForAi ?? undefined),
+        this.getTaskAiLevel(config, segmentIndex, sessionForAi ?? undefined),
       );
     }
 
@@ -3055,7 +3055,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         tx,
         sessionId,
         formalTasks,
-        this.getCurrentAiLevel(config, segmentIndex, sessionForAi ?? undefined),
+        this.getTaskAiLevel(config, segmentIndex, sessionForAi ?? undefined),
       );
     }
 
@@ -3442,7 +3442,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     task: TaskAssignment,
     segmentEndsAt: Date | null | undefined,
     now: Date,
-    aiLevel: AiLevel,
+    aiLevel: AiLevel | null,
   ) {
     const remaining = task.aRemainingSeconds ?? 300;
     const deadline = new Date(
@@ -3476,7 +3476,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     tx: Prisma.TransactionClient,
     sessionId: string,
     tasks: TaskAssignment[],
-    aiLevel: AiLevel,
+    aiLevel: AiLevel | null,
   ): Promise<{ assigned: TaskAssignment | null; method: string }> {
     const maxBSeq = tasks.reduce((max, t) => Math.max(max, t.bSequenceIndex ?? 0), 0);
     const nextSeq = maxBSeq + 1;
@@ -3582,6 +3582,17 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     if (segmentIndex <= 1) return config.segmentOneAiLevel;
     if (segmentIndex <= 3) return config.segmentTwoAiLevel;
     return config.segmentThreeAiLevel;
+  }
+
+  private getTaskAiLevel(
+    config: ExperimentConfig,
+    segmentIndex: number,
+    session?: Pick<Session, 'experimentSnapshot'> | null,
+  ): AiLevel | null {
+    if (segmentIndex === 0) return null;
+    const snapshot = this.parseExperimentSnapshot(session?.experimentSnapshot);
+    if (snapshot?.aiEnabled === false || snapshot?.aiCondition === 'NONE') return null;
+    return this.getCurrentAiLevel(config, segmentIndex, session);
   }
 
   private async appendBAssignmentLog(

@@ -46,8 +46,8 @@ function buildSteps(role: 'A' | 'B', aiEnabled: boolean): Step[] {
     },
     {
       key: 'ai_message',
-      title: '使用 AI 助手',
-      detail: '这里你可以借助 AI 的辅助完成任务。',
+      title: '了解 AI 助手',
+      detail: '这里是 AI 助手区域。测试轮只需了解它的位置和用途，无需实际操作；正式任务开始后再按页面提示使用。',
       eventType: 'ai_message',
       anchor: 'ai-input',
       requireAction: false,
@@ -94,7 +94,7 @@ function getOverviewContent(role: 'A' | 'B', aiEnabled: boolean) {
           items: [
             '左侧是材料区，用于查看公司相关资料',
             '右上是答题区，用于填写A内容',
-            aiEnabled ? '右下是 AI 区，可辅助你整理信息和分析问题；测试轮与正式任务使用相同的 AI 条件' : '本次实验条件不提供 AI 区',
+            aiEnabled ? '右下是 AI 区；测试轮只介绍它的位置和用途，不开放实际调用' : '本次实验条件不提供 AI 区',
           ],
         },
         {
@@ -130,7 +130,7 @@ function getOverviewContent(role: 'A' | 'B', aiEnabled: boolean) {
         items: [
           '左侧是材料区，用于查看公司相关资料',
           '右上是答题区，用于填写投资判断',
-          aiEnabled ? '右下是 AI 区，可辅助你整理信息和分析问题；测试轮与正式任务使用相同的 AI 条件' : '本次实验条件不提供 AI 区',
+          aiEnabled ? '右下是 AI 区；测试轮只介绍它的位置和用途，不开放实际调用' : '本次实验条件不提供 AI 区',
         ],
       },
       {
@@ -306,7 +306,9 @@ export function PracticeTutorialOverlay({
           <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">教学引导已完成</div>
           <div className="mb-3 text-xl font-semibold text-[#1d2129]">下一步正式进入测试轮</div>
           <div className="text-sm leading-7 text-[#4e5969]">
-            请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区、AI 区和任务2功能。
+            {aiEnabled
+              ? '请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区和任务2功能。AI 助手会在正式任务开始后启用。'
+              : '请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区和任务2功能。'}
           </div>
           <div className="mt-5 flex justify-end">
             <button

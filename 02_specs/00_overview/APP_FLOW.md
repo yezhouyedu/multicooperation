@@ -49,7 +49,7 @@ flowchart TD
 - Admin 可暂停当前实验局并切换到旧实验局继续分配；旧实验局从数据库中的下一可用槽位续领，不重置序列。实验局有关联 Session 时不可删除。
 - 实验条件随机、组内角色随机、正式公司顺序随机是三个相互独立、分别审计的随机化层级。
 
-| 条件 | AI（测试轮起生效） | 任务2提醒 | 叙事 |
+| 条件 | AI（正式工作段生效） | 任务2提醒 | 叙事 |
 |---|---|---|---|
 | A0 | 无 AI | continuous 高频 | neutral_info 中性 |
 | A1 | BASIC 基础 AI | continuous 高频 | neutral_info 中性 |
@@ -493,7 +493,9 @@ Session 配对: 原子领取 A0-A8 条件槽位并固化提醒频率 + 叙事组
 ## 9. AI 规则
 
 - AI 能力由 Session 的 A0-A8 条件快照决定：A0/A7/A8 无 AI，A1/A3/A4 为 BASIC，A2/A5/A6 为 ADVANCED
-- 条件从测试轮起生效，并在三个正式工作段保持一致；旧三段 AI 配置仅用于手动调试或历史 Session 兼容
+- 测试轮不开放真实 AI 调用：A1-A6 只显示禁用的 AI 区用于认识位置和用途，A0/A7/A8 不显示 AI 区；后端统一拒绝 `phase=practice` 的 AI 请求
+- AI 能力从正式工作段开始按 Session 快照启用，并在三个正式工作段保持一致；旧三段 AI 配置仅用于手动调试或历史 Session 兼容
+- 测试轮任务的 `aAiLevelAtWindow / bPreAAiLevel / bPostAAiLevel` 记录为空；A0/A7/A8 的正式任务同样不记录 AI 等级
 - 任务1 AI 按公司隔离上下文
 - 任务2 AI 按“参与者 + 当前实验 + 当前工作段”连续保留上下文
 - `basic` 不支持图片

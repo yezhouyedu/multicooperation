@@ -462,7 +462,7 @@ export default function WorkspaceBPage() {
                         connectionStatus === 'offline'
                           ? '网络异常，AI助手将在网络恢复后可用'
                           : runtime.phase === 'practice'
-                            ? '暂不可用，AI助手将在正式实验启用'
+                            ? '测试轮仅用于熟悉任务流程，AI助手将在正式任务开始后启用'
                             : undefined
                       }
                       onScreenshot={() => materialPanelRef.current?.startCapture()}
