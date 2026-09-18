@@ -2833,6 +2833,26 @@
 
 ---
 
+### 2026-09-18 测试轮 AI 教学口径与记录一致性收口
+
+**最终业务口径**：
+- 测试轮继续用于熟悉任务和工作台，不开放真实 AI 调用。A1-A6 显示禁用的 AI 区，仅教学其位置和用途；A0/A7/A8 不显示 AI 区。进入正式工作段后才按 Session 的 A0-A8 快照启用 NONE / BASIC / ADVANCED。
+- 测试轮真实任务2计划数仍为 0，只显示前端教学演示题；现有测试轮整体体验不改变。
+
+**代码与数据修正**：
+- A/B 测试轮 AI 面板提示和教学引导统一改为“了解 AI 助手”，明确正式任务开始后才启用；完成卡不再要求测试轮继续使用 AI。
+- AI 服务同时检查请求 phase、Session 当前阶段和 `segmentIndex=0`，统一拒绝测试轮调用，避免仅靠前端禁用或伪造 formal 参数绕过。
+- 测试轮任务的 `aAiLevelAtWindow / bPreAAiLevel / bPostAAiLevel` 不再回退误记为 BASIC；A0/A7/A8 的正式任务同样记录 `null`，只有实际具备 AI 能力的正式任务记录 BASIC / ADVANCED。
+- 实验必要口径、主流程、PRD、教学、变量持久化、九条件、导出方案、自检表、数据库文件夹手册、前端 README 与 `启动prompt.txt` 已同步。
+
+**验证、GitHub 与生产**：
+- Prisma Client 生成、server build、web production build（24 路由）和 `git diff --check` 通过；server 全量 11 个测试套件、52 项测试通过，新增测试覆盖测试轮请求硬拒绝、伪装 formal 请求拒绝，以及测试轮/无 AI/高级 AI 的任务等级记录。
+- 主实现提交 `6c9318b 明确测试轮AI禁用并修正记录口径` 已推送 GitHub `main`，并通过 git archive 全量重建生产 web/server/nginx；本轮无 schema migration，未删除或重建生产 volume。
+- 公网 `/api/health`、`/login`、`/admin` 均返回 200；postgres/server/nginx healthy，web 正常运行。服务器两份关键源码与提交 `6c9318b` 的 git archive 内容哈希一致，近 5 分钟 server 日志无启动异常。
+- 未跟踪的 `.obsidian/`、`.playwright-cli/`、部署图片和本地证书目录未纳入 Git、未清理。
+
+---
+
 ## 末尾固定提示：写入 progress.md 前必须先看
 
 > 这一段必须永远保留在 `progress.md` 文件最末尾。后续新增进度记录时，请把新记录插入到本提示上方，不要把本提示顶到中间，也不要删除本提示。
