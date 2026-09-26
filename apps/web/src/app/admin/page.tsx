@@ -2175,7 +2175,7 @@ export default function AdminPage() {
       <aside className="w-52 shrink-0 border-r border-[#e5e6eb] bg-white py-6">
         <div className="mb-6 px-5">
           <div className="text-xs font-bold uppercase tracking-wider text-[#86909c]">管理后台</div>
-          <div className="mt-1 text-base font-bold text-[#1e80ff]">AI 投资决策平台</div>
+          <div className="mt-1 text-base font-bold text-[#1e80ff]">AI 协作决策平台</div>
         </div>
         <nav className="space-y-1 px-2">
           {NAV_ITEMS.map((item) => (

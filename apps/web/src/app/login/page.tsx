@@ -44,41 +44,56 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f0f2f5]">
-      <div
-        className="w-full max-w-sm rounded-2xl border border-[#eaecf0] bg-white p-8"
-        style={{ boxShadow: 'var(--shadow-elevated)' }}
-      >
-        <div className="mb-8 text-center">
-          <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
-          <div className="text-sm text-[#86909c]">请使用实验账号登录</div>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-[#1d2129]">手机号</label>
-            <input
-              type="text"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void handleLogin()}
-              placeholder="请输入参与实验的手机号"
-              className="w-full rounded-lg border border-[#eaecf0] bg-[#f5f7fa] px-3 py-2.5 text-sm text-[#1d2129] outline-none transition focus:border-[#1e80ff] focus:bg-white focus:ring-2 focus:ring-[#1e80ff]/20"
-            />
+    <>
+      <main className="flex min-h-screen items-center justify-center bg-[#f0f2f5]">
+        <div
+          className="w-full max-w-sm rounded-2xl border border-[#eaecf0] bg-white p-8"
+          style={{ boxShadow: 'var(--shadow-elevated)' }}
+        >
+          <div className="mb-8 text-center">
+            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
+            <div className="text-sm text-[#86909c]">请使用实验账号登录</div>
           </div>
 
-          {error ? <div className="text-xs text-red-500">{error}</div> : null}
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-[#1d2129]">手机号</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && void handleLogin()}
+                placeholder="请输入参与实验的手机号"
+                className="w-full rounded-lg border border-[#eaecf0] bg-[#f5f7fa] px-3 py-2.5 text-sm text-[#1d2129] outline-none transition focus:border-[#1e80ff] focus:bg-white focus:ring-2 focus:ring-[#1e80ff]/20"
+              />
+            </div>
 
-          <button
-            type="button"
-            onClick={() => void handleLogin()}
-            disabled={loading}
-            className="w-full rounded-lg bg-[#1e80ff] py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
-          >
-            {loading ? '登录中…' : '进入实验'}
-          </button>
+            {error ? <div className="text-xs text-red-500">{error}</div> : null}
+
+            <button
+              type="button"
+              onClick={() => void handleLogin()}
+              disabled={loading}
+              className="w-full rounded-lg bg-[#1e80ff] py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] active:scale-[0.98] disabled:opacity-60"
+            >
+              {loading ? '登录中…' : '进入实验'}
+            </button>
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+      <footer className="beian-footer" aria-label="网站备案信息">
+        <a href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">
+          <span>鲁ICP备2026032213号</span>
+        </a>
+        <a
+          href="https://beian.mps.gov.cn/#/query/webSearch?code=37098202000886"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <img src="/beian-police.png" alt="" aria-hidden="true" />
+          <span>鲁公网安备37098202000886号</span>
+        </a>
+      </footer>
+    </>
   );
 }

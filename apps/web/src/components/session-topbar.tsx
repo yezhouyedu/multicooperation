@@ -44,7 +44,7 @@ export function SessionTopbar({
       style={{ boxShadow: 'var(--shadow-topbar)' }}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <div className="shrink-0 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+        <div className="shrink-0 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
         <div className="h-4 w-px bg-[#eaecf0]" />
         <div className="rounded-md border border-[#eaecf0] bg-[#f5f7fa] px-2.5 py-1 text-xs font-medium text-[#4e5969]">
           {roleLabel}

@@ -118,7 +118,7 @@ export default async function PreviewBPage(props: {
         <nav className="flex h-[52px] shrink-0 items-center justify-between border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
           <div className="flex items-center gap-5">
             <div className="text-lg font-bold tracking-wide text-[#1e80ff]">
-              AI 投资决策平台
+              AI 协作决策平台
             </div>
             <div className="rounded border border-gray-200 bg-gray-100 px-2.5 py-1 text-xs text-[#86909c]">
               角色: B

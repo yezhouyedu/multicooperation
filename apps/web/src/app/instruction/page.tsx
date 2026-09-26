@@ -288,7 +288,7 @@ export default function InstructionPage() {
         className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
         style={{ boxShadow: 'var(--shadow-topbar)' }}
       >
-        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 投资决策平台</div>
+        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
       </nav>
 
       {/* 主体 */}

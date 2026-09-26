@@ -96,6 +96,12 @@ Invoke-WebRequest -UseBasicParsing https://aiseek.tech/admin
 Invoke-WebRequest -UseBasicParsing http://aiseek.tech -MaximumRedirection 0
 ```
 
+公网首页当前口径：
+
+- 根域名跳转到 `/login`，页面品牌和浏览器标签统一显示“AI 协作决策平台”。
+- `/login` 底部同时展示 `鲁ICP备2026032213号`（链接 `https://beian.miit.gov.cn/`）和 `鲁公网安备37098202000886号`（链接全国互联网安全管理平台）。
+- 备案块只在登录首页显示；登录后的实验页面和 Admin 不渲染备案块，以免遮挡 AI 输入区或正式退出按钮。
+
 ## 6. 证书续期和回滚
 
 续期证书时：

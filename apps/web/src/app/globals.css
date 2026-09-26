@@ -35,9 +35,16 @@ body {
 
 .beian-footer {
   position: fixed;
-  right: 12px;
+  left: 50%;
   bottom: 8px;
   z-index: 80;
+  display: flex;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -52,6 +59,7 @@ body {
   font-size: 12px;
   line-height: 18px;
   text-decoration: none;
+  white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   pointer-events: auto;
 }
