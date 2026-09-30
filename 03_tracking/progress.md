@@ -2890,7 +2890,10 @@
 - 本地双浏览器 A/B 流程已通过 38 个检查点：测试轮无 AI/相机、正式任务2站内截图不触发文件选择器且不改变全屏状态、问卷草稿刷新恢复、A 退出后 B 停止、终止参与者拒绝重新登录。实测同时发现并修复“双方同秒进入测试题、同秒提交测试题、同秒完成段前指导语”三处屏障竞态，统一按 Session 串行化推进。
 - 本地数据库核验：测试轮 AI 消息 0 条；测试轮 A/B 超时记录各 1 条；26 条任务2释放键全部唯一；终止后开放质量区间 0 条；第二正式工作段计划 60 秒、A 退出后实际 1.035 秒即写入 `completedAt`。
 - 本地导出包动态自检 `risks=[] / missingSource=[]`；测试轮主/任务2 AI JSONL 均为 0 字节；问卷正确区分 `submitted / never_started`，时间戳同时导出计划段末与实际段末。
-- 生产部署前已在服务器生成双备份 `/opt/multi-cooperation/backups/meeting11_20261001_002347/`：PostgreSQL dump、`server_storage` 压缩包、清理前计数和 SHA-256 校验文件齐全；清理前为 12 个 Session、35 个参与者账户、1378 条进度记录。Git 提交推送、部署与清理复验在本记录后续发布收口时补充最终结果。
+- 生产部署前已在服务器生成双备份 `/opt/multi-cooperation/backups/meeting11_20261001_002347/`：PostgreSQL dump、`server_storage` 压缩包、清理前计数和 SHA-256 校验文件齐全；清理前为 12 个 Session、35 个参与者账户、1378 条进度记录。
+- 实现提交 `eb231f0` 已推送 GitHub `main` 并通过 `upload-git-archive.ps1 -Service all -AllowDirty` 部署；迁移 `20260930090000_meeting11_data_integrity` 在线上成功应用，postgres/server/web/nginx 均正常运行，HTTPS `/login`、`/admin`、`/api/health` 通过。
+- 生产双账号 smoke 已确认同 Session、运行时角色 A/B、`formal / instruction` 正常，随后再次清理 smoke 数据；最终 Session、参与者临时角色、ASSIGNED 槽位、导出任务、幂等记录与运行时附件/导出文件均为 0，35 个参与者账号、37 家公司、900 条 active 任务2题和正式配置保留，生产测试轮时长已校正为 5.5 分钟。
+- 线上首页最终跳转 `/login`，页面标题和品牌为“AI 协作决策平台”，不再出现旧“AI投资决策平台”；ICP备案号与工信部链接正常。发布后 server 日志未见应用错误，仅有 Node `url.parse()` 弃用警告。
 
 ---
 
