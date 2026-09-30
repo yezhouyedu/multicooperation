@@ -92,20 +92,23 @@ export default function ExperimentEndPage() {
         <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
       </nav>
 
-      {questionnaire ? (
+      {questionnaire && bootstrap ? (
         <div className="flex-1 overflow-y-auto p-6">
           <div
             className="mx-auto max-w-3xl rounded-2xl border border-[#eaecf0] bg-white p-8"
             style={{ boxShadow: 'var(--shadow-elevated)' }}
           >
             <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">
-              {questionnaire.kind === 'segment_survey' ? '第 3 段工作回顾' : '最后问卷'}
+              {questionnaire.kind === 'segment_survey' ? '第 3 段工作回顾' : '实验后问卷'}
             </div>
             <div className="mb-6 text-2xl font-semibold text-[#1d2129]">
-              {safeQuestionnaireTitle(questionnaire.title, '最终问卷')}
+              {safeQuestionnaireTitle(questionnaire.title, '实验后问卷')}
             </div>
             <QuestionnaireForm
               questionnaire={questionnaire}
+              sessionCode={bootstrap.sessionCode}
+              participantId={bootstrap.participantId}
+              initialDraft={runtime?.questionnaireDraft?.status === 'DRAFT' ? runtime.questionnaireDraft.answers : null}
               submitting={submitting}
               submitLabel="提交"
               onSubmit={handleSubmit}
@@ -123,7 +126,7 @@ export default function ExperimentEndPage() {
                 <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">支付确认</div>
                 <div className="mb-3 text-xl font-semibold text-[#1d2129]">确认报酬接收手机号</div>
                 <div className="mb-5 text-sm leading-relaxed text-[#86909c]">
-                  请确认报名时绑定的手机号（支付宝）是否正确。完整手机号不会写入问卷答案表，也不会随分析数据导出。
+                  实验报酬将通过支付宝发放，请确认报名时绑定的手机号是否正确。你的个人信息会被严格保密。
                 </div>
                 <div className="mb-6 rounded-lg border border-[#e5e6eb] bg-[#f7f8fa] px-5 py-4 font-mono text-lg font-semibold text-[#1d2129]">
                   {runtime?.maskedPhone ?? '手机号信息不可用，请联系实验人员'}
@@ -136,8 +139,8 @@ export default function ExperimentEndPage() {
             ) : (
               <>
                 <div className="mb-3 text-xl font-semibold text-[#1d2129]">实验已完成</div>
-                <div className="mb-6 text-sm leading-relaxed text-[#86909c]">感谢您的参与，您的所有作答已经记录完毕。报酬将在完成实验两周内发放，如未收到请联系实验人员。</div>
-                <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-5 py-3 text-sm text-[#1e80ff]">请向实验人员告知您已完成，然后关闭此页面。</div>
+                <div className="mb-6 text-sm leading-relaxed text-[#86909c]">感谢你的参与，你的所有作答已经记录完毕。报酬将在完成实验两周内发放，如未收到请联系实验人员。</div>
+                <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-5 py-3 text-sm text-[#1e80ff]">你现在可以关闭实验页面了，谢谢！</div>
               </>
             )}
           </div>

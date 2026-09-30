@@ -699,9 +699,7 @@ export function AiChatPanel({
         <div className="flex flex-col gap-6">
           {!loading && messages.length === 0 ? (
             <div className="rounded-3xl border border-[#e5e6eb] bg-white/96 p-4 text-sm leading-7 text-[#4e5969] shadow-sm backdrop-blur-sm">
-              {role === 'A'
-                ? '你可以让 AI 帮你提炼机会点、风险点和交接提示。'
-                : '你可以让 AI 帮你梳理投资机会、风险、证据来源和最终建议。'}
+              AI助手可以帮你处理和分析资料。
             </div>
           ) : null}
 
@@ -806,21 +804,14 @@ export function AiChatPanel({
               <Camera size={18} />
             </button>
           ) : imageEnabled ? (
-            <label
-              className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-gray-400 transition hover:bg-purple-50 hover:text-purple-500"
-              title="上传图片"
+            <button
+              type="button"
+              disabled
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400 opacity-45"
+              title="当前区域不支持站内截图"
             >
               <Camera size={18} />
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                disabled={isDisabled}
-                className="hidden"
-                onClick={() => window.dispatchEvent(new CustomEvent('experiment-authorized-file-dialog'))}
-                onChange={(event) => void handleFiles(event.target.files)}
-              />
-            </label>
+            </button>
           ) : (
             <div
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400"
@@ -844,7 +835,7 @@ export function AiChatPanel({
                   : followUpTarget
                   ? '继续写你的追问，发送时不会复制整段原回答...'
                   : imageEnabled
-                    ? '输入问题，或上传/粘贴图片让 AI 辅助分析...'
+                    ? '输入问题，或截图/粘贴图片让 AI 辅助分析...'
                     : '输入问题，让 AI 帮你整理判断...'
               }
               className="no-scrollbar h-9 w-full resize-none bg-transparent p-2 text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-[#86909c]"

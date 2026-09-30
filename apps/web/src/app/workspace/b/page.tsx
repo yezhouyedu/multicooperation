@@ -247,49 +247,32 @@ export default function WorkspaceBPage() {
   const aHasSubmitted = Boolean(runtime?.currentTask?.aUnlockedForBAt);
   const bReviewGateMessage =
     aHasSubmitted && bRemainingSeconds > 0
-      ? `A信息已生成；当前公司还需处理 ${formatRemainingTime(bRemainingSeconds)} 后可查看A信息、A原始材料并提交。`
+      ? `A的任务结果已送达；任务1还需处理 ${formatRemainingTime(bRemainingSeconds)} 后可查看并提交。`
       : aHasSubmitted
-        ? '当前公司需处理满 5 分钟后可查看A信息、A原始材料并提交。'
+        ? 'A的任务结果已经可以查看。'
         : runtime?.aiEnabled
-          ? 'A信息尚未生成。你可以先阅读自己的材料、填写判断并使用 AI。'
-          : 'A信息尚未生成。你可以先阅读自己的材料并填写判断。';
-  const aiBadge = runtime ? (
-    <span className={`rounded-md border px-2 py-1 text-xs font-semibold ${runtime.aiLevel === 'ADVANCED' ? 'border-violet-200 bg-violet-50 text-violet-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-      {runtime.aiLevel === 'ADVANCED' ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro' : runtime.aiDisplayNames?.basic ?? 'aiseek'}
-    </span>
-  ) : null;
-  const aAiLevelLabel =
-    runtime?.currentTask?.aAiLevelAtWindow === 'ADVANCED'
-      ? runtime.aiDisplayNames?.advanced ?? 'aiseek pro'
-      : runtime?.currentTask?.aAiLevelAtWindow === 'BASIC'
-        ? runtime.aiDisplayNames?.basic ?? 'aiseek'
-        : '未记录';
+          ? 'A的任务结果尚未同步。你可以先阅读自己的材料、填写任务表并使用 AI。'
+          : 'A的任务结果尚未同步。你可以先阅读自己的材料并填写任务表。';
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息暂不可查看</div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">A的任务结果尚未同步</div>
       <div>{bReviewGateMessage}</div>
     </div>
   ) : !runtime.bHasViewedAInfo ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">A信息已送达</div>
-      <div className="mb-5 max-w-md leading-7">你现在可以查看A提交的交接信息。点击下方按钮后，系统会记录这次查看行为，并展示具体内容。</div>
-      <div className="mb-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs text-[#1e80ff]">
-        上游使用的AI为 {aAiLevelLabel}
-      </div>
+      <div className="mb-2 text-base font-bold text-[#1d2129]">A的任务结果已送达</div>
+      <div className="mb-5 max-w-md leading-7">你现在可以查看A提交的任务结果，并按需核对A的原始材料。</div>
       <button
         type="button"
         onClick={() => void openDiligenceInfo()}
         className="rounded-lg bg-[#1e80ff] px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-600"
       >
-        查看A信息
+        查看A的任务结果
       </button>
     </div>
   ) : (
     <div className="space-y-4 text-xs leading-6 text-[#4e5969]">
-      <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3 font-medium text-[#1e80ff]">
-        上游使用的AI为 {aAiLevelLabel}
-      </div>
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
         <div className="mb-2 font-medium text-[#1d2129]">基础数值摘录</div>
         <div className="grid gap-x-4 gap-y-1 md:grid-cols-2">
@@ -375,7 +358,7 @@ export default function WorkspaceBPage() {
             </div>
           ) : (
             <WorkbenchLayout
-              aiEnabled={runtime.aiEnabled}
+              aiEnabled={runtime.aiEnabled && !isPractice}
               key={runtime.currentTask.id}
               sidebar={
                 <CompanyMaterialPanel
@@ -385,7 +368,7 @@ export default function WorkspaceBPage() {
                   lockedMaterialIds={lockedAMaterialIds}
                   lockedMaterialMessage={
                     runtime.aInfoUnlocked
-                      ? '点击任意一个 A 原始材料的解锁按钮后，本公司的全部 A 原始材料都会解锁并记录首次查看时间。'
+                      ? '点击查看后，本公司的全部 A 原始材料都会解锁。'
                       : bReviewGateMessage
                   }
                   onUnlockMaterialGroup={runtime.aInfoUnlocked ? () => void openAMaterials() : undefined}
@@ -394,7 +377,7 @@ export default function WorkspaceBPage() {
                   prependItems={[
                     {
                       key: 'diligence-info',
-                      label: 'A信息',
+                      label: 'A的任务结果',
                       content: diligenceTabContent,
                     },
                   ]}
@@ -411,12 +394,8 @@ export default function WorkspaceBPage() {
                           {runtime.aiUpgradeNotice.message}
                         </span>
                       ) : null}
-                      <span>{runtime.bCanSubmit ? '当前公司已满 5 分钟，可以查看A信息并提交。' : bReviewGateMessage}</span>
-                      {runtime.aInfoUnlocked ? (
-                        <span>A信息状态：{runtime.bHasViewedAInfo ? '已查看并记录' : '已解锁，尚未记录查看'}</span>
-                      ) : (
-                        <span>A信息状态：暂不可查看</span>
-                      )}
+                      <span>B任务1剩余时间：{bRemainingSeconds > 0 ? formatRemainingTime(bRemainingSeconds) : '00 秒（已满5分钟）'}</span>
+                      <span>{runtime.bCanSubmit ? 'A的任务结果已经可以查看，可以直接提交。' : bReviewGateMessage}</span>
                     </div>
                     <button
                       type="button"
@@ -472,9 +451,8 @@ export default function WorkspaceBPage() {
                   <div />
                 )
               }
-              taskTitle="投资判断表"
+              taskTitle="任务表"
               aiTitle="AI助手"
-              aiBadge={aiBadge}
             />
           )}
         </div>
@@ -485,7 +463,7 @@ export default function WorkspaceBPage() {
           participantId={bootstrap.participantId}
           role="B"
           aiLevel={runtime.aiLevel}
-          aiEnabled={runtime.aiEnabled}
+          aiEnabled={false}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />
       ) : null}

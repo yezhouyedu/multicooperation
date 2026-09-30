@@ -1,6 +1,7 @@
 'use client';
 
 import { AiChatPanel } from '@/components/ai-chat-panel';
+import { CaptureRegion, type CaptureRegionHandle } from '@/components/capture-region';
 import { WorkbenchLayout } from '@/components/workbench-layout';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { RuntimeState } from '@/lib/session-runtime';
@@ -50,6 +51,7 @@ export function SideTaskStrip({
   const rafRef = useRef<number>(0);
   const activeRef = useRef(false);
   const handledPulseIdsRef = useRef<Set<string>>(new Set());
+  const captureRegionRef = useRef<CaptureRegionHandle>(null);
 
   // Detect new arrivals and report side_task_released
   const reportReleased = useCallback(
@@ -367,6 +369,7 @@ export function SideTaskStrip({
 
   const tickerCount = sideTaskConfig.notificationPulse?.newCount ?? realPendingCount;
   const tickerMessage = sideTaskConfig.tickerMessage.replace('N', String(tickerCount));
+  const formalAiEnabled = phase === 'formal' && aiEnabled;
 
   // Queue list sidebar
   const sidebar = (
@@ -455,7 +458,7 @@ export function SideTaskStrip({
 
       <div className="mt-4 flex shrink-0 items-center justify-between border-t border-[#e5e6eb] pt-4">
         <div className="text-xs text-[#86909c]">
-          任务2: {realPendingCount} / {sideTaskConfig.totalPlanned}
+          待处理：{realPendingCount}
         </div>
         <div className="flex gap-2">
           <button
@@ -518,10 +521,6 @@ export function SideTaskStrip({
             <div className="flex h-12 items-center justify-between border-b border-[#e5e6eb] bg-white px-5 shadow-sm">
               <div className="text-sm font-bold text-[#1d2129]">
                 任务2处理区
-                <span className="ml-3 text-xs font-normal text-[#86909c]">
-                  {sideTaskConfig.dispatchMode === 'continuous' ? '持续到达' : '批量到达'} ·
-                  已到 {sideTaskConfig.totalReleased} / {sideTaskConfig.totalPlanned}
-                </span>
               </div>
               <button
                 type="button"
@@ -545,9 +544,9 @@ export function SideTaskStrip({
                 返回主界面
               </button>
             </div>
-            <div className="min-h-0 flex-1 p-2">
+            <CaptureRegion ref={captureRegionRef} className="min-h-0 flex-1 p-2">
               <WorkbenchLayout
-                aiEnabled={aiEnabled}
+                aiEnabled={formalAiEnabled}
                 sidebar={sidebar}
                 sidebarTitle="任务2队列"
                 taskPane={taskPane}
@@ -563,6 +562,7 @@ export function SideTaskStrip({
                       phase={phase}
                       segmentIndex={segmentIndex}
                       aiLevel={aiLevel}
+                      onScreenshot={() => captureRegionRef.current?.startCapture()}
                     />
                   ) : (
                     <div className="p-4 text-sm text-[#86909c]">缺少参与者信息</div>
@@ -571,7 +571,7 @@ export function SideTaskStrip({
                 taskTitle="任务2作答"
                 aiTitle="AI助手"
               />
-            </div>
+            </CaptureRegion>
           </div>
         </div>
       ) : null}

@@ -1,4 +1,4 @@
-import { ParticipantRole } from '@prisma/client';
+import { ParticipantRole, Prisma, RuntimePhase, SegmentType } from '@prisma/client';
 import { ExperimentService } from './experiment.service';
 
 describe('online integrity state machine', () => {
@@ -15,10 +15,23 @@ describe('online integrity state machine', () => {
     pasteAfterOffscreenWindowSeconds: 30,
   };
 
+  const atomicIntervalMock = (interval: Record<string, unknown>) => {
+    let closed = interval;
+    return {
+      findFirst: jest.fn().mockResolvedValue(interval),
+      findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn(({ data }) => {
+        closed = { ...interval, ...data };
+        return Promise.resolve({ count: 1 });
+      }),
+      findUnique: jest.fn(({ where }) => Promise.resolve({ ...closed, id: where.id })),
+    };
+  };
+
   it('records every offscreen interval but flags only durations over two seconds', async () => {
     const interval = { id: 'i-1', startedAt: new Date('2026-08-23T00:00:00.000Z'), metadata: null };
     const prisma = {
-      onlineIntegrityInterval: { findFirst: jest.fn().mockResolvedValue(interval), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(({ data }) => ({ ...interval, ...data })) },
+      onlineIntegrityInterval: atomicIntervalMock(interval),
       participantIntegrityState: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue({ currentState: 'ACTIVE', hasFormalDropout: false }) },
     };
     const service = new ExperimentService(prisma as never, {} as never);
@@ -36,7 +49,7 @@ describe('online integrity state machine', () => {
   it('does not flag an authorized image picker as offscreen cheating', async () => {
     const interval = { id: 'i-2', startedAt: new Date('2026-08-23T00:00:00.000Z'), metadata: { authorizedDialog: true } };
     const prisma = {
-      onlineIntegrityInterval: { findFirst: jest.fn().mockResolvedValue(interval), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(({ data }) => ({ ...interval, ...data })) },
+      onlineIntegrityInterval: atomicIntervalMock(interval),
       participantIntegrityState: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue({ currentState: 'ACTIVE', hasFormalDropout: false }) },
     };
     const service = new ExperimentService(prisma as never, {} as never);
@@ -47,12 +60,32 @@ describe('online integrity state machine', () => {
   it('does flag an authorized-dialog interval after its maximum allowance expires', async () => {
     const interval = { id: 'i-3', startedAt: new Date('2026-08-23T00:00:00.000Z'), metadata: { authorizedDialog: true } };
     const prisma = {
-      onlineIntegrityInterval: { findFirst: jest.fn().mockResolvedValue(interval), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(({ data }) => ({ ...interval, ...data })) },
+      onlineIntegrityInterval: atomicIntervalMock(interval),
       participantIntegrityState: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue({ currentState: 'ACTIVE', hasFormalDropout: false }) },
     };
     const service = new ExperimentService(prisma as never, {} as never);
     const result = await (service as any).closeOpenIntegrityInterval('state-1', 'OFFSCREEN', new Date('2026-08-23T00:01:00.001Z'), 'returned', undefined, config);
     expect(result.isViolation).toBe(true);
+  });
+
+  it('increments totals only for the caller that atomically closes an interval', async () => {
+    const interval = { id: 'i-race', startedAt: new Date('2026-08-23T00:00:00.000Z'), metadata: null };
+    const prisma = {
+      onlineIntegrityInterval: {
+        findFirst: jest.fn().mockResolvedValue(interval),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      participantIntegrityState: { update: jest.fn() },
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+
+    await expect((service as any).closeOpenIntegrityInterval(
+      'state-race',
+      'DISCONNECT',
+      new Date('2026-08-23T00:00:31.000Z'),
+      'heartbeat_restored',
+    )).resolves.toBeNull();
+    expect(prisma.participantIntegrityState.update).not.toHaveBeenCalled();
   });
 
   it('applies the asymmetric A/B dropout policy', () => {
@@ -116,6 +149,118 @@ describe('online integrity state machine', () => {
     expect(prisma.onlineIntegrityInterval.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ intervalType: 'DISCONNECT', startedAt: new Date('2026-08-23T00:00:30.000Z') }),
     }));
+  });
+
+  it('does not double-count a disconnect when another caller wins the unique open interval', async () => {
+    const uniqueConflict = new Prisma.PrismaClientKnownRequestError('duplicate open interval', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+    const prisma = {
+      participantIntegrityState: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: 'state-race',
+          participantId: 'participant-race',
+          role: ParticipantRole.B,
+          lastHeartbeatAt: new Date('2026-08-23T00:00:00.000Z'),
+          hasFormalDropout: false,
+        }]),
+        update: jest.fn(),
+      },
+      onlineIntegrityInterval: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockRejectedValue(uniqueConflict),
+      },
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+    jest.spyOn(service as any, 'closeOpenIntegrityInterval').mockResolvedValue(null);
+
+    await (service as any).evaluateConnectionStates(
+      'session-race',
+      config,
+      new Date('2026-08-23T00:00:31.000Z'),
+    );
+
+    expect(prisma.participantIntegrityState.update).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates a persisted task-2 release event across remounts', async () => {
+    const uniqueConflict = new Prisma.PrismaClientKnownRequestError('duplicate release', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+    const prisma = {
+      sideTaskPlan: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'plan-1', sessionId: 'session-1', releasedAt: new Date() }),
+        update: jest.fn(),
+      },
+      sideTaskExposureLog: { create: jest.fn().mockRejectedValue(uniqueConflict) },
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+    jest.spyOn(service as any, 'syncRuntime').mockResolvedValue({ session: { id: 'session-1' } });
+
+    await expect(service.recordSideTaskExposure(
+      'SESSION',
+      'plan-1',
+      'participant-1',
+      'side_task_released',
+    )).resolves.toEqual({ ok: true, duplicate: true });
+    expect(prisma.sideTaskExposureLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ deduplicationKey: 'side-task-release:participant-1:plan-1' }),
+    }));
+  });
+
+  it('records the actual work-segment end when A terminates the team session', async () => {
+    const tx = {
+      session: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'session-1',
+          currentSegmentIndex: 3,
+          experimentSnapshot: {},
+        }),
+        update: jest.fn(),
+      },
+      sessionSegmentState: { updateMany: jest.fn() },
+      onlineIntegrityInterval: { findMany: jest.fn().mockResolvedValue([]) },
+      participantIntegrityState: { update: jest.fn() },
+      experimentEvent: { create: jest.fn() },
+    };
+    const prisma = {
+      participantIntegrityState: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        update: jest.fn(),
+      },
+      onlineIntegrityInterval: { findMany: jest.fn().mockResolvedValue([]) },
+      experimentEvent: { create: jest.fn() },
+      session: { findUnique: jest.fn().mockResolvedValue({ code: 'SESSION' }) },
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const service = new ExperimentService(prisma as never, {} as never);
+    const stoppedAt = new Date('2026-08-23T00:04:12.000Z');
+
+    await (service as any).markFormalDropout(
+      'state-a',
+      'session-1',
+      'participant-a',
+      ParticipantRole.A,
+      'participant_confirmed_quit',
+      stoppedAt,
+    );
+
+    expect(tx.session.update).toHaveBeenCalledWith({
+      where: { id: 'session-1' },
+      data: { status: 'TERMINATED', runtimePhase: RuntimePhase.END },
+    });
+    expect(tx.sessionSegmentState.updateMany).toHaveBeenCalledWith({
+      where: {
+        sessionId: 'session-1',
+        phase: 'FORMAL',
+        segmentIndex: 3,
+        type: SegmentType.WORK,
+        completedAt: null,
+      },
+      data: { completedAt: stoppedAt },
+    });
   });
 
   it('stores validated task and company context for clipboard events', async () => {

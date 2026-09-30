@@ -111,6 +111,22 @@ export class AuthService {
       throw new ForbiddenException('实验暂未开始，请等待研究员通知后再进入');
     }
 
+    const terminatedSession = await this.prisma.session.findFirst({
+      where: {
+        status: SessionStatus.TERMINATED,
+        pairings: {
+          some: {
+            OR: [{ participantAId: participant.id }, { participantBId: participant.id }],
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (terminatedSession) {
+      throw new ForbiddenException('本手机号对应的实验已终止，不能再次进入实验。如有疑问，请联系实验人员');
+    }
+
     const result = await this.prisma.$transaction(
       async (tx) => {
         const existingSession = await tx.session.findFirst({

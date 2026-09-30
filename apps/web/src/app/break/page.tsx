@@ -72,7 +72,7 @@ export default function BreakPage() {
 
   // 判断问卷类型，显示不同图标
   const questionnaireIcon = questionnaire?.kind === 'post_survey' ? '📋' : '📊';
-  const stageLabel = questionnaire?.kind === 'post_survey' ? '最终问卷' : '工作段回顾';
+  const stageLabel = questionnaire?.kind === 'post_survey' ? '实验后问卷' : '工作段回顾';
   const displayTitle = safeQuestionnaireTitle(questionnaire?.title, stageLabel);
 
   return (
@@ -133,9 +133,12 @@ export default function BreakPage() {
                 系统进入下一阶段后会自动跳转。
               </div>
             </div>
-          ) : questionnaire ? (
+          ) : questionnaire && bootstrap ? (
             <QuestionnaireForm
               questionnaire={questionnaire}
+              sessionCode={bootstrap.sessionCode}
+              participantId={bootstrap.participantId}
+              initialDraft={runtime?.questionnaireDraft?.status === 'DRAFT' ? runtime.questionnaireDraft.answers : null}
               submitting={submitting}
               submitLabel="提交问卷并等待休息结束"
               onSubmit={handleSubmit}
@@ -148,10 +151,6 @@ export default function BreakPage() {
           )}
         </div>
 
-        {/* 底部提示 */}
-        <div className="mt-6 text-center text-xs text-[#86909c]">
-          问卷数据已自动保存，请放心作答
-        </div>
       </div>
     </main>
   );

@@ -321,6 +321,9 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     };
 
     await this.prisma.$transaction(async (tx) => {
+      // 双方可能同时提交测试题；锁住同一 session，确保第二个事务能看到
+      // 第一个人的通过记录并只推进一次测试轮教学阶段。
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`practice-quiz:${sessionCode}`}))`;
       await tx.questionnaireResponse.create({
         data: {
           sessionId: session.id,
@@ -505,6 +508,9 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const integrityContext = await this.getIntegrityContext(sessionCode, participantId);
     await this.assertRoleCanContinue(integrityContext.session.id, integrityContext.role);
     const result = await this.prisma.$transaction(async (tx) => {
+      // 两名参与者通常会在 15 秒门槛到达后同时点击继续；串行化屏障，
+      // 保证第二个事务能看到第一个完成记录并启动正式工作段。
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pre-segment-instruction:${sessionCode}`}))`;
       const session = await tx.session.findUnique({
         where: { code: sessionCode },
         include: {
@@ -704,6 +710,18 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const activeQuestionnaire = participantId
       ? this.buildActiveQuestionnaire(session, config, assignedRole, participantId)
       : null;
+    const questionnaireDraft = participantId && activeQuestionnaire
+      ? await this.prisma.questionnaireDraft.findUnique({
+          where: {
+            sessionId_participantId_phase_segmentIndex: {
+              sessionId: session.id,
+              participantId,
+              phase: ExperimentPhase.FORMAL,
+              segmentIndex: activeQuestionnaire.segmentIndex,
+            },
+          },
+        })
+      : null;
     const questionnaireSubmitted = participantId
       ? this.hasSubmittedQuestionnaire(session, participantId, activeQuestionnaire?.segmentIndex ?? session.currentSegmentIndex)
       : false;
@@ -781,6 +799,15 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       ...(await this.getSideTaskRuntime(session, config, participantId)),
       syncState,
       questionnaireTemplate: activeQuestionnaire?.questionnaire ?? null,
+      questionnaireDraft: questionnaireDraft
+        ? {
+            status: questionnaireDraft.status,
+            answers: questionnaireDraft.answers,
+            firstStartedAt: questionnaireDraft.firstStartedAt,
+            lastSavedAt: questionnaireDraft.lastSavedAt,
+            submittedAt: questionnaireDraft.submittedAt,
+          }
+        : null,
       practiceQuizTemplate:
         (!practiceQuizPassed || this.mapRuntimePhase(session.runtimePhase) === 'practice_quiz') && config.practiceQuizTemplate
           ? {
@@ -982,26 +1009,39 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         orderBy: { startedAt: 'desc' },
       });
       if (existing) return { ok: true, intervalId: existing.id, duplicate: true };
-      const interval = await this.prisma.onlineIntegrityInterval.create({
-        data: {
-          sessionId: session.id,
-          participantId: input.participantId,
-          integrityStateId: state.id,
-          role,
-          intervalType,
-          segmentIndex: session.currentSegmentIndex,
-          taskAssignmentId: typeof payload.taskAssignmentId === 'string' ? payload.taskAssignmentId : null,
-          companyId: typeof payload.companyId === 'string' ? payload.companyId : null,
-          startedAt: now,
-          triggerReason: typeof payload.triggerReason === 'string' ? payload.triggerReason : input.eventType,
-          idleCountdownStartedAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.idleCountdownStartedAt, now) : null,
-          promptShownAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.promptShownAt, now) : null,
-          confirmationDeadlineAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.confirmationDeadlineAt, now) : null,
-          invalidStartedAt: intervalType === 'INACTIVITY' ? now : null,
-          metadata: { clientTime: clientTime?.toISOString() ?? null, authorizedDialog: Boolean(payload.authorizedDialog) } as Prisma.InputJsonValue,
-        },
-      });
-      await this.prisma.participantIntegrityState.update({
+      let interval;
+      try {
+        interval = await this.prisma.onlineIntegrityInterval.create({
+          data: {
+            sessionId: session.id,
+            participantId: input.participantId,
+            integrityStateId: state.id,
+            role,
+            intervalType,
+            segmentIndex: session.currentSegmentIndex,
+            taskAssignmentId: typeof payload.taskAssignmentId === 'string' ? payload.taskAssignmentId : null,
+            companyId: typeof payload.companyId === 'string' ? payload.companyId : null,
+            startedAt: now,
+            triggerReason: typeof payload.triggerReason === 'string' ? payload.triggerReason : input.eventType,
+            idleCountdownStartedAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.idleCountdownStartedAt, now) : null,
+            promptShownAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.promptShownAt, now) : null,
+            confirmationDeadlineAt: intervalType === 'INACTIVITY' ? this.safeClientTime(payload.confirmationDeadlineAt, now) : null,
+            invalidStartedAt: intervalType === 'INACTIVITY' ? now : null,
+            metadata: { clientTime: clientTime?.toISOString() ?? null, authorizedDialog: Boolean(payload.authorizedDialog) } as Prisma.InputJsonValue,
+            openIntervalKey: `${state.id}:${intervalType}`,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          const duplicate = await this.prisma.onlineIntegrityInterval.findFirst({
+            where: { integrityStateId: state.id, intervalType, endedAt: null },
+            orderBy: { startedAt: 'desc' },
+          });
+          if (duplicate) return { ok: true, intervalId: duplicate.id, duplicate: true };
+        }
+        throw error;
+      }
+      const updatedState = await this.prisma.participantIntegrityState.update({
         where: { id: state.id },
         data: {
           currentState: intervalType,
@@ -1011,6 +1051,17 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             : { offscreenIntervalCount: { increment: 1 } }),
         },
       });
+      if (intervalType === 'INACTIVITY' && updatedState.inactivityIntervalCount >= 2) {
+        await this.markFormalDropout(
+          state.id,
+          session.id,
+          input.participantId,
+          role,
+          'repeated_invalid_inactivity',
+          now,
+        );
+        return { ok: true, intervalId: interval.id, formalDropout: true };
+      }
       await this.refreshIntegrityCurrentState(state.id, now);
       return { ok: true, intervalId: interval.id };
     }
@@ -1456,10 +1507,72 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       return { ok: true, questionnaire: null };
     }
 
+    const draft = participantId
+      ? await this.prisma.questionnaireDraft.findUnique({
+          where: {
+            sessionId_participantId_phase_segmentIndex: {
+              sessionId: synced.session.id,
+              participantId,
+              phase: ExperimentPhase.FORMAL,
+              segmentIndex: active.segmentIndex,
+            },
+          },
+        })
+      : null;
     return {
       ok: true,
       questionnaire: active.questionnaire,
+      draft: draft ? { status: draft.status, answers: draft.answers, lastSavedAt: draft.lastSavedAt } : null,
     };
+  }
+
+  async saveQuestionnaireDraft(sessionCode: string, participantId: string, answers: Prisma.InputJsonValue) {
+    const synced = await this.syncRuntime(sessionCode);
+    const pairing = synced.session.pairings[0];
+    const assignedRole = this.resolveParticipantRole(pairing, participantId);
+    await this.assertRoleCanContinue(synced.session.id, assignedRole);
+    const active = this.buildActiveQuestionnaire(synced.session, synced.config, assignedRole, participantId);
+    if (!active) throw new BadRequestException('No active questionnaire for current phase');
+    const existingSubmission = await this.prisma.questionnaireResponse.findFirst({
+      where: {
+        sessionId: synced.session.id,
+        participantId,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: active.segmentIndex,
+      },
+      select: { id: true },
+    });
+    if (existingSubmission) return { ok: true, ignored: true, reason: 'already_submitted' };
+    const safeAnswers = answers && typeof answers === 'object' && !Array.isArray(answers)
+      ? answers
+      : {};
+    const draft = await this.prisma.questionnaireDraft.upsert({
+      where: {
+        sessionId_participantId_phase_segmentIndex: {
+          sessionId: synced.session.id,
+          participantId,
+          phase: ExperimentPhase.FORMAL,
+          segmentIndex: active.segmentIndex,
+        },
+      },
+      update: {
+        questionnaireKind: active.kind,
+        templateId: synced.config.activeQuestionnaireTemplate?.id,
+        answers: safeAnswers,
+        status: 'DRAFT',
+        submittedAt: null,
+      },
+      create: {
+        sessionId: synced.session.id,
+        participantId,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: active.segmentIndex,
+        questionnaireKind: active.kind,
+        templateId: synced.config.activeQuestionnaireTemplate?.id,
+        answers: safeAnswers,
+      },
+    });
+    return { ok: true, status: draft.status, lastSavedAt: draft.lastSavedAt };
   }
 
   async submitQuestionnaire(sessionCode: string, participantId: string, answers: Prisma.InputJsonValue) {
@@ -1518,6 +1631,34 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         phase: ExperimentPhase.FORMAL,
         segmentIndex: active.segmentIndex,
         answers: payload as Prisma.InputJsonValue,
+      },
+    });
+    await this.prisma.questionnaireDraft.upsert({
+      where: {
+        sessionId_participantId_phase_segmentIndex: {
+          sessionId: synced.session.id,
+          participantId,
+          phase: ExperimentPhase.FORMAL,
+          segmentIndex: active.segmentIndex,
+        },
+      },
+      update: {
+        questionnaireKind: active.kind,
+        templateId: synced.config.activeQuestionnaireTemplate?.id,
+        answers: submittedAnswers as Prisma.InputJsonValue,
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
+      },
+      create: {
+        sessionId: synced.session.id,
+        participantId,
+        phase: ExperimentPhase.FORMAL,
+        segmentIndex: active.segmentIndex,
+        questionnaireKind: active.kind,
+        templateId: synced.config.activeQuestionnaireTemplate?.id,
+        answers: submittedAnswers as Prisma.InputJsonValue,
+        status: 'SUBMITTED',
+        submittedAt: new Date(),
       },
     });
     if (active.kind === 'post_survey') {
@@ -1631,16 +1772,31 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    await this.prisma.sideTaskExposureLog.create({
-      data: {
-        sessionId: synced.session.id,
-        participantId,
-        sideTaskPlanId: planId,
-        eventType,
-        eventAt: now,
-        payload: (payload ?? null) as Prisma.InputJsonValue,
-      },
-    });
+    const deduplicationKey = eventType === 'side_task_released'
+      ? `side-task-release:${participantId}:${planId}`
+      : null;
+    try {
+      await this.prisma.sideTaskExposureLog.create({
+        data: {
+          sessionId: synced.session.id,
+          participantId,
+          sideTaskPlanId: planId,
+          eventType,
+          eventAt: now,
+          payload: (payload ?? null) as Prisma.InputJsonValue,
+          deduplicationKey,
+        },
+      });
+    } catch (error) {
+      if (
+        deduplicationKey &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return { ok: true, duplicate: true };
+      }
+      throw error;
+    }
 
     if (eventType === 'side_task_released') {
       this.emitRuntimeInvalidated(sessionCode);
@@ -1817,6 +1973,9 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         : [RuntimePhase.PRE_SEGMENT_INSTRUCTION, RuntimePhase.FORMAL_WORK, RuntimePhase.FORMAL_BREAK, RuntimePhase.END];
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // 两名参与者常会在同一秒点击“已准备”。串行化同一 session 的屏障事务，
+      // 避免两个事务都只看到自己的 ready 记录，最后把阶段错误地留在 waiting。
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`experiment-barrier:${sessionCode}`}))`;
       const session = await tx.session.findUnique({
         where: { code: sessionCode },
         include: {
@@ -2243,8 +2402,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
     const aEndsAt = pairing.participantAId ? timerByParticipant.get(pairing.participantAId) : null;
     if (!aSubmitted && aEndsAt && aEndsAt <= now) {
-      await tx.taskAssignment.update({
-        where: { id: practiceTask.id },
+      const submitted = await tx.taskAssignment.updateMany({
+        where: { id: practiceTask.id, aSubmittedAt: null },
         data: {
           aSubmittedAt: aEndsAt,
           aUnlockedForBAt: aEndsAt,
@@ -2254,7 +2413,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           aAiLevelAtWindow: this.getTaskAiLevel(config, 0, session),
         },
       });
-      if (pairing.participantAId) {
+      if (submitted.count === 1 && pairing.participantAId) {
         await tx.taskProgress.create({
           data: {
             sessionId: session.id,
@@ -2269,11 +2428,11 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
     const bEndsAt = pairing.participantBId ? timerByParticipant.get(pairing.participantBId) : null;
     if (!bCompleted && bEndsAt && bEndsAt <= now) {
-      await tx.taskAssignment.update({
-        where: { id: practiceTask.id },
+      const completed = await tx.taskAssignment.updateMany({
+        where: { id: practiceTask.id, bCompletedAt: null },
         data: { bCompletedAt: bEndsAt },
       });
-      if (pairing.participantBId) {
+      if (completed.count === 1 && pairing.participantBId) {
         await tx.taskProgress.create({
           data: {
             sessionId: session.id,
@@ -2299,6 +2458,20 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     session: RuntimeSession,
     now: Date,
   ) {
+    const claimed = await tx.session.updateMany({
+      where: { id: session.id, runtimePhase: RuntimePhase.PRACTICE },
+      data: {
+        runtimePhase: RuntimePhase.FORMAL_READY,
+        currentPhase: ExperimentPhase.FORMAL,
+        currentSegmentIndex: 1,
+        currentSegmentType: SegmentType.WORK,
+        currentSegmentStarts: null,
+        currentSegmentEnds: null,
+        practiceCompletedAt: now,
+      },
+    });
+    if (claimed.count === 0) return;
+
     const practiceTask = await tx.taskAssignment.findFirst({
       where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE },
     });
@@ -2363,18 +2536,6 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         segmentIndex: 0,
         serverTime: now,
         payload: { nextPhase: 'FORMAL_READY' } as Prisma.InputJsonValue,
-      },
-    });
-    await tx.session.update({
-      where: { id: session.id },
-      data: {
-        runtimePhase: RuntimePhase.FORMAL_READY,
-        currentPhase: ExperimentPhase.FORMAL,
-        currentSegmentIndex: 1,
-        currentSegmentType: SegmentType.WORK,
-        currentSegmentStarts: null,
-        currentSegmentEnds: null,
-        practiceCompletedAt: now,
       },
     });
   }
@@ -2990,6 +3151,20 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     completePractice = true,
   ) {
     const workEnds = new Date(now.getTime() + config.workDurationMinutes * 60 * 1000);
+    const sessionBeforeStart = await tx.session.findUniqueOrThrow({
+      where: { id: sessionId },
+      select: { id: true, experimentSnapshot: true },
+    });
+    await this.closeSessionIntegrityIntervals(tx, sessionBeforeStart, now, 'formal_segment_transition');
+    await tx.participantIntegrityState.updateMany({
+      where: { sessionId, hasFormalDropout: false },
+      data: {
+        currentState: 'ACTIVE',
+        stateStartedAt: now,
+        lastHeartbeatAt: now,
+        lastValidActivityAt: now,
+      },
+    });
     await tx.session.update({
       where: { id: sessionId },
       data: {
@@ -3660,14 +3835,19 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
       side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
       coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
-      aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+      aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，你可以截图或粘贴图片，并使用更强模型辅助分析。',
       aiUpgradeWorkspaceNotice: '',
     };
     const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
     const blocks = Object.fromEntries(
       Object.entries(defaults).map(([key, fallback]) => [
         key,
-        typeof raw[key] === 'string' ? String(raw[key]) : fallback,
+        typeof raw[key] === 'string'
+          ? String(raw[key]).replace(
+              '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+              '下一阶段起，AI 辅助功能已升级，你可以截图或粘贴图片，并使用更强模型辅助分析。',
+            )
+          : fallback,
       ]),
     ) as typeof defaults;
     return {
@@ -4268,16 +4448,18 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       || (intervalType === 'OFFSCREEN'
         && !authorizedDialog
         && durationMs > (config?.offscreenViolationSeconds ?? 2) * 1000);
-    const closed = await this.prisma.onlineIntegrityInterval.update({
-      where: { id: interval.id },
+    const wonClose = await this.prisma.onlineIntegrityInterval.updateMany({
+      where: { id: interval.id, endedAt: null },
       data: {
         endedAt,
         durationMs,
         isViolation,
         endReason,
+        openIntervalKey: null,
         ...(intervalType === 'INACTIVITY' ? { invalidEndedAt: endedAt } : {}),
       },
     });
+    if (wonClose.count === 0) return null;
     const stateUpdate: Prisma.ParticipantIntegrityStateUpdateInput = {
       currentState: 'ACTIVE',
       stateStartedAt: endedAt,
@@ -4290,7 +4472,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     };
     await this.prisma.participantIntegrityState.update({ where: { id: stateId }, data: stateUpdate });
     await this.refreshIntegrityCurrentState(stateId, endedAt);
-    return closed;
+    return this.prisma.onlineIntegrityInterval.findUnique({ where: { id: interval.id } });
   }
 
   private async refreshIntegrityCurrentState(stateId: string, now: Date) {
@@ -4328,21 +4510,30 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             undefined,
             config,
           );
-          await this.prisma.onlineIntegrityInterval.create({
-            data: {
-              sessionId,
-              participantId: state.participantId,
-              integrityStateId: state.id,
-              role: state.role,
-              intervalType: 'DISCONNECT',
-              startedAt,
-              triggerReason: 'heartbeat_grace_exceeded',
-            },
-          });
-          await this.prisma.participantIntegrityState.update({
-            where: { id: state.id },
-            data: { currentState: 'DISCONNECTED', stateStartedAt: startedAt, hasConnectionLoss: true, disconnectIntervalCount: { increment: 1 } },
-          });
+          let createdDisconnect = false;
+          try {
+            await this.prisma.onlineIntegrityInterval.create({
+              data: {
+                sessionId,
+                participantId: state.participantId,
+                integrityStateId: state.id,
+                role: state.role,
+                intervalType: 'DISCONNECT',
+                startedAt,
+                triggerReason: 'heartbeat_grace_exceeded',
+                openIntervalKey: `${state.id}:DISCONNECT`,
+              },
+            });
+            createdDisconnect = true;
+          } catch (error) {
+            if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
+          }
+          if (createdDisconnect) {
+            await this.prisma.participantIntegrityState.update({
+              where: { id: state.id },
+              data: { currentState: 'DISCONNECTED', stateStartedAt: startedAt, hasConnectionLoss: true, disconnectIntervalCount: { increment: 1 } },
+            });
+          }
         }
       }
       if (elapsedMs > config.dropoutTimeoutSeconds * 1000) {
@@ -4376,15 +4567,32 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       data: { sessionId, participantId, role, eventType: 'formal_dropout_confirmed', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { reason } },
     });
     if (role === ParticipantRole.A) {
-      await this.prisma.session.update({
-        where: { id: sessionId },
-        data: { status: SessionStatus.TERMINATED, runtimePhase: RuntimePhase.END, currentSegmentEnds: now },
-      });
-      await this.prisma.experimentEvent.create({
-        data: { sessionId, participantId, role, eventType: 'team_early_termination_started', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { reason: 'role_a_formal_dropout' } },
-      });
-      await this.prisma.experimentEvent.create({
-        data: { sessionId, participantId, role, eventType: 'team_early_termination_completed', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { survivorRole: 'B', survivorCanContinue: false } },
+      await this.prisma.$transaction(async (tx) => {
+        const activeSession = await tx.session.findUniqueOrThrow({
+          where: { id: sessionId },
+          select: { id: true, currentSegmentIndex: true, experimentSnapshot: true },
+        });
+        await tx.session.update({
+          where: { id: sessionId },
+          data: { status: SessionStatus.TERMINATED, runtimePhase: RuntimePhase.END },
+        });
+        await tx.sessionSegmentState.updateMany({
+          where: {
+            sessionId,
+            phase: ExperimentPhase.FORMAL,
+            segmentIndex: activeSession.currentSegmentIndex,
+            type: SegmentType.WORK,
+            completedAt: null,
+          },
+          data: { completedAt: now },
+        });
+        await this.closeSessionIntegrityIntervals(tx, activeSession, now, 'team_terminated_after_role_a_dropout');
+        await tx.experimentEvent.create({
+          data: { sessionId, participantId, role, eventType: 'team_early_termination_started', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { reason: 'role_a_formal_dropout' } },
+        });
+        await tx.experimentEvent.create({
+          data: { sessionId, participantId, role, eventType: 'team_early_termination_completed', phase: ExperimentPhase.FORMAL, serverTime: now, payload: { survivorRole: 'B', survivorCanContinue: false } },
+        });
       });
     }
     const session = await this.prisma.session.findUnique({ where: { id: sessionId }, select: { code: true } });
@@ -4452,10 +4660,11 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         && durationMs <= config.authorizedDialogMaxSeconds * 1000;
       const isViolation = interval.intervalType === 'INACTIVITY'
         || (interval.intervalType === 'OFFSCREEN' && !authorizedDialog && durationMs > config.offscreenViolationSeconds * 1000);
-      await tx.onlineIntegrityInterval.update({
-        where: { id: interval.id },
-        data: { endedAt, durationMs, endReason, isViolation, ...(interval.intervalType === 'INACTIVITY' ? { invalidEndedAt: endedAt } : {}) },
+      const wonClose = await tx.onlineIntegrityInterval.updateMany({
+        where: { id: interval.id, endedAt: null },
+        data: { endedAt, durationMs, endReason, isViolation, openIntervalKey: null, ...(interval.intervalType === 'INACTIVITY' ? { invalidEndedAt: endedAt } : {}) },
       });
+      if (wonClose.count === 0) continue;
       await tx.participantIntegrityState.update({
         where: { id: interval.integrityStateId },
         data: {
@@ -4480,13 +4689,13 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       const template = await this.prisma.questionnaireTemplate.upsert({
         where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
         update: {
-          title: '三章实验正式问卷 V3.0',
+          title: '实验后问卷',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
         create: {
           id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-          title: '三章实验正式问卷 V3.0',
+          title: '实验后问卷',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },
@@ -4534,10 +4743,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
             side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
             coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
-            aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+            aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，你可以截图或粘贴图片，并使用更强模型辅助分析。',
             aiUpgradeWorkspaceNotice: '',
           } as Prisma.InputJsonValue,
-          practiceDurationMinutes: 5,
+          practiceDurationMinutes: 5.5,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
           segmentOneAiLevel: AiLevel.BASIC,
@@ -4552,10 +4761,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     } else if (config.activeQuestionnaireTemplateId !== FORMAL_QUESTIONNAIRE_TEMPLATE_ID) {
       const template = await this.prisma.questionnaireTemplate.upsert({
         where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
-        update: { title: '三章实验正式问卷 V3.0', items: formalQuestionnaireTemplateJson(), isActive: true },
+        update: { title: '实验后问卷', items: formalQuestionnaireTemplateJson(), isActive: true },
         create: {
           id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-          title: '三章实验正式问卷 V3.0',
+          title: '实验后问卷',
           items: formalQuestionnaireTemplateJson(),
           isActive: true,
         },

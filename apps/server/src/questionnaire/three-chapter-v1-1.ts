@@ -71,7 +71,7 @@ const section = (title: string, items: QuestionnaireItem[], description?: string
 export const formalQuestionnaireTemplate = {
   schemaVersion: 2,
   version: 'three_chapter_v3_0_20260816',
-  title: '人口特征统计和其他信息采集问卷',
+  title: '实验后问卷',
   recruitmentExcluded: true,
   segmentSurvey: section('工作段回顾', [
     agreement('SEG-WL-01', '这段任务的脑力需求很高。', '脑力负荷', 1),
@@ -85,7 +85,7 @@ export const formalQuestionnaireTemplate = {
     agreement('SEG-FAT-01', '这段结束后，我感到疲惫。', '段内疲劳', 9),
   ]),
   postSurvey: {
-    title: '人口特征统计和其他信息采集问卷',
+    title: '实验后问卷',
     commonSections: [
       section('合作、验证与责任信念', [
         agreement('POST-COMP-02', '在类似任务中，自己可见的材料和 AI 通常不能完全替代另一名成员掌握的信息。', '队友信息边际价值', 1),
@@ -95,7 +95,7 @@ export const formalQuestionnaireTemplate = {
         agreement('POST-RESP-01', '使用 AI 辅助完成任务后，最终判断仍由使用者负责。', '使用者责任', 5),
         agreement('POST-RESP-02', '在团队任务中，即使使用 AI，最终结果仍需要两名成员共同负责。', '团队共同责任', 6),
         agreement('POST-BYP-01-R', '在类似任务中，如果 AI 已给出较完整的答案，另一名成员的信息通常不会再明显改变我的判断。', 'AI绕过队友信念', 7, true),
-      ], '以下问题请结合刚才的任务体验，以及你对类似任务的理解作答。题目中如出现 AI，请按题目描述的情境作答。'),
+      ], '以下问题请结合刚才的任务体验，以及你对类似任务的理解作答。'),
       section('AI 事后信念与实际使用体验', [
         agreement('POST-AI-01', '本次实验中，任务 1 的 AI 对我完成任务有帮助。', 'AI总体帮助', 1),
         agreement('POST-AI-02', '任务 1 的 AI 帮助我更快整理文字材料。', 'AI文字材料帮助', 2),
@@ -141,7 +141,7 @@ export const formalQuestionnaireTemplate = {
         type: 'multi', construct: '文本主题识别', reverse: false, required: true, order: 1,
         options: ['行业运行和市场变化', '成员之间的信息互补', '资料来源的核验和记录', '团队成员对最终结果的共同责任', '企业经营与技术动态', '政策或监管变化', '其他', '没有印象'],
       }]),
-      section('AI 图片功能感知', [single('MC1-03', '本实验提供的任务 1 AI 是否支持上传图片并识别图片内容？', '图片功能感知', 1, ['支持', '不支持', '不确定'])]),
+      section('AI 图片功能感知', [single('MC1-03', '本实验提供的任务 1 AI 是否支持输入图片并识别图片内容？', '图片功能感知', 1, ['支持', '不支持', '不确定'])]),
       section('界面体验与任务理解', [
         scale('POST-TECH-01', '本次实验中，页面切换、输入和提交等操作总体上是否流畅？', '界面流畅度', 1, '很不流畅', '很流畅'),
         scale('POST-TECH-02', '本次实验中，任务 1 AI 返回结果的等待时间是否明显过长？', 'AI等待时间感知', 2, '完全没有', '非常明显'),
@@ -149,11 +149,11 @@ export const formalQuestionnaireTemplate = {
         agreement('POST-TECH-04', '我清楚理解信息来源选项的含义和选择规则。', '来源规则理解', 4),
       ]),
       section('人口特征统计', [
-        { code: 'DEMO-01', prompt: '你的年龄是？', type: 'number', construct: '年龄', reverse: false, required: true, order: 1 },
-        single('DEMO-02', '你的性别是？', '性别', 2, ['男', '女', '其他', '不愿透露']),
+        { code: 'DEMO-01', prompt: '你的年龄是？', type: 'number', construct: '年龄', reverse: false, required: true, order: 1, min: 0 },
+        single('DEMO-02', '你的性别是？', '性别', 2, ['男', '女']),
         single('DEMO-03', '你的最高学历或当前在读阶段是？', '最高学历', 3, ['本科在读', '本科', '硕士在读', '硕士', '博士在读', '博士', '其他']),
         single('DEMO-04', '你的专业或主要学习、工作背景更接近哪一类？', '专业大类', 4, ['经济金融', '管理', '理工', '人文社科', '医学', '艺术', '其他']),
-        { code: 'DEMO-05', prompt: '你已有多少年大学阶段以上学习或正式工作经历？', type: 'number', construct: '学习或工作年限', reverse: false, required: true, order: 5 },
+        { code: 'DEMO-05', prompt: '你已有多少年大学阶段以上学习或正式工作经历？', type: 'number', construct: '学习或工作年限', reverse: false, required: true, order: 5, min: 0 },
         single('DEMO-06', '你是否有金融、投资、咨询、商业分析、行业研究或类似公司信息处理经验？', '商业分析相关经验', 6, ['无', '有，少于 6 个月', '有，6 个月至 1 年', '有，1 年以上']),
         single('DEMO-07', '你当前的主要身份是？', '当前身份', 7, ['本科生', '硕士生', '博士生', '企业员工', '自由职业', '其他']),
         single('DEMO-08', '你此前是否参加过类似的商业判断、人机协作或多任务实验？', '类似实验经历', 8, ['没有', '参加过 1 次', '参加过 2 次及以上', '不确定']),

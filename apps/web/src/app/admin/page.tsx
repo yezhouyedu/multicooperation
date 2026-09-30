@@ -1050,7 +1050,7 @@ function ConfigTab() {
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
-        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '三章实验正式问卷 V3.0',
+        questionnaireTitle: currentConfig.questionnaireTemplate?.title ?? '实验后问卷',
         questionnaireItems: currentConfig.questionnaireTemplate?.items ?? null,
         practiceQuizTitle: currentConfig.practiceQuizTemplate?.title ?? '测试题',
         practiceQuizItems: currentConfig.practiceQuizTemplate?.items ?? [],
@@ -1167,7 +1167,7 @@ function ConfigTab() {
         <div className="grid grid-cols-4 gap-4">
           <label className="text-sm text-[#4e5969]">
             测试轮时长（分钟）
-            <input type="number" min={1} value={config.practiceDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceDurationMinutes: Number(event.target.value) || 10 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
+            <input type="number" min={0.5} step={0.5} value={config.practiceDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceDurationMinutes: Number(event.target.value) || 5.5 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
           </label>
           <label className="text-sm text-[#4e5969]">
             工作段时长（分钟）
@@ -1490,7 +1490,7 @@ function QuestionnaireConfigTab() {
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/practice-quiz</td><td className="px-3 py-3">测试轮开始前测试题</td><td className="px-3 py-3">使用“实验配置”中的测试题模板和通过标准，不使用本页 V3.0 正式问卷。</td><td className="px-3 py-3">通过后进入测试轮 ready</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/break · 工作段 1/2 后</td><td className="px-3 py-3">第 1/2 段工作回顾</td><td className="px-3 py-3">每段 6 道共同题；A1-A6 且本人在刚结束工作段实际调用过任务1 AI 时，再增加 3 道该段 AI 体验题。</td><td className="px-3 py-3">提交后进入对应休息段</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 工作段 3 后</td><td className="px-3 py-3">第 3 段工作回顾</td><td className="px-3 py-3">与前两段使用同一套 6/9 题规则，单独显示为“第 3 段工作回顾”。</td><td className="px-3 py-3">提交后继续显示最终长问卷</td></tr>
-              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 最终阶段</td><td className="px-3 py-3">人口特征统计和其他信息采集问卷</td><td className="px-3 py-3">按 A/B 角色、A0-A8、任务1 AI 调用、图片上传、交接备注、查看 A 材料、反馈行为及线上行为自报动态组装。</td><td className="px-3 py-3">提交后进入独立支付确认</td></tr>
+              <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 最终阶段</td><td className="px-3 py-3">实验后问卷</td><td className="px-3 py-3">按 A/B 角色、A0-A8、任务1 AI 调用、图片上传、交接备注、查看 A 材料、反馈行为及线上行为自报动态组装。</td><td className="px-3 py-3">提交后进入独立支付确认</td></tr>
               <tr><td className="px-3 py-3 font-medium text-[#1d2129]">/workspace/end · 问卷后</td><td className="px-3 py-3">支付手机号确认（非问卷）</td><td className="px-3 py-3">只显示报名手机号掩码并记录确认状态；完整手机号不写入问卷答案和分析导出。</td><td className="px-3 py-3">确认后记录实验完成</td></tr>
             </tbody>
           </table>

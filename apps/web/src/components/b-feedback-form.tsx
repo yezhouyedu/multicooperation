@@ -205,7 +205,7 @@ export function BFeedbackForm({
       });
       if (!res.ok) throw new Error('提交失败');
 
-      if (q1 === '是') {
+      if (phase === 'formal' && q1 === '是') {
         const feedbackResponse = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
           method: 'POST',
           headers: idempotencyHeaders(`progress:${sessionCode}:${taskId}:b_feedback_to_a`, {

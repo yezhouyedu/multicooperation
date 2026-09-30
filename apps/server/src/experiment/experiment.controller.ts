@@ -302,6 +302,14 @@ export class ExperimentController {
     );
   }
 
+  @Post('session/:code/questionnaire/draft')
+  saveQuestionnaireDraft(
+    @Param('code') code: string,
+    @Body() body: { participantId: string; answers: Prisma.InputJsonValue },
+  ) {
+    return this.experimentService.saveQuestionnaireDraft(code.toUpperCase(), body.participantId, body.answers);
+  }
+
   @Post('session/:code/sidetask/:planId/answer')
   answerSideTask(
     @Param('code') code: string,

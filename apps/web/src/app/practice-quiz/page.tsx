@@ -89,7 +89,7 @@ export default function PracticeQuizPage() {
           <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">测试题</div>
           <div className="mb-3 text-2xl font-semibold text-[#1d2129]">{template?.title ?? '开始前测试题'}</div>
           <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-[#1e80ff]">
-            需要至少答对 {runtime?.practiceQuizPassCount ?? 1} 题，才能进入测试轮。
+            本次共 {template?.items.length ?? 0} 道题，需要至少答对 {runtime?.practiceQuizPassCount ?? 1} 道。通过后请等待同组另一名参与者完成准备。
           </div>
 
           <div className="space-y-6">
@@ -134,7 +134,7 @@ export default function PracticeQuizPage() {
               }`}
             >
               本次答对 {result.correctCount} 题，需要至少答对 {result.passCount} 题。
-              {result.passed ? ' 已通过，正在进入测试轮同步准备。' : ' 未通过，请检查后重新作答。'}
+              {result.passed ? ' 已通过，请等待同组另一名参与者完成准备。' : ' 未通过，请检查后重新作答。'}
             </div>
           ) : null}
 
@@ -145,7 +145,7 @@ export default function PracticeQuizPage() {
               disabled={!canSubmit || submitting}
               className="rounded-lg bg-[#1e80ff] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#1168e3] disabled:opacity-60"
             >
-              {submitting ? '提交中...' : '提交测试题'}
+              {submitting ? '提交中...' : '提交测试题并准备'}
             </button>
           </div>
         </div>

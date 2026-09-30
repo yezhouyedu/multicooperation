@@ -60,6 +60,7 @@ model Participant {
   pairingsAsB          Pairing[]                   @relation("PairingParticipantB")
   progresses           TaskProgress[]
   questionnaireAnswers QuestionnaireResponse[]
+  questionnaireDrafts  QuestionnaireDraft[]
   sideTaskResponses    SideTaskResponseLog[]
   sideTaskExposureLogs SideTaskExposureLog[]
   experimentEvents     ExperimentEvent[]
@@ -92,6 +93,7 @@ model Session {
   segmentStates        SessionSegmentState[]
   snapshots            TaskSnapshot[]
   questionnaireAnswers QuestionnaireResponse[]
+  questionnaireDrafts  QuestionnaireDraft[]
   aiMessages           AiMessageLog[]
   sideTaskResponses    SideTaskResponseLog[]
   sideTaskPlans        SideTaskPlan[]
@@ -199,7 +201,7 @@ model ExperimentConfig {
   experimentModeSettings           Json?
   activeExperimentRunId            String?                @unique
   instructionBlocks                Json?
-  practiceDurationMinutes          Int                    @default(5)
+  practiceDurationMinutes          Float                  @default(5.5)
   workDurationMinutes              Int                    @default(20)
   breakDurationMinutes             Int                    @default(5)
   segmentOneAiLevel                AiLevel                @default(BASIC)
@@ -345,6 +347,27 @@ model QuestionnaireResponse {
   @@index([sessionId, participantId, segmentIndex])
 }
 
+model QuestionnaireDraft {
+  id                String          @id @default(cuid())
+  sessionId         String
+  participantId     String
+  phase             ExperimentPhase @default(FORMAL)
+  segmentIndex      Int
+  questionnaireKind String
+  templateId        String?
+  answers           Json
+  status            String          @default("DRAFT")
+  firstStartedAt    DateTime        @default(now())
+  lastSavedAt       DateTime        @updatedAt
+  submittedAt       DateTime?
+  session           Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  participant       Participant     @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, participantId, phase, segmentIndex])
+  @@index([sessionId, participantId])
+  @@index([status])
+}
+
 model AiSettings {
   id                   String   @id @default("default")
   basicBaseUrl         String   @default("https://api.deepseek.com")
@@ -471,13 +494,14 @@ model SideTaskPlan {
 }
 
 model SideTaskExposureLog {
-  id             String   @id @default(cuid())
-  sessionId      String
-  participantId  String
-  sideTaskPlanId String
-  eventType      String
-  eventAt        DateTime @default(now())
-  payload        Json?
+  id               String   @id @default(cuid())
+  sessionId        String
+  participantId    String
+  sideTaskPlanId   String
+  eventType        String
+  eventAt          DateTime @default(now())
+  payload          Json?
+  deduplicationKey String?  @unique
 
   session     Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   participant Participant  @relation(fields: [participantId], references: [id], onDelete: Cascade)
@@ -628,6 +652,7 @@ model OnlineIntegrityInterval {
   triggerReason          String?
   endReason              String?
   metadata               Json?
+  openIntervalKey        String?         @unique
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 

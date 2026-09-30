@@ -212,6 +212,7 @@ export class ExportService {
           orderBy: { submittedAt: 'asc' },
           include: { template: true },
         },
+        questionnaireDrafts: { orderBy: { lastSavedAt: 'asc' } },
         aiMessages: { orderBy: { createdAt: 'asc' } },
         sideTaskPlans: {
           orderBy: [{ segmentIndex: 'asc' }, { queueOrder: 'asc' }],
@@ -396,6 +397,9 @@ export class ExportService {
           item.phase === ExperimentPhase.FORMAL &&
           item.segmentIndex === segmentIndex,
       );
+      const draft = session.questionnaireDrafts.find(
+        (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL && item.segmentIndex === segmentIndex,
+      );
       await this.storage.writeJson(
         join(participantDir, 'questionnaires', filename),
         {
@@ -409,6 +413,10 @@ export class ExportService {
               ?.startedAt?.toISOString() ?? null,
           submittedAt: row?.submittedAt?.toISOString() ?? null,
           answers: row?.answers ?? null,
+          responseState: row ? 'submitted' : draft ? 'draft_only' : 'never_started',
+          draftAnswers: !row ? draft?.answers ?? null : null,
+          draftFirstStartedAt: draft?.firstStartedAt?.toISOString() ?? null,
+          draftLastSavedAt: draft?.lastSavedAt?.toISOString() ?? null,
           templateItems: row?.template?.items ?? null,
           missing: !row,
         },
@@ -421,6 +429,9 @@ export class ExportService {
         item.phase === ExperimentPhase.FORMAL &&
         item.segmentIndex === 99,
     );
+    const postSurveyDraft = session.questionnaireDrafts.find(
+      (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL && item.segmentIndex === 99,
+    );
     await this.storage.writeJson(
       join(participantDir, 'questionnaires', 'post_survey.json'),
       {
@@ -429,6 +440,10 @@ export class ExportService {
         kind: 'post_survey',
         submittedAt: postSurvey?.submittedAt?.toISOString() ?? null,
         answers: postSurvey?.answers ?? null,
+        responseState: postSurvey ? 'submitted' : postSurveyDraft ? 'draft_only' : 'never_started',
+        draftAnswers: !postSurvey ? postSurveyDraft?.answers ?? null : null,
+        draftFirstStartedAt: postSurveyDraft?.firstStartedAt?.toISOString() ?? null,
+        draftLastSavedAt: postSurveyDraft?.lastSavedAt?.toISOString() ?? null,
         templateItems: postSurvey?.template?.items ?? null,
         missing: !postSurvey,
       },
@@ -1003,6 +1018,14 @@ export class ExportService {
         item.participantId === participantId &&
         item.phase === ExperimentPhase.FORMAL,
     );
+    const formalQuestionnaireDrafts = session.questionnaireDrafts.filter(
+      (item) => item.participantId === participantId && item.phase === ExperimentPhase.FORMAL,
+    );
+    const questionnaireResponseState = (segmentIndex: number) => formalQuestionnaires.some((row) => row.segmentIndex === segmentIndex)
+      ? 'submitted'
+      : formalQuestionnaireDrafts.some((row) => row.segmentIndex === segmentIndex)
+        ? 'draft_only'
+        : 'never_started';
     const questionnairePayload = (segmentIndex: number) => {
       const value = formalQuestionnaires.find(
         (row) => row.segmentIndex === segmentIndex,
@@ -1125,6 +1148,12 @@ export class ExportService {
         postSurveySubmitted: formalQuestionnaires.some(
           (row) => row.segmentIndex === 99,
         ),
+        responseStateByStage: {
+          segment1: questionnaireResponseState(2),
+          segment2: questionnaireResponseState(4),
+          segment3: questionnaireResponseState(6),
+          postSurvey: questionnaireResponseState(99),
+        },
         templateVersion:
           questionnairePayload(99)?.templateVersion ??
           questionnairePayload(6)?.templateVersion ??
@@ -2262,6 +2291,9 @@ export class ExportService {
         workSegment: this.workSegmentFromSegmentIndex(segmentIndex),
         segmentIndex,
         startedAt: startedAt?.toISOString() ?? null,
+        plannedEndsAt: state?.endsAt?.toISOString() ?? null,
+        actualCompletedAt: state?.completedAt?.toISOString() ?? null,
+        endTimeSource: state?.completedAt ? 'actual_completed_at' : state?.endsAt ? 'planned_fallback' : null,
         endedAt: endedAt?.toISOString() ?? null,
         durationMs:
           startedAt && endedAt

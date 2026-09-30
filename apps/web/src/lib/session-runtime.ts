@@ -231,6 +231,13 @@ export type RuntimeState = {
     waitingForPeer: boolean;
   } | null;
   questionnaireTemplate: QuestionnaireTemplate | null;
+  questionnaireDraft: {
+    status: 'DRAFT' | 'SUBMITTED';
+    answers: Record<string, string | number | string[]>;
+    firstStartedAt: string;
+    lastSavedAt: string;
+    submittedAt: string | null;
+  } | null;
   practiceQuizTemplate: QuestionnaireTemplate | null;
   practiceQuizPassCount: number;
   practiceQuizPassed: boolean;

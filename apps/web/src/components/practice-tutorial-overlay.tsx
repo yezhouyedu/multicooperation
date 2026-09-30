@@ -23,7 +23,7 @@ type Step = {
   requireAction?: boolean;
 };
 
-function buildSteps(role: 'A' | 'B', aiEnabled: boolean): Step[] {
+function buildSteps(role: 'A' | 'B', _aiEnabled: boolean): Step[] {
   return [
     {
       key: 'material_tab',
@@ -45,14 +45,6 @@ function buildSteps(role: 'A' | 'B', aiEnabled: boolean): Step[] {
       requireAction: false,
     },
     {
-      key: 'ai_message',
-      title: '了解 AI 助手',
-      detail: '这里是 AI 助手区域。测试轮只需了解它的位置和用途，无需实际操作；正式任务开始后再按页面提示使用。',
-      eventType: 'ai_message',
-      anchor: 'ai-input',
-      requireAction: false,
-    },
-    {
       key: 'sidetask_open',
       title: '任务2',
       detail: '除了任务1，你还会收到任务2。请点击顶部入口查看。',
@@ -68,7 +60,7 @@ function buildSteps(role: 'A' | 'B', aiEnabled: boolean): Step[] {
       anchor: 'sidetask-option',
       requireAction: true,
     },
-  ].filter((step) => aiEnabled || step.key !== 'ai_message');
+  ];
 }
 
 function getVisibleAnchor(anchor: string) {
@@ -81,73 +73,34 @@ function getVisibleAnchor(anchor: string) {
 }
 
 function getOverviewContent(role: 'A' | 'B', aiEnabled: boolean) {
-  if (role === 'A') {
-    return {
-      title: '欢迎进入测试轮',
-      sections: [
-        {
-          heading: '你的角色是A',
-          text: '你需要负责查看材料、整理关键信息，并填写任务表。',
-        },
-        {
-          heading: '工作台布局',
-          items: [
-            '左侧是材料区，用于查看公司相关资料',
-            '右上是答题区，用于填写A内容',
-            aiEnabled ? '右下是 AI 区；测试轮只介绍它的位置和用途，不开放实际调用' : '本次实验条件不提供 AI 区',
-          ],
-        },
-        {
-          heading: '时间安排',
-          items: [
-            '测试轮先只做一家公司',
-            '正式实验中每家公司有固定工作时长',
-            '角色A的任务表会在 5 分钟后自动提交',
-          ],
-        },
-        {
-          heading: '任务2',
-          items: [
-            '除了任务1，你还会收到任务2',
-            '顶部任务2入口会按本次实验条件显示提醒',
-            '请合理安排时间处理任务1和任务2',
-            '测试轮中的任务2为教学演示题，不计分、不进入正式变量',
-          ],
-        },
-      ],
-    };
-  }
-
   return {
     title: '欢迎进入测试轮',
     sections: [
       {
-        heading: '你的角色是B',
-        text: '你需要结合自有材料、A信息和自己的判断做出投资决策。',
+        heading: '你需要完成两个任务',
+        text: '任务1：每次任务1需要阅读一家公司的材料并填写任务表。',
       },
       {
         heading: '工作台布局',
         items: [
-          '左侧是材料区，用于查看公司相关资料',
-          '右上是答题区，用于填写投资判断',
-          aiEnabled ? '右下是 AI 区；测试轮只介绍它的位置和用途，不开放实际调用' : '本次实验条件不提供 AI 区',
+          '左侧是材料区，用于查看任务1的相关材料。',
+          '右侧是任务表，用于填写任务1的实验报告和判断。',
         ],
       },
       {
-        heading: '时间安排',
+        heading: '任务1时间安排',
         items: [
-          '测试轮先只做一家公司',
-          '正式实验中，每接到一家公司都有自己的 5 分钟处理窗口',
-          '角色A提交后，你可以查看角色A提交的信息',
+          '角色A：每次任务1从接收到一家公司的材料到提交任务的最长时间为5分钟，届时会自动提交，同时解锁给B。',
+          '角色B：每次任务1在测试轮总时长和正式工作段中不断进行，只能在开始处理5分钟后提交。5分钟时B可以查看A完成的任务表以及相关材料。',
+          '两名角色只能完成当前一家公司的任务1后，才能进行下一次任务1。',
         ],
       },
       {
         heading: '任务2',
         items: [
-          '除了任务1，你还会收到任务2',
-          '顶部任务2入口会按本次实验条件显示提醒',
-          '请合理安排时间处理任务1和任务2',
-          '测试轮中的任务2为教学演示题，不计分、不进入正式变量',
+          '在完成任务1时，你还会收到任务2。',
+          '任务2会在正式工作段中不断推送，从新一轮工作段开始持续到结束。',
+          '测试轮中的任务2为教学演示，不计入正式数据。',
         ],
       },
     ],
@@ -306,9 +259,7 @@ export function PracticeTutorialOverlay({
           <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">教学引导已完成</div>
           <div className="mb-3 text-xl font-semibold text-[#1d2129]">下一步正式进入测试轮</div>
           <div className="text-sm leading-7 text-[#4e5969]">
-            {aiEnabled
-              ? '请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区和任务2功能。AI 助手会在正式任务开始后启用。'
-              : '请你完成本公司的相关调研，并继续使用刚才体验过的材料区、答题区和任务2功能。'}
+            请你完成本公司的任务，并继续使用刚才体验过的材料区、任务表和任务2功能。
           </div>
           <div className="mt-5 flex justify-end">
             <button

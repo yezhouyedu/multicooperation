@@ -106,11 +106,11 @@ export default function ReadyClientPage() {
     }
   }
 
-  const title = target === 'practice' ? '已准备进入测试轮' : '已准备进入正式阶段';
+  const title = target === 'practice' ? '已准备进入测试轮' : '正在等待进入正式实验';
   const desc =
     target === 'practice'
       ? '双方都完成测试题并点击准备后，系统会同时进入测试轮。'
-      : '双方都完成测试轮并点击准备后，系统会同时进入正式任务。';
+      : '双方都完成测试轮并确认正式实验注意事项后，系统会同时进入正式任务。';
   const readyRoles = (runtime?.syncState?.readyRoles ?? []).map((role) => formatRoleLabel(role));
   const selfReady = runtime?.syncState?.selfReady ?? false;
   const needsIntegrityCommitment = target === 'formal' && Boolean(runtime?.onlineIntegrity.config.enabled) && !runtime?.onlineIntegrity.commitmentCompleted;
@@ -148,17 +148,20 @@ export default function ReadyClientPage() {
 
           {needsIntegrityCommitment ? (
             <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/60 p-5 text-left text-sm leading-6 text-[#4e5969]">
-              <div className="font-bold text-[#1d2129]">正式线上实验规则与理解确认</div>
-              <p className="mt-2">质量监测只在正式工作段运行。请保持本实验页面全屏，不切换标签页、微信、桌面或其他应用，也不要借助平台外 AI。系统不录屏、不保存按键内容或剪贴板原文。</p>
-              {[
-                ['formalOnly', '我知道休息、指导、测试轮和问卷阶段不进行切屏/无效行为判定。'],
-                ['offscreenRule', `我知道每次切屏都会记录；持续超过管理员阈值（当前为 ${runtime?.onlineIntegrity.config.offscreenViolationSeconds ?? 2} 秒）才标记正式违规。`],
-                ['dropoutRule', '我知道 A 正式退出后 B 停止实验；B 正式退出后 A 继续完成剩余任务。'],
-                ['privacyRule', '我知道系统只记录时间区间、字符数和不可逆摘要，不记录剪贴板原文或键盘内容。'],
-              ].map(([key, label]) => (
-                <label key={key} className="mt-3 flex gap-2"><input type="checkbox" checked={ruleAnswers[key as keyof typeof ruleAnswers]} onChange={(e) => setRuleAnswers((prev) => ({ ...prev, [key]: e.target.checked }))} className="mt-1" /><span>{label}</span></label>
-              ))}
-              <label className="mt-4 flex gap-2 border-t border-amber-200 pt-4 font-semibold text-[#1d2129]"><input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} className="mt-1" /><span>我承诺在正式实验中保持参与，不使用平台外工具辅助完成任务。</span></label>
+              <div className="font-bold text-[#1d2129]">正式实验特别注意</div>
+              <label className="mt-3 flex gap-2">
+                <input
+                  type="checkbox"
+                  checked={Object.values(ruleAnswers).every(Boolean)}
+                  onChange={(event) => setRuleAnswers({ formalOnly: event.target.checked, offscreenRule: event.target.checked, dropoutRule: event.target.checked, privacyRule: event.target.checked })}
+                  className="mt-1"
+                />
+                <span>请保持实验页面全屏，不要切换标签页、微信、桌面或其他应用，也不要使用平台外工具，包括搜索引擎、计算器和AI等。长时间没有操作、切换页面或使用外部工具的行为，可能被记录为违规；出现两次异常行为会被系统判定为退出实验。</span>
+              </label>
+              <label className="mt-4 flex gap-2 border-t border-amber-200 pt-4 font-semibold text-[#1d2129]">
+                <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1" />
+                <span>如果被系统判定为退出实验，或者你选择中途退出，将无法获得任何报酬。如果你的队友中途退出，你的实验报酬仍会按照实际完成部分和正常规则发放。</span>
+              </label>
             </div>
           ) : null}
 

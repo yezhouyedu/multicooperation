@@ -58,7 +58,7 @@
 
 Admin 后续切换模式、实验局或配置，不得改变已创建 session 的快照。
 
-测试轮 AI 统一口径：所有新 Session 均拒绝 `phase=practice` 的 AI 请求。A1-A6 的 `practiceAiState` 只用于前端显示禁用的 AI 区及正确档位外观，不代表测试轮可调用 AI；正常新 Session 不产生测试轮 `AiMessageLog` 或图片附件。测试轮任务的 `aAiLevelAtWindow / bPreAAiLevel / bPostAAiLevel` 保存为 `null`。
+测试轮 AI 统一口径：所有条件均不显示 AI 区，所有新 Session 均拒绝 `phase=practice` 的 AI 请求；正常新 Session 不产生测试轮 `AiMessageLog` 或图片附件。测试轮任务的 `aAiLevelAtWindow / bPreAAiLevel / bPostAAiLevel` 保存为 `null`。
 
 ## 3. A0-A8 必要保存口径
 

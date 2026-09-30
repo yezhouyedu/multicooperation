@@ -7,7 +7,7 @@ import { recordTimestampEvent } from '@/lib/timestamp-events';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-type SourceOption = '自有材料' | '上游提取信息' | '上游备注' | '上游材料' | '';
+type SourceOption = '自有材料' | 'A的任务结果' | 'A的备注' | 'A的材料' | '';
 
 type InfoPoint = {
   text: string;
@@ -38,17 +38,19 @@ type Props = {
 };
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
-const sourceOptions: Exclude<SourceOption, ''>[] = ['自有材料', '上游提取信息', '上游备注', '上游材料'];
+const sourceOptions: Exclude<SourceOption, ''>[] = ['自有材料', 'A的任务结果', 'A的备注', 'A的材料'];
 const minInfoRows = 2;
-const maxInfoLength = 50;
-const maxAssessmentLength = 120;
+const maxInfoLength = 55;
+const maxAssessmentLength = 150;
 
 function createEmptyInfoPoint(): InfoPoint {
   return { text: '', source: '' };
 }
 
 function normalizeSourceOption(value: unknown): SourceOption {
-  if (value === '\u4e0a\u6e38\u5c3d\u8c03\u4fe1\u606f') return '上游提取信息';
+  if (value === '\u4e0a\u6e38\u5c3d\u8c03\u4fe1\u606f' || value === '上游提取信息') return 'A的任务结果';
+  if (value === '上游备注') return 'A的备注';
+  if (value === '上游材料') return 'A的材料';
   return sourceOptions.includes(value as Exclude<SourceOption, ''>) ? value as SourceOption : '';
 }
 
@@ -130,7 +132,7 @@ function InfoPointSection({
         <tbody>
           <tr>
             <Th className="w-[90px]">序号</Th>
-            <Th>信息简述（≤50字）</Th>
+            <Th>信息简述（≤55字）</Th>
             <Th className="w-[280px]">证据来源（四选一）</Th>
             <Th className="w-[90px]">操作</Th>
           </tr>
@@ -350,12 +352,11 @@ export function BTaskEditor({
             <h2 className="text-center text-[22px] font-bold tracking-[0.02em]">B端任务表</h2>
             <div className="mt-6 space-y-1 text-[13px] leading-7 text-[#4e5969]">
               <div className="font-semibold text-[#1d2129]">填写说明</div>
-              <div>1. 仅依据当前可见的材料、AI辅助结果和已解锁的信息填写；不要使用材料之外的知识进行推测。</div>
+              <div>1. 仅依据所给材料填写，不要使用材料之外的信息进行推测。</div>
               <div>2. 重要信息点可自由增加行。信息简述应简短、具体，尽量写成会影响投资判断的事实或判断。</div>
-              <div>3. 每条机会或风险信息都必须选择一个“权重最大”的证据来源。</div>
-              <div>4. 证据来源选项固定为：自有材料、上游提取信息、上游备注、上游材料。如使用AI整理信息，仍请选择你最终采纳该信息时权重最大的材料来源。</div>
-              <div>5. 综合判断用于说明你如何权衡机会与风险，不需要重复逐条罗列前面的信息点。</div>
-              <div>6. 最终投资建议必须选择；判断信心用于表示你对最终建议的确定程度。</div>
+              <div>3. 重要机会或风险信息必须选择证据来源，如果同时有多个材料支持，选择最主要的一个。</div>
+              <div>4. 综合判断用于说明你如何权衡机会与风险。</div>
+              <div>5. 最终投资建议必须选择；判断信心用于表示你对最终建议的确定程度。</div>
             </div>
           </div>
 
@@ -376,15 +377,15 @@ export function BTaskEditor({
                   <Td>B端当前公司材料。</Td>
                 </tr>
                 <tr>
-                  <Td>上游提取信息</Td>
+                  <Td>A的任务结果</Td>
                   <Td>A端任务表中的基础数值摘录和材料线索记录。</Td>
                 </tr>
                 <tr>
-                  <Td>上游备注</Td>
+                  <Td>A的备注</Td>
                   <Td>A端“给B的总体交接备注”。</Td>
                 </tr>
                 <tr>
-                  <Td>上游材料</Td>
+                  <Td>A的材料</Td>
                   <Td>B主动查看并复核的A端原始材料。</Td>
                 </tr>
               </tbody>
@@ -453,7 +454,7 @@ export function BTaskEditor({
             <DocTable>
               <tbody>
                 <tr>
-                  <Th className="w-[280px]">综合判断（建议≤120字）</Th>
+                  <Th className="w-[280px]">综合判断（建议≤150字）</Th>
                   <Td>
                     <textarea
                       value={form.overallAssessment}
@@ -583,8 +584,8 @@ export function BTaskEditor({
             <div className="space-y-3 rounded-lg border border-[#dde1e7] bg-[#f8fafc] px-4 py-4 text-[13px] leading-7 text-[#4e5969]">
               <div>
                 <div className="font-semibold text-[#1d2129]">个人绩效提醒</div>
-                <p>你在任务1中的个人绩效按你经手处理并有提交记录的公司累计。</p>
-                <p>每条重要机会或重要风险都需要选择权重最大的证据来源。若你填写的信息有材料依据，且来源能够支持该信息，可获得相应绩效分。</p>
+                <p>你在任务1中的个人绩效，根据你实际处理并提交的各家公司任务结果累计计算。</p>
+                <p>每条重要机会或重要风险都需要选择一个证据来源。如果有多个来源支持这条信息，请选择你在判断这条信息时最主要依据的来源。</p>
               </div>
               <div>
                 <div className="font-semibold text-[#1d2129]">以下规则适用于重要机会/重要风险区：</div>
@@ -594,7 +595,8 @@ export function BTaskEditor({
               </div>
               <div>
                 <div className="font-semibold text-[#1d2129]">团队绩效提醒</div>
-                <p>团队绩效计算A和B均经手处理并有提交记录的公司。最终投资建议正确、重要机会和重要风险覆盖正确、普通机会和普通风险数量准确，会提高团队绩效。如果公司存在重要风险，但B没有识别并填写，会扣团队绩效分。</p>
+                <p>在每次任务1中，角色B提交的任务结果会按照不同规则分别用于计算团队绩效和B的个人绩效。注意，角色A的任务结果会提供给角色B使用，因此也可能通过影响角色B的最终任务结果而影响团队绩效。</p>
+                <p>角色B任务结果中用于计算团队绩效的内容及对应规则为：最终投资建议是否正确、重要机会和重要风险是否正确覆盖、普通机会和普通风险数量是否准确。如果公司存在重要风险，但角色B没有识别并填写，会扣除团队绩效分。</p>
               </div>
             </div>
           </section>

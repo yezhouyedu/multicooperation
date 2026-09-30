@@ -1,7 +1,7 @@
 'use client';
 
 import type { QuestionnaireItem, QuestionnaireTemplate } from '@/lib/session-runtime';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type AnswerValue = string | number | string[];
 export type QuestionnaireAnswers = Record<string, AnswerValue>;
@@ -10,6 +10,9 @@ type Props = {
   questionnaire: QuestionnaireTemplate;
   submitting?: boolean;
   submitLabel?: string;
+  sessionCode: string;
+  participantId: string;
+  initialDraft?: QuestionnaireAnswers | null;
   onSubmit: (answers: QuestionnaireAnswers) => void | Promise<void>;
 };
 
@@ -20,6 +23,7 @@ function normalizeText(value: unknown) {
 function safeSectionTitle(title: string | undefined) {
   const value = title?.trim();
   if (!value || value.includes('????') || value.includes('\\u')) return '问卷';
+  if (value === '人口特征统计' || value === '线上实施情况') return '';
   return value;
 }
 
@@ -47,9 +51,24 @@ function isVisible(item: QuestionnaireItem, answers: QuestionnaireAnswers) {
   return String(answers[item.showIf.code] ?? '') === item.showIf.equals;
 }
 
-export function QuestionnaireForm({ questionnaire, submitting = false, submitLabel = '提交问卷', onSubmit }: Props) {
-  const [answers, setAnswers] = useState<QuestionnaireAnswers>({});
-  const [followups, setFollowups] = useState<Record<string, string>>({});
+export function QuestionnaireForm({ questionnaire, submitting = false, submitLabel = '提交问卷', sessionCode, participantId, initialDraft, onSubmit }: Props) {
+  const initialBaseAnswers = useMemo(() => Object.fromEntries(
+    Object.entries(initialDraft ?? {}).filter(([key]) => !key.endsWith('__followup')),
+  ) as QuestionnaireAnswers, [initialDraft]);
+  const initialFollowups = useMemo(() => Object.fromEntries(
+    Object.entries(initialDraft ?? {}).filter(([key]) => key.endsWith('__followup')).map(([key, value]) => [key.slice(0, -'__followup'.length), String(value)]),
+  ), [initialDraft]);
+  const [answers, setAnswers] = useState<QuestionnaireAnswers>(initialBaseAnswers);
+  const [followups, setFollowups] = useState<Record<string, string>>(initialFollowups);
+  const [draftState, setDraftState] = useState<'idle' | 'saving' | 'saved' | 'error'>(initialDraft ? 'saved' : 'idle');
+  const dirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (dirtyRef.current) return;
+    setAnswers(initialBaseAnswers);
+    setFollowups(initialFollowups);
+    setDraftState(initialDraft ? 'saved' : 'idle');
+  }, [initialBaseAnswers, initialDraft, initialFollowups, questionnaire.segmentIndex]);
   const baseSections = useMemo(
     () =>
       questionnaire.sections?.length
@@ -68,6 +87,7 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
   const answeredCount = useMemo(() => allItems.filter((item) => isAnswered(item, answers[item.code])).length, [allItems, answers]);
 
   function updateAnswer(code: string, value: AnswerValue) {
+    dirtyRef.current = true;
     setAnswers((prev) => ({ ...prev, [code]: value }));
   }
 
@@ -88,6 +108,29 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
     await onSubmit(payload);
   }
 
+  useEffect(() => {
+    if (!dirtyRef.current || submitting) return;
+    const timer = window.setTimeout(async () => {
+      const draftPayload: QuestionnaireAnswers = { ...answers };
+      for (const [code, value] of Object.entries(followups)) {
+        if (value.trim()) draftPayload[`${code}__followup`] = value;
+      }
+      setDraftState('saving');
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001'}/experiment/session/${sessionCode}/questionnaire/draft`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId, answers: draftPayload }),
+        });
+        if (!response.ok) throw new Error('draft save failed');
+        setDraftState('saved');
+      } catch {
+        setDraftState('error');
+      }
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [answers, followups, participantId, sessionCode, submitting]);
+
   return (
     <div className="space-y-6">
       {/* 进度指示器 */}
@@ -105,7 +148,7 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
 
       {sections.map((section, sectionIndex) => (
         <section key={`${section.title}-${sectionIndex}`} className="space-y-4">
-          {sections.length > 1 ? (
+          {sections.length > 1 && section.title ? (
             <div className="border-b border-[#e5e6eb] pb-3">
               <div className="text-base font-semibold text-[#1d2129]">{section.title}</div>
               {section.description ? <p className="mt-2 text-sm leading-6 text-[#4e5969]">{section.description}</p> : null}
@@ -251,6 +294,7 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
                 {item.type === 'number' ? (
                   <input
                     type="number"
+                    min={item.min ?? 0}
                     value={typeof value === 'number' || typeof value === 'string' ? value : ''}
                     onChange={(event) => updateAnswer(item.code, event.target.value)}
                     className="w-full max-w-sm rounded-lg border border-[#e2e5ea] bg-[#fafbfc] px-4 py-2.5 text-sm outline-none transition-colors duration-150 focus:border-[#1e80ff] focus:bg-white focus:shadow-[0_0_0_3px_rgba(30,128,255,0.08)]"
@@ -275,7 +319,10 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
                     <textarea
                       placeholder={item.followup?.prompt ?? '请补充说明'}
                       value={followups[item.code] ?? ''}
-                      onChange={(event) => setFollowups((prev) => ({ ...prev, [item.code]: event.target.value }))}
+                      onChange={(event) => {
+                        dirtyRef.current = true;
+                        setFollowups((prev) => ({ ...prev, [item.code]: event.target.value }));
+                      }}
                       rows={3}
                       className="w-full resize-y rounded-lg border border-amber-200 bg-white px-4 py-3 text-sm leading-relaxed outline-none transition-colors duration-150 focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(245,158,11,0.08)]"
                     />
@@ -289,9 +336,12 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
 
       {/* 提交按钮 */}
       <div className="flex items-center justify-between rounded-xl border border-[#eaecf0] bg-white px-5 py-4">
-        <span className="text-sm text-[#86909c]">
-          {canSubmit ? '所有必填项已完成' : `还有 ${allItems.length - answeredCount} 项必填`}
-        </span>
+        <div>
+          <div className="text-sm text-[#86909c]">{canSubmit ? '所有必填项已完成' : `还有 ${allItems.length - answeredCount} 项必填`}</div>
+          <div className={`mt-1 text-xs ${draftState === 'error' ? 'text-red-500' : 'text-[#86909c]'}`}>
+            {draftState === 'saving' ? '正在保存草稿...' : draftState === 'saved' ? '草稿已保存，可刷新后继续' : draftState === 'error' ? '草稿暂未同步，请保持页面打开' : '开始填写后将自动保存草稿'}
+          </div>
+        </div>
         <button
           type="button"
           onClick={() => void handleSubmit()}

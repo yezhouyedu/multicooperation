@@ -78,7 +78,7 @@ const DEFAULT_INSTRUCTION_BLOCKS = {
   ai_upgrade: '正式任务中，AI 辅助能力可能会在不同阶段发生变化。请以页面中显示的当前 AI 状态为准。',
   side_reminder: '正式任务中，任务2会按系统安排进入队列。请在任务1与任务2之间合理分配注意力。',
   coop_narrative: '正式任务中，任务2可能包含与团队协作相关的信息。请正常阅读并完成对应判断。',
-  aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+  aiUpgradeBreakNotice: '下一阶段起，AI 辅助功能已升级，你可以截图或粘贴图片，并使用更强模型辅助分析。',
   aiUpgradeWorkspaceNotice: '',
 };
 
@@ -324,13 +324,13 @@ export class AdminService {
     const template = await this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V3.0',
+        title: input.questionnaireTitle?.trim() || '实验后问卷',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: input.questionnaireTitle?.trim() || '三章实验正式问卷 V3.0',
+        title: input.questionnaireTitle?.trim() || '实验后问卷',
         items: this.normalizeFormalQuestionnaireTemplate(input.questionnaireItems),
         isActive: true,
       },
@@ -391,7 +391,7 @@ export class AdminService {
         activeExperimentMode,
         experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
         instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
-        practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
+        practiceDurationMinutes: Math.max(0.5, Number(input.practiceDurationMinutes) || 5.5),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,
@@ -408,7 +408,7 @@ export class AdminService {
         activeExperimentMode,
         experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
         instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
-        practiceDurationMinutes: Math.max(1, Number(input.practiceDurationMinutes) || 10),
+        practiceDurationMinutes: Math.max(0.5, Number(input.practiceDurationMinutes) || 5.5),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,
@@ -1110,6 +1110,7 @@ export class AdminService {
     await this.prisma.taskProgress.deleteMany({});
     await this.prisma.taskSnapshot.deleteMany({});
     await this.prisma.questionnaireResponse.deleteMany({});
+    await this.prisma.questionnaireDraft.deleteMany({});
     await this.prisma.sideTaskExposureLog.deleteMany({});
     await this.prisma.sideTaskPlan.deleteMany({});
     await this.prisma.sideTaskSessionConfig.deleteMany({});
@@ -1119,6 +1120,10 @@ export class AdminService {
     await this.prisma.sessionSegmentState.deleteMany({});
     await this.prisma.taskAssignment.deleteMany({});
     await this.prisma.pairing.deleteMany({});
+    await this.prisma.experimentConditionSlot.updateMany({
+      where: { assignedSessionId: { not: null } },
+      data: { status: 'AVAILABLE', assignedSessionId: null, assignedSessionCode: null, assignedAt: null },
+    });
     await this.prisma.session.deleteMany({});
     await this.prisma.participant.updateMany({ data: { role: null } });
     return {
@@ -1158,6 +1163,7 @@ export class AdminService {
       await tx.taskProgress.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.taskSnapshot.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.questionnaireResponse.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.questionnaireDraft.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.sideTaskExposureLog.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.sideTaskPlan.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.sideTaskSessionConfig.deleteMany({ where: { sessionId: { in: sessionIds } } });
@@ -1167,6 +1173,10 @@ export class AdminService {
       await tx.sessionSegmentState.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.taskAssignment.deleteMany({ where: { sessionId: { in: sessionIds } } });
       await tx.pairing.deleteMany({ where: { sessionId: { in: sessionIds } } });
+      await tx.experimentConditionSlot.updateMany({
+        where: { assignedSessionId: { in: sessionIds } },
+        data: { status: 'AVAILABLE', assignedSessionId: null, assignedSessionCode: null, assignedAt: null },
+      });
       await tx.session.deleteMany({ where: { id: { in: sessionIds } } });
       if (participantIds.length > 0) {
         await tx.participant.updateMany({ where: { id: { in: participantIds } }, data: { role: null } });
@@ -1368,7 +1378,7 @@ export class AdminService {
           activeExperimentMode: 'manual',
           experimentModeSettings: DEFAULT_EXPERIMENT_MODE_SETTINGS as Prisma.InputJsonValue,
           instructionBlocks: DEFAULT_INSTRUCTION_BLOCKS as Prisma.InputJsonValue,
-          practiceDurationMinutes: 10,
+          practiceDurationMinutes: 5.5,
           workDurationMinutes: 20,
           breakDurationMinutes: 5,
           segmentOneAiLevel: AiLevel.BASIC,
@@ -1385,7 +1395,7 @@ export class AdminService {
       config = await this.prisma.experimentConfig.update({
         where: { id: config.id },
         data: {
-          practiceDurationMinutes: config.practiceDurationMinutes || 10,
+          practiceDurationMinutes: config.practiceDurationMinutes || 5.5,
           practiceQuizTemplateId: practiceTemplate.id,
           practiceQuizPassCount: config.practiceQuizPassCount || 0,
         },
@@ -1487,7 +1497,12 @@ export class AdminService {
     return Object.fromEntries(
       Object.entries(DEFAULT_INSTRUCTION_BLOCKS).map(([key, fallback]) => [
         key,
-        typeof raw[key] === 'string' ? String(raw[key]) : fallback,
+        typeof raw[key] === 'string'
+          ? String(raw[key]).replace(
+              '下一阶段起，AI 辅助功能已升级，您可以上传图片并使用更强模型辅助分析。',
+              '下一阶段起，AI 辅助功能已升级，你可以截图或粘贴图片，并使用更强模型辅助分析。',
+            )
+          : fallback,
       ]),
     );
   }
@@ -1583,13 +1598,13 @@ export class AdminService {
     return this.prisma.questionnaireTemplate.upsert({
       where: { id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID },
       update: {
-        title: '三章实验正式问卷 V3.0',
+        title: '实验后问卷',
         items: formalQuestionnaireTemplateJson(),
         isActive: true,
       },
       create: {
         id: FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
-        title: '三章实验正式问卷 V3.0',
+        title: '实验后问卷',
         isActive: true,
         items: formalQuestionnaireTemplateJson(),
       },
