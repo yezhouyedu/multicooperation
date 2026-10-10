@@ -2,6 +2,34 @@ import { ExperimentPhase, ParticipantRole } from '@prisma/client';
 import { ExportService } from './export.service';
 
 describe('ExportService integrity-adjusted timing', () => {
+  it('exports each practice clock without using the team stage duration', () => {
+    const service = new ExportService({} as never, {} as never);
+    const session = {
+      experimentSnapshot: { practiceTiming: { A: 5, B: 6 } },
+      progresses: [
+        { participantId: 'a', stage: 'practice_timer_started', payload: { startedAt: '2026-10-10T00:00:00.000Z', endsAt: '2026-10-10T00:05:00.000Z', durationMinutes: 5 } },
+        { participantId: 'b', stage: 'practice_timer_started', payload: { startedAt: '2026-10-10T00:01:00.000Z', endsAt: '2026-10-10T00:07:00.000Z', durationMinutes: 6 } },
+      ],
+      tasks: [{ phase: ExperimentPhase.PRACTICE, aSubmittedAt: new Date('2026-10-10T00:05:00Z'), bCompletedAt: new Date('2026-10-10T00:07:00Z') }],
+    };
+    expect((service as any).buildPracticeTiming(session, 'a', ParticipantRole.A)).toEqual({ configuredMinutes: 5, startedAt: '2026-10-10T00:00:00.000Z', plannedEndsAt: '2026-10-10T00:05:00.000Z', endedAt: '2026-10-10T00:05:00.000Z', elapsedSeconds: 300, source: 'participant_practice_timer' });
+    expect((service as any).buildPracticeTiming(session, 'b', ParticipantRole.B).elapsedSeconds).toBe(360);
+  });
+
+  it('marks legacy practice exports instead of inventing a personal start time', () => {
+    const service = new ExportService({} as never, {} as never);
+    const timing = (service as any).buildPracticeTiming({ experimentSnapshot: {}, progresses: [], tasks: [] }, 'a', ParticipantRole.A);
+    expect(timing).toEqual({ configuredMinutes: null, startedAt: null, plannedEndsAt: null, endedAt: null, elapsedSeconds: null, source: 'legacy_no_personal_timer' });
+  });
+  it('uses B personal practice start in company timing instead of A submission', () => {
+    const service = new ExportService({} as never, {} as never);
+    const task = { id: 'practice', phase: ExperimentPhase.PRACTICE, aSubmittedAt: new Date('2026-10-10T00:05:00Z') };
+    const session = { tasks: [task], pairings: [{ participantBId: 'b' }], progresses: [{ participantId: 'b', stage: 'practice_timer_started', payload: { startedAt: '2026-10-10T00:01:00.000Z' } }] };
+    expect((service as any).bAssignedAt(session, 'practice')).toBe('2026-10-10T00:01:00.000Z');
+    expect((service as any).bAssignedAtFromTask(task)).toBeNull();
+    expect((service as any).bAssignedAt({ ...session, progresses: [] }, 'practice')).toBeNull();
+  });
+
   it('exports feedback send context with readable company codes', () => {
     const service = new ExportService({} as never, {} as never);
     const metadata = (service as any).buildCompanyMetadata(

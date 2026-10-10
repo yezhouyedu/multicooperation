@@ -89,6 +89,11 @@ export class AdminService {
     private readonly conditionAssignments: ExperimentConditionAssignmentService,
   ) {}
 
+  private practiceMinutes(value: number) {
+    if (!Number.isFinite(value) || value < 0.5) throw new BadRequestException('测试轮时长必须是至少0.5分钟的有限数字');
+    return value;
+  }
+
   async createExperimentRun(name?: string) {
     return { ok: true, run: await this.conditionAssignments.createRun(name) };
   }
@@ -181,6 +186,8 @@ export class AdminService {
         experimentModeSettings: this.normalizeExperimentModeSettings(config.experimentModeSettings),
         instructionBlocks: this.normalizeInstructionBlocks(config.instructionBlocks),
         practiceDurationMinutes: config.practiceDurationMinutes,
+        practiceADurationMinutes: config.practiceADurationMinutes,
+        practiceBDurationMinutes: config.practiceBDurationMinutes,
         workDurationMinutes: config.workDurationMinutes,
         breakDurationMinutes: config.breakDurationMinutes,
         segmentAiLevels: [
@@ -299,7 +306,9 @@ export class AdminService {
     activeExperimentMode?: string;
     experimentModeSettings?: unknown;
     instructionBlocks?: unknown;
-    practiceDurationMinutes: number;
+    practiceDurationMinutes?: number;
+    practiceADurationMinutes?: number;
+    practiceBDurationMinutes?: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;
     segmentAiLevels: string[];
@@ -392,6 +401,8 @@ export class AdminService {
         experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
         instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
         practiceDurationMinutes: Math.max(0.5, Number(input.practiceDurationMinutes) || 5.5),
+        practiceADurationMinutes: input.practiceADurationMinutes === undefined ? undefined : this.practiceMinutes(input.practiceADurationMinutes),
+        practiceBDurationMinutes: input.practiceBDurationMinutes === undefined ? undefined : this.practiceMinutes(input.practiceBDurationMinutes),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,
@@ -409,6 +420,8 @@ export class AdminService {
         experimentModeSettings: experimentModeSettings as Prisma.InputJsonValue,
         instructionBlocks: instructionBlocks as Prisma.InputJsonValue,
         practiceDurationMinutes: Math.max(0.5, Number(input.practiceDurationMinutes) || 5.5),
+        practiceADurationMinutes: this.practiceMinutes(input.practiceADurationMinutes ?? 5),
+        practiceBDurationMinutes: this.practiceMinutes(input.practiceBDurationMinutes ?? 5),
         workDurationMinutes: Math.max(1, Number(input.workDurationMinutes) || 20),
         breakDurationMinutes: Math.max(1, Number(input.breakDurationMinutes) || 5),
         segmentOneAiLevel,

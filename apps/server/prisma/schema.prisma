@@ -202,6 +202,8 @@ model ExperimentConfig {
   activeExperimentRunId            String?                @unique
   instructionBlocks                Json?
   practiceDurationMinutes          Float                  @default(5.5)
+  practiceADurationMinutes         Float                  @default(5)
+  practiceBDurationMinutes         Float                  @default(5)
   workDurationMinutes              Int                    @default(20)
   breakDurationMinutes             Int                    @default(5)
   segmentOneAiLevel                AiLevel                @default(BASIC)

@@ -95,6 +95,8 @@ type ExperimentConfig = {
   experimentModeSettings: ExperimentModeSettings;
   instructionBlocks: InstructionBlocks;
   practiceDurationMinutes: number;
+  practiceADurationMinutes: number;
+  practiceBDurationMinutes: number;
   workDurationMinutes: number;
   breakDurationMinutes: number;
   segmentAiLevels: string[];
@@ -1047,6 +1049,8 @@ function ConfigTab() {
           experimentModeSettings: currentConfig.experimentModeSettings,
           instructionBlocks: currentConfig.instructionBlocks,
           practiceDurationMinutes: currentConfig.practiceDurationMinutes,
+          practiceADurationMinutes: currentConfig.practiceADurationMinutes,
+          practiceBDurationMinutes: currentConfig.practiceBDurationMinutes,
         workDurationMinutes: currentConfig.workDurationMinutes,
         breakDurationMinutes: currentConfig.breakDurationMinutes,
         segmentAiLevels: currentConfig.segmentAiLevels,
@@ -1165,10 +1169,13 @@ function ConfigTab() {
       <div className="rounded-xl border border-[#e5e6eb] bg-white p-5 shadow-sm">
         <div className="mb-4 font-bold text-[#1d2129]">时间参数</div>
         <div className="grid grid-cols-4 gap-4">
-          <label className="text-sm text-[#4e5969]">
-            测试轮时长（分钟）
-            <input type="number" min={0.5} step={0.5} value={config.practiceDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceDurationMinutes: Number(event.target.value) || 5.5 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
-          </label>
+          <div className="text-sm text-[#4e5969]">
+            测试轮时长（分钟，A/B独立）
+            <div className="mt-1 flex gap-2">
+              <label>A<input aria-label="A测试轮分钟" type="number" min={0.5} step={0.5} value={config.practiceADurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceADurationMinutes: Number(event.target.value) } : prev))} className="w-full rounded-lg border bg-gray-50 px-3 py-2" /></label>
+              <label>B<input aria-label="B测试轮分钟" type="number" min={0.5} step={0.5} value={config.practiceBDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, practiceBDurationMinutes: Number(event.target.value) } : prev))} className="w-full rounded-lg border bg-gray-50 px-3 py-2" /></label>
+            </div>
+          </div>
           <label className="text-sm text-[#4e5969]">
             工作段时长（分钟）
             <input type="number" min={1} value={config.workDurationMinutes} onChange={(event) => setConfig((prev) => (prev ? { ...prev, workDurationMinutes: Number(event.target.value) || 20 } : prev))} className="mt-1 w-full rounded-lg border border-[#e5e6eb] bg-gray-50 px-3 py-2 outline-none focus:border-[#1e80ff]" />
@@ -1417,6 +1424,8 @@ function QuestionnaireConfigTab() {
         experimentModeSettings: config.experimentModeSettings,
         instructionBlocks: config.instructionBlocks,
         practiceDurationMinutes: config.practiceDurationMinutes,
+        practiceADurationMinutes: config.practiceADurationMinutes,
+        practiceBDurationMinutes: config.practiceBDurationMinutes,
         workDurationMinutes: config.workDurationMinutes,
         breakDurationMinutes: config.breakDurationMinutes,
         segmentAiLevels: config.segmentAiLevels,
@@ -2137,7 +2146,7 @@ export default function AdminPage() {
       <main className="flex min-h-screen items-center justify-center bg-[#f0f2f5]">
         <div className="w-full max-w-sm rounded-2xl border border-[#eaecf0] bg-white p-8 shadow-sm">
           <div className="mb-8 text-center">
-            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI Investment Platform</div>
+            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">实验任务平台</div>
             <div className="text-sm text-[#86909c]">Enter admin password</div>
           </div>
           <div className="space-y-4">
@@ -2175,7 +2184,7 @@ export default function AdminPage() {
       <aside className="w-52 shrink-0 border-r border-[#e5e6eb] bg-white py-6">
         <div className="mb-6 px-5">
           <div className="text-xs font-bold uppercase tracking-wider text-[#86909c]">管理后台</div>
-          <div className="mt-1 text-base font-bold text-[#1e80ff]">AI 协作决策平台</div>
+          <div className="mt-1 text-base font-bold text-[#1e80ff]">实验任务平台</div>
         </div>
         <nav className="space-y-1 px-2">
           {NAV_ITEMS.map((item) => (

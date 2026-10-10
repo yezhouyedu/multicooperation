@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI 协作决策平台",
+  title: "实验任务平台",
   description: "多人在线异步协作实验平台",
 };
 

@@ -25,6 +25,7 @@ describe('practice timeout concurrency', () => {
 
   it('writes timeout progress only for the caller that wins each task update', async () => {
     const tx = {
+      experimentEvent: { create: jest.fn() },
       taskProgress: {
         findMany: jest.fn().mockResolvedValue([
           { participantId: 'participant-a', payload: { endsAt } },
@@ -77,5 +78,45 @@ describe('practice timeout concurrency', () => {
       },
     });
     expect(tx.taskAssignment.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('ends A independently without unlocking B or ending B practice', async () => {
+    const tx = {
+      experimentEvent: { create: jest.fn() },
+      taskProgress: {
+        findMany: jest.fn().mockResolvedValue([
+          { participantId: 'participant-a', payload: { endsAt } },
+          { participantId: 'participant-b', payload: { endsAt: '2026-09-30T00:06:00.000Z' } },
+        ]),
+        create: jest.fn(),
+      },
+      taskAssignment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = new ExperimentService({} as never, {} as never);
+    const advance = jest.spyOn(service as any, 'advanceAfterPractice').mockResolvedValue(undefined);
+    expect(await (service as any).syncPracticeParticipantTimers(tx, session, config, now)).toBe(false);
+    expect(tx.taskAssignment.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.taskAssignment.updateMany.mock.calls[0][0].data).not.toHaveProperty('aUnlockedForBAt');
+    expect(tx.taskAssignment.updateMany.mock.calls[0][0].data).not.toHaveProperty('bCanSubmitAt');
+    expect(advance).not.toHaveBeenCalled();
+  });
+
+  it('uses role-specific Session timing, not the live Admin configuration', () => {
+    const service = new ExperimentService({} as never, {} as never);
+    expect((service as any).practiceDurationForRole({ experimentSnapshot: { practiceTiming: { A: 3, B: 6 } } }, { practiceADurationMinutes: 8, practiceBDurationMinutes: 9 }, 'A')).toBe(3);
+    expect((service as any).practiceDurationForRole({ experimentSnapshot: { practiceTiming: { A: 3, B: 6 } } }, {}, 'B')).toBe(6);
+  });
+  it('ends B first without ending A, including a delayed A tutorial start', async () => {
+    const tx = {
+      experimentEvent: { create: jest.fn() },
+      taskProgress: { findMany: jest.fn().mockResolvedValue([{ participantId: 'participant-b', payload: { endsAt } }]), create: jest.fn() },
+      taskAssignment: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const service = new ExperimentService({} as never, {} as never);
+    const advance = jest.spyOn(service as any, 'advanceAfterPractice').mockResolvedValue(undefined);
+    expect(await (service as any).syncPracticeParticipantTimers(tx, session, config, now)).toBe(false);
+    expect(tx.taskAssignment.updateMany).toHaveBeenCalledWith({ where: { id: 'practice-task', bCompletedAt: null }, data: { bCompletedAt: new Date(endsAt) } });
+    expect(tx.experimentEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ participantId: 'participant-b', serverTime: new Date(endsAt) }) }));
+    expect(advance).not.toHaveBeenCalled();
   });
 });

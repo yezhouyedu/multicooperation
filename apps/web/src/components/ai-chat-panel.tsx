@@ -470,7 +470,7 @@ export function AiChatPanel({
         }
         const res = await fetch(`${serverBaseUrl}/ai/history?${params.toString()}`, { cache: 'no-store' });
         const data = (await res.json()) as { ok: boolean; messages: Message[] };
-        setMessages(data.messages ?? []);
+        setMessages((data.messages ?? []).map((message) => ({ ...message, attachments: message.attachments?.map((url) => url.startsWith('/ai/attachment?') ? `${serverBaseUrl}${url}` : url) })));
       } catch {
         setError('AI 历史记录加载失败');
       } finally {
@@ -812,14 +812,7 @@ export function AiChatPanel({
             >
               <Camera size={18} />
             </button>
-          ) : (
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-400"
-              title="基础 AI 不支持图片"
-            >
-              <Camera size={18} className="opacity-40" />
-            </div>
-          )}
+          ) : null}
           <div className="flex flex-1 items-center rounded-2xl border border-gray-200 bg-gray-50 p-1.5 transition-all focus-within:border-purple-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-purple-100">
             <textarea
               ref={inputRef}

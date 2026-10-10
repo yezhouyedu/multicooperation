@@ -18,6 +18,7 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   const [promptSeconds, setPromptSeconds] = useState(0);
   const [showQuit, setShowQuit] = useState(false);
   const [quitting, setQuitting] = useState(false);
+  const [partnerNoticeVisible, setPartnerNoticeVisible] = useState(false);
   const lastActivityRef = useRef(Date.now());
   const promptShownAtRef = useRef<number | null>(null);
   const inactivityIntervalIdRef = useRef<string | null>(null);
@@ -277,21 +278,33 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   }
 
   useEffect(() => {
-    if (!active || !bootstrap || !runtime || runtime.onlineIntegrity.outcome === 'ACTIVE') return;
-    const key = `partner-dropout-notice:${bootstrap.sessionCode}:${runtime.onlineIntegrity.outcome}`;
-    if (sessionStorage.getItem(key)) return;
-    sessionStorage.setItem(key, '1');
-    void postEvent('partner_dropout_notice_shown', { outcome: runtime.onlineIntegrity.outcome });
-  }, [active, bootstrap, postEvent, runtime]);
+    if (!bootstrap || runtime?.phase !== 'formal_work' || runtime.onlineIntegrity.outcome !== 'CONTINUE_AFTER_B_DROPOUT') {
+      setPartnerNoticeVisible(false);
+      return;
+    }
+    const key = `partner-dropout-notice:${bootstrap.sessionCode}:CONTINUE_AFTER_B_DROPOUT`;
+    const stored = sessionStorage.getItem(key);
+    const deadline = stored ? Number(stored) : Date.now() + 10000;
+    if (!stored) {
+      sessionStorage.setItem(key, String(deadline));
+      void postEvent('partner_dropout_notice_shown', { outcome: 'CONTINUE_AFTER_B_DROPOUT' });
+    }
+    const remaining = deadline - Date.now();
+    setPartnerNoticeVisible(remaining > 0);
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => setPartnerNoticeVisible(false), remaining);
+    return () => window.clearTimeout(timer);
+  }, [bootstrap?.sessionCode, postEvent, runtime?.phase, runtime?.onlineIntegrity.outcome]);
 
   if (!runtime || !config) return null;
   const outcome = runtime.onlineIntegrity.outcome;
   const stopped = outcome === 'SELF_DROPPED' || outcome === 'STOP_AFTER_A_DROPOUT';
-  if (!active && !stopped) return null;
+  // Quit/outcome UI is independent of whether automatic monitoring is enabled.
+  if (runtime.phase !== 'formal_work' && !stopped) return null;
 
   return (
     <>
-      {outcome === 'CONTINUE_AFTER_B_DROPOUT' ? <div className="fixed left-1/2 top-16 z-[95] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 shadow-lg">你的队友已退出实验。请继续完成剩余任务，系统已忠实记录该情况。</div> : null}
+      {outcome === 'CONTINUE_AFTER_B_DROPOUT' && partnerNoticeVisible ? <div className="fixed left-1/2 top-16 z-[95] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 shadow-lg">你的队友已退出实验。请继续完成剩余任务，系统已忠实记录该情况。</div> : null}
       {!stopped ? <button type="button" onClick={() => setShowQuit(true)} className="fixed right-2 top-14 z-[90] rounded border border-red-200 bg-white/95 px-2 py-1 text-[10px] text-red-600 shadow-sm">退出实验</button> : null}
       {fullscreenBlocked && !stopped ? <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/80 p-6"><div className="max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><h2 className="text-xl font-bold">请恢复实验全屏</h2><p className="mt-3 text-sm leading-6 text-[#4e5969]">正式工作段必须保持全屏。退出全屏本身不记为违规；如果实验页面失焦或被隐藏，会单独记录为切屏区间。</p>{fullscreenError ? <p className="mt-3 text-sm text-red-600">{fullscreenError}</p> : null}<button type="button" onClick={() => void restoreFullscreen()} className="mt-5 rounded-lg bg-[#1e80ff] px-5 py-2.5 font-semibold text-white">恢复全屏并继续</button></div></div> : null}
       {promptState !== 'none' && !stopped ? <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/75 p-6"><div className="max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><h2 className="text-xl font-bold">仍在参与实验吗？</h2><p className="mt-3 text-sm leading-6 text-[#4e5969]">{promptState === 'confirm' ? `请在 ${promptSeconds} 秒内确认。未响应将被记录为异常行为。2次异常行为将判定为退出实验，无法获得实验报酬。` : '本次未及时确认已被记录为异常行为。2次异常行为将判定为退出实验，无法获得实验报酬。'}</p><button type="button" onClick={() => void confirmStillPresent()} className="mt-5 rounded-lg bg-[#1e80ff] px-5 py-2.5 font-semibold text-white">我仍在参与，继续实验</button></div></div> : null}

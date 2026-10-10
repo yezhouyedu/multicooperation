@@ -26,6 +26,7 @@ import { Observable, Subject, Subscription } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMaterialPublicUrl, normalizeMaterials } from '../admin/materials';
 import { ExperimentAuditService } from '../recording/experiment-audit.service';
+import { validateNumericAnswers } from '../questionnaire/validate-answers';
 import {
   FORMAL_QUESTIONNAIRE_TEMPLATE_ID,
   formalQuestionnaireTemplateJson,
@@ -64,6 +65,7 @@ type RecordTimestampEventInput = {
 
 type DraftSelector = {
   role: ParticipantRole;
+  participantId?: string;
   section?: 'main' | 'feedback';
 };
 
@@ -429,20 +431,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
   }
 
   async completePractice(sessionCode: string) {
-    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
-    if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
-    await this.prisma.session.update({
-      where: { id: session.id },
-      data: {
-        runtimePhase: RuntimePhase.FORMAL_READY,
-        currentPhase: ExperimentPhase.FORMAL,
-        currentSegmentIndex: 1,
-        currentSegmentType: SegmentType.WORK,
-        currentSegmentStarts: null,
-        currentSegmentEnds: null,
-        practiceCompletedAt: new Date(),
-      },
-    });
+    const { session } = await this.syncRuntime(sessionCode);
+    if (session.runtimePhase === RuntimePhase.PRACTICE) {
+      throw new BadRequestException('测试轮由双方各自计时结束，不能提前结束');
+    }
     this.emitRuntimeInvalidated(sessionCode);
     return { ok: true };
   }
@@ -725,7 +717,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const questionnaireSubmitted = participantId
       ? this.hasSubmittedQuestionnaire(session, participantId, activeQuestionnaire?.segmentIndex ?? session.currentSegmentIndex)
       : false;
-    const bAccessReady = this.isBAccessReady(roleTask);
+    const bAccessReady = !isPracticePhase && this.isBAccessReady(roleTask);
     const onlineIntegrity = this.onlineIntegrityConfig(session.experimentSnapshot);
     if (participantId && onlineIntegrity.enabled && session.runtimePhase === RuntimePhase.FORMAL_WORK) {
       await this.ensureIntegrityState(session.id, participantId, assignedRole, new Date());
@@ -777,6 +769,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       paymentPhoneConfirmed,
       experimentMode: session.experimentMode,
       experimentSnapshot: session.experimentSnapshot,
+      practiceDurationMinutes: this.practiceDurationForRole(session, config, assignedRole),
       onlineIntegrity: {
         config: onlineIntegrity,
         commitmentCompleted: Boolean(selfIntegrity?.comprehensionPassedAt),
@@ -859,6 +852,9 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
     let persistedPayload = input.payload ?? null;
     if (input.stage === 'b_feedback_to_a') {
+      if (task?.phase === ExperimentPhase.PRACTICE || session.runtimePhase === RuntimePhase.PRACTICE) {
+        throw new BadRequestException('测试轮不提供反馈环节');
+      }
       if (input.role !== ParticipantRole.B || !task || task.bSequenceIndex === null) {
         throw new BadRequestException('B 反馈缺少有效的来源任务');
       }
@@ -1306,6 +1302,13 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       where: { id: taskId, sessionId: session.id },
     });
     if (!task) throw new NotFoundException('Task not found');
+    if (task.phase === ExperimentPhase.PRACTICE) {
+      const pairing = await this.prisma.pairing.findFirst({ where: { sessionId: session.id } });
+      const owner = selector.role === ParticipantRole.A ? pairing?.participantAId : pairing?.participantBId;
+      if (!owner || selector.participantId !== owner || selector.section === 'feedback') {
+        throw new BadRequestException('测试轮仅可读取自己的任务表，不提供角色交互或反馈');
+      }
+    }
 
     return {
       ok: true,
@@ -1407,6 +1410,17 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
 
+    if (task.phase === ExperimentPhase.PRACTICE && body.section === 'feedback') {
+      throw new BadRequestException('测试轮不提供反馈环节');
+    }
+    if (task.phase === ExperimentPhase.PRACTICE) {
+      await this.syncRuntime(sessionCode);
+      const latest = await this.prisma.taskAssignment.findUnique({ where: { id: task.id } });
+      if (body.role === ParticipantRole.A ? latest?.aSubmittedAt : latest?.bCompletedAt) {
+        throw new BadRequestException('你的测试轮已结束，不能继续修改');
+      }
+    }
+
     const data: Prisma.TaskAssignmentUpdateInput = {};
     if (body.role === ParticipantRole.A) {
       data.aDraft = body.payload;
@@ -1416,7 +1430,22 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       data.bDraft = body.payload;
     }
 
-    await this.prisma.taskAssignment.update({ where: { id: task.id }, data });
+    if (task.phase === ExperimentPhase.PRACTICE) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`experiment-runtime:${sessionCode}`}))`;
+        const latest = await tx.taskAssignment.findUniqueOrThrow({ where: { id: task.id } });
+        const completed = body.role === ParticipantRole.A ? latest.aSubmittedAt : latest.bCompletedAt;
+        const pairing = await tx.pairing.findFirst({ where: { sessionId: session.id } });
+        const participantId = body.role === ParticipantRole.A ? pairing?.participantAId : pairing?.participantBId;
+        if (!participantId) throw new BadRequestException('测试轮角色尚未分配');
+        const timer = await tx.taskProgress.findFirst({ where: { sessionId: session.id, participantId, stage: 'practice_timer_started' }, orderBy: { createdAt: 'asc' } });
+        const endsAt = timer ? this.practiceTimerEndsAt(timer.payload) : null;
+        if (completed || (endsAt && endsAt <= new Date())) throw new BadRequestException('你的测试轮已结束，不能继续修改');
+        await tx.taskAssignment.update({ where: { id: task.id }, data });
+      });
+    } else {
+      await this.prisma.taskAssignment.update({ where: { id: task.id }, data });
+    }
     await this.recordProgress({
       sessionCode,
       role: body.role,
@@ -1440,6 +1469,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
+    if (task.phase === ExperimentPhase.PRACTICE) throw new BadRequestException('测试轮不显示本信息');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
     this.assertBAccessReady(task, '查看A信息');
 
@@ -1471,6 +1501,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
     const task = await this.prisma.taskAssignment.findFirst({ where: { id: taskId, sessionId: session.id } });
     if (!task) throw new NotFoundException('Task not found');
+    if (task.phase === ExperimentPhase.PRACTICE) throw new BadRequestException('测试轮不显示本信息');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 材料尚未解锁');
     this.assertBAccessReady(task, '查看A原始材料');
 
@@ -1603,6 +1634,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       items: section.items.filter((item: any) => this.questionnaireItemVisible(item, answerObject)),
     })).filter((section: any) => section.items.length > 0);
     const submittedItems = submittedSections.flatMap((section: any) => section.items);
+    validateNumericAnswers(submittedItems, answerObject);
     const submittedCodes = new Set(submittedItems.map((item: any) => item.code));
     const submittedAnswers = Object.fromEntries(Object.entries(answerObject).filter(([key]) => {
       const baseCode = key.endsWith('__followup') ? key.slice(0, -'__followup'.length) : key;
@@ -1811,6 +1843,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     await this.assertRoleCanContinue(session.id, ParticipantRole.A);
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
+    if (task.phase === ExperimentPhase.PRACTICE) throw new BadRequestException('测试轮到点自动提交，不支持手动提交');
     if (task.aSubmittedAt) return { ok: true, taskId, duplicate: true };
 
     const now = new Date();
@@ -1838,7 +1871,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     await this.recordProgress({
       sessionCode,
       role: ParticipantRole.A,
-      stage: task.phase === ExperimentPhase.PRACTICE ? 'practice_a_task_submitted' : 'a_task_submitted',
+      stage: 'a_task_submitted',
       payload: { taskId, sortOrder: task.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -1852,6 +1885,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     await this.assertRoleCanContinue(session.id, ParticipantRole.B);
     const task = session.tasks.find((item) => item.id === taskId);
     if (!task) throw new NotFoundException('Task not found');
+    if (task.phase === ExperimentPhase.PRACTICE) throw new BadRequestException('测试轮到点自动提交，不提供反馈环节');
     if (!task.aUnlockedForBAt) throw new BadRequestException('A 信息尚未解锁');
     if (task.bCompletedAt) return { ok: true, taskId, duplicate: true };
     this.assertBAccessReady(task, '提交');
@@ -1878,7 +1912,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
 
       const participantB = session.pairings[0]?.participantB;
       if (participantB) {
-        const eventType = task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed';
+        const eventType = 'b_task_completed';
         await tx.taskProgress.create({
           data: {
             sessionId: session.id,
@@ -1902,40 +1936,6 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         });
       }
 
-      if (task.phase === ExperimentPhase.PRACTICE) {
-        const completedAt = new Date();
-        await tx.sessionSegmentState.updateMany({
-          where: { sessionId: session.id, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
-          data: { completedAt },
-        });
-        await tx.sideTaskPlan.updateMany({
-          where: { sessionId: session.id, segmentIndex: 0, isArchivedAtSegmentEnd: false },
-          data: { isArchivedAtSegmentEnd: true },
-        });
-        await tx.experimentEvent.create({
-          data: {
-            sessionId: session.id,
-            eventType: 'practice_completed',
-            phase: ExperimentPhase.PRACTICE,
-            segmentIndex: 0,
-            serverTime: completedAt,
-            payload: { nextPhase: 'FORMAL_READY', reason: 'b_completed_practice' } as Prisma.InputJsonValue,
-          },
-        });
-        await tx.session.update({
-          where: { id: session.id },
-          data: {
-            runtimePhase: RuntimePhase.FORMAL_READY,
-            currentPhase: ExperimentPhase.FORMAL,
-            currentSegmentIndex: 1,
-            currentSegmentType: SegmentType.WORK,
-            currentSegmentStarts: null,
-            currentSegmentEnds: null,
-            practiceCompletedAt: completedAt,
-          },
-        });
-      }
-
       const remaining = task.phase === ExperimentPhase.FORMAL
         ? await tx.taskAssignment.count({
             where: { sessionId: session.id, phase: ExperimentPhase.FORMAL, bCompletedAt: null },
@@ -1954,7 +1954,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.emitSessionEvent(sessionCode, {
-      type: task.phase === ExperimentPhase.PRACTICE ? 'practice_b_task_completed' : 'b_task_completed',
+      type: 'b_task_completed',
       data: { taskId, sortOrder: task.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -2027,7 +2027,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           throw new BadRequestException('尚未完成测试轮教学引导');
         }
 
-        if (this.onlineIntegrityConfig(session.experimentSnapshot).enabled) {
+        {
           const integrityCommitment = await tx.participantIntegrityState.findUnique({
             where: { sessionId_participantId: { sessionId: session.id, participantId } },
           });
@@ -2043,14 +2043,12 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           throw new BadRequestException('测试轮任务不存在');
         }
 
-        const now = new Date();
-        const segmentTimedOut = Boolean(session.currentSegmentEnds && session.currentSegmentEnds <= now);
         const isParticipantA = participantId === pairing.participantAId;
         if (isParticipantA) {
-          if (!practiceTask.aUnlockedForBAt && !segmentTimedOut) {
+          if (!practiceTask.aSubmittedAt) {
             throw new BadRequestException('角色A测试轮尚未结束');
           }
-        } else if (!practiceTask.bCompletedAt && !segmentTimedOut) {
+        } else if (!practiceTask.bCompletedAt) {
           throw new BadRequestException('角色B测试轮尚未结束');
         }
       }
@@ -2130,6 +2128,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     const config = await this.ensureConfig();
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`experiment-runtime:${sessionCode}`}))`;
       const session = await tx.session.findUnique({
         where: { code: sessionCode },
         include: {
@@ -2147,6 +2146,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       if (session.runtimePhase === RuntimePhase.PRACTICE) {
         const advanced = await this.syncPracticeParticipantTimers(tx, session, config, now);
         if (advanced) return;
+        // Only personal clocks control practice; no shared deadline or formal A-window path.
+        return;
       }
 
       if (session.runtimePhase === RuntimePhase.FORMAL_WORK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
@@ -2193,28 +2194,6 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         }
         await this.advanceAfterWork(tx, session, config, now);
         return;
-      }
-
-      if (session.runtimePhase === RuntimePhase.PRACTICE && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
-        await this.advanceAfterPractice(tx, session, now);
-        return;
-      }
-
-      if (session.runtimePhase === RuntimePhase.PRACTICE && !session.currentSegmentStarts) {
-        return;
-      }
-
-      if (session.runtimePhase === RuntimePhase.PRACTICE) {
-        const practiceTask = session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE);
-        if (practiceTask && (!practiceTask.aStartedAt || practiceTask.frozenAt)) {
-          await this.activateCurrentATask(
-            tx,
-            practiceTask,
-            session.currentSegmentEnds,
-            now,
-            this.getTaskAiLevel(config, session.currentSegmentIndex, session),
-          );
-        }
       }
 
       if (session.runtimePhase === RuntimePhase.FORMAL_BREAK && session.currentSegmentEnds && session.currentSegmentEnds <= now) {
@@ -2306,13 +2285,10 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async autoUnlockATask(sessionCode: string, session: RuntimeSession, config: ExperimentConfig) {
-    const isPractice = session.runtimePhase === RuntimePhase.PRACTICE;
     const isFormal = session.runtimePhase === RuntimePhase.FORMAL_WORK;
-    if (!isPractice && !isFormal) return;
+    if (!isFormal) return;
 
-    const currentATask = isPractice
-      ? session.tasks.find((task) => task.phase === ExperimentPhase.PRACTICE)
-      : session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
+    const currentATask = session.tasks.find((task) => task.phase === ExperimentPhase.FORMAL && !task.aSubmittedAt);
     if (!currentATask?.aDeadlineAt || currentATask.aUnlockedForBAt) return;
     if (currentATask.aDeadlineAt > new Date()) return;
 
@@ -2340,7 +2316,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           data: {
             sessionId: session.id,
             participantId: pairing.participantAId,
-            stage: isPractice ? 'practice_a_task_auto_submitted' : 'a_task_auto_submitted',
+            stage: 'a_task_auto_submitted',
             payload: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
           },
         });
@@ -2369,7 +2345,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.emitSessionEvent(sessionCode, {
-      type: isPractice ? 'practice_a_task_auto_submitted' : 'a_task_auto_submitted',
+      type: 'a_task_auto_submitted',
       data: { taskId: currentATask.id, sortOrder: currentATask.sortOrder },
     });
     this.emitRuntimeInvalidated(sessionCode);
@@ -2406,9 +2382,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         where: { id: practiceTask.id, aSubmittedAt: null },
         data: {
           aSubmittedAt: aEndsAt,
-          aUnlockedForBAt: aEndsAt,
-          bCanSubmitAt: aEndsAt,
-          aDeadlineAt: null,
+          aDeadlineAt: aEndsAt,
           aRemainingSeconds: 0,
           aAiLevelAtWindow: this.getTaskAiLevel(config, 0, session),
         },
@@ -2422,6 +2396,12 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'participant_practice_timer_timeout' },
           },
         });
+        await tx.experimentEvent.create({ data: {
+          sessionId: session.id, participantId: pairing.participantAId, role: ParticipantRole.A,
+          taskAssignmentId: practiceTask.id, companyId: practiceTask.companyId,
+          phase: ExperimentPhase.PRACTICE, segmentIndex: 0, eventType: 'practice_a_task_auto_submitted',
+          serverTime: aEndsAt, payload: { reason: 'participant_practice_timer_timeout' },
+        } });
       }
       aSubmitted = true;
     }
@@ -2441,6 +2421,12 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
             payload: { taskId: practiceTask.id, sortOrder: practiceTask.sortOrder, reason: 'participant_practice_timer_timeout' },
           },
         });
+        await tx.experimentEvent.create({ data: {
+          sessionId: session.id, participantId: pairing.participantBId, role: ParticipantRole.B,
+          taskAssignmentId: practiceTask.id, companyId: practiceTask.companyId,
+          phase: ExperimentPhase.PRACTICE, segmentIndex: 0, eventType: 'practice_b_task_auto_completed',
+          serverTime: bEndsAt, payload: { reason: 'participant_practice_timer_timeout' },
+        } });
       }
       bCompleted = true;
     }
@@ -3002,6 +2988,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     let started = false;
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`practice-clock:${sessionCode}:${participantId}`}))`;
       const session = await tx.session.findUnique({
         where: { code: sessionCode },
         include: {
@@ -3017,7 +3004,8 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       if (existing) return;
 
       const now = new Date();
-      const endsAt = new Date(now.getTime() + config.practiceDurationMinutes * 60 * 1000);
+      const durationMinutes = this.practiceDurationForRole(session, config, role);
+      const endsAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
       await tx.taskProgress.create({
         data: {
           sessionId: session.id,
@@ -3026,20 +3014,17 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
           payload: {
             startedAt: now.toISOString(),
             endsAt: endsAt.toISOString(),
-            durationMinutes: config.practiceDurationMinutes,
+            durationMinutes,
           } as Prisma.InputJsonValue,
         },
       });
 
       const practiceTask = session.tasks[0];
       if (practiceTask && role === ParticipantRole.A && !practiceTask.aStartedAt) {
-        await this.activateCurrentATask(
-          tx,
-          practiceTask,
-          endsAt,
-          now,
-          this.getTaskAiLevel(config, 0, session),
-        );
+        await tx.taskAssignment.update({ where: { id: practiceTask.id }, data: {
+          aStartedAt: now, resumedAt: now, frozenAt: null, aDeadlineAt: endsAt,
+          aRemainingSeconds: Math.round(durationMinutes * 60),
+        } });
       }
 
       await tx.experimentEvent.create({
@@ -3097,49 +3082,14 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     config: ExperimentConfig,
     now: Date,
   ) {
-    const endsAt = new Date(now.getTime() + config.practiceDurationMinutes * 60 * 1000);
-    await tx.session.update({
-      where: { id: sessionId },
-      data: {
-        status: SessionStatus.IN_PROGRESS,
-        runtimePhase: RuntimePhase.PRACTICE,
-        currentPhase: ExperimentPhase.PRACTICE,
-        currentSegmentIndex: 0,
-        currentSegmentType: SegmentType.PRACTICE,
-        currentSegmentStarts: now,
-        currentSegmentEnds: endsAt,
-      },
-    });
-    await tx.sessionSegmentState.updateMany({
-      where: { sessionId, phase: ExperimentPhase.PRACTICE, segmentIndex: 0 },
-      data: { startedAt: now, endsAt },
-    });
+    // Legacy entry also uses the personal-clock tutorial stage.
+    return this.startPracticeTutorialPhase(tx, sessionId, config, now);
+  }
 
-    const practiceTask = await tx.taskAssignment.findFirst({
-      where: { sessionId, phase: ExperimentPhase.PRACTICE },
-    });
-    await (tx as Prisma.TransactionClient & { experimentEvent: typeof this.prisma.experimentEvent }).experimentEvent.create({
-      data: {
-        sessionId,
-        eventType: 'practice_started',
-        phase: ExperimentPhase.PRACTICE,
-        segmentIndex: 0,
-        serverTime: now,
-        payload: { endsAt: endsAt.toISOString() } as Prisma.InputJsonValue,
-      },
-    });
-    if (practiceTask) {
-      await this.activateCurrentATask(
-        tx,
-        practiceTask,
-        endsAt,
-        now,
-        this.getTaskAiLevel(config, 0),
-      );
-    }
-
-    await this.ensurePracticeSideTaskPlans(tx, sessionId);
-    await this.scheduleSideTaskPlans(tx, sessionId, 0, config, now);
+  private practiceDurationForRole(session: { experimentSnapshot?: unknown }, config: Partial<ExperimentConfig>, role: ParticipantRole) {
+    const snapshot = session.experimentSnapshot as { practiceTiming?: { A?: number; B?: number } } | null;
+    const value = snapshot?.practiceTiming?.[role] ?? (role === ParticipantRole.A ? config.practiceADurationMinutes : config.practiceBDurationMinutes) ?? 5;
+    return Number.isFinite(value) && value >= 0.5 ? value : 5;
   }
 
   private async startFormalWorkSegmentTx(

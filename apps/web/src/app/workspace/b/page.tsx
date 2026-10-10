@@ -18,7 +18,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
 type NormalizedADraft = {
-  metricRows: { label: string; value: string }[];
   materialClues: {
     materialName: string;
     opportunityStatus: '' | 'HAS' | 'NONE';
@@ -32,18 +31,6 @@ type NormalizedADraft = {
 
 function normalizeADraft(payload: unknown): NormalizedADraft {
   const data = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
-  const metrics = (data.metrics && typeof data.metrics === 'object' ? data.metrics : {}) as Record<string, string>;
-  const metricRows =
-    metrics.indicator || metrics.content
-      ? [{ label: metrics.indicator || '未填写指标', value: metrics.content || '' }]
-      : metricLabels.map((metric) => ({
-          label: metric.label,
-          value:
-            metrics[metric.key] ??
-            (metric.key === 'totalAssetsOrYear' ? metrics.latestTotalAssets : undefined) ??
-            (metric.key === 'revenueOrSampleCount' ? metrics.latestRevenue : undefined) ??
-            '',
-        }));
   const materialClues = Array.isArray(data.materialClues)
     ? data.materialClues.map((item) => {
         const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
@@ -58,28 +45,11 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
     : [];
 
   return {
-    metricRows,
     materialClues,
     noteTypes: Array.isArray(data.noteTypes) ? data.noteTypes.map(String) : [],
     handoffMemo: String(data.handoffMemo ?? ''),
   };
 }
-
-function formatRemainingTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes <= 0) return `${seconds} 秒`;
-  return `${minutes} 分 ${String(seconds).padStart(2, '0')} 秒`;
-}
-
-const metricLabels = [
-  { key: 'totalAssetsOrYear', label: '总资产 / 统计年份' },
-  { key: 'revenueOrSampleCount', label: '营业收入 / 样本企业数量' },
-  { key: 'subsidiaryOrPolicyCount', label: '子公司数量 / 政策文件数量' },
-  { key: 'foundingYearOrApplicationCount', label: '成立年份 / 下游应用类别数量' },
-  { key: 'employeesOrCoverageCount', label: '员工人数 / 覆盖区域数量' },
-  { key: 'shareCapitalOrPeerSampleCount', label: '总股本数 / 可比公司样本数量' },
-];
 
 export default function WorkspaceBPage() {
   const router = useRouter();
@@ -97,13 +67,12 @@ export default function WorkspaceBPage() {
   const currentTaskId = runtime?.currentTask?.id;
   const { draft: diligenceDraftPayload, refresh: refreshDiligenceDraft } = useTaskDraft(
     bootstrap?.sessionCode,
-    currentTaskId,
+    runtime?.phase === 'formal_work' && runtime.aInfoUnlocked ? currentTaskId : undefined,
     'A',
     'main',
   );
   const { draft: taskDraft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'main');
   const [activeSidebarKey, setActiveSidebarKey] = useState<string | undefined>(undefined);
-  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const redirectPath =
     !loading && !bootstrap
@@ -131,11 +100,6 @@ export default function WorkspaceBPage() {
   useEffect(() => {
     if (redirectPath) router.replace(redirectPath);
   }, [redirectPath, router]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const materials = runtime?.currentTask?.company?.materials ?? [];
@@ -239,25 +203,14 @@ export default function WorkspaceBPage() {
     activeItemKey: activeSidebarKey,
     aMaterialIds,
     unlocked: Boolean(runtime?.bHasViewedAMaterials),
-    enabled: runtime?.phase === 'practice' || runtime?.phase === 'formal_work',
+    enabled: runtime?.phase === 'formal_work',
   });
   const isPractice = runtime?.phase === 'practice';
-  const bReadyAtMs = runtime?.currentTask?.bCanSubmitAt ? new Date(runtime.currentTask.bCanSubmitAt).getTime() : null;
-  const bRemainingSeconds = bReadyAtMs ? Math.max(0, Math.ceil((bReadyAtMs - nowMs) / 1000)) : 0;
-  const aHasSubmitted = Boolean(runtime?.currentTask?.aUnlockedForBAt);
-  const bReviewGateMessage =
-    aHasSubmitted && bRemainingSeconds > 0
-      ? `A的任务结果已送达；任务1还需处理 ${formatRemainingTime(bRemainingSeconds)} 后可查看并提交。`
-      : aHasSubmitted
-        ? 'A的任务结果已经可以查看。'
-        : runtime?.aiEnabled
-          ? 'A的任务结果尚未同步。你可以先阅读自己的材料、填写任务表并使用 AI。'
-          : 'A的任务结果尚未同步。你可以先阅读自己的材料并填写任务表。';
+  const bReviewGateMessage = isPractice ? '测试轮不显示本信息' : 'A的任务结果尚未同步，请稍后';
 
   const diligenceTabContent = !runtime?.aInfoUnlocked ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">A的任务结果尚未同步</div>
-      <div>{bReviewGateMessage}</div>
+      <div>{isPractice ? '测试轮不显示本信息' : '请稍后，A的任务结果尚未同步'}</div>
     </div>
   ) : !runtime.bHasViewedAInfo ? (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-[#bfd8ff] bg-[#f7fbff] p-6 text-center text-sm text-[#4e5969]">
@@ -274,15 +227,7 @@ export default function WorkspaceBPage() {
   ) : (
     <div className="space-y-4 text-xs leading-6 text-[#4e5969]">
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
-        <div className="mb-2 font-medium text-[#1d2129]">基础数值摘录</div>
-        <div className="grid gap-x-4 gap-y-1 md:grid-cols-2">
-          {diligenceDraft.metricRows.map((metric) => (
-            <div key={metric.label}>
-              <span className="text-[#86909c]">{metric.label}：</span>
-              <span>{metric.value || '未填写'}</span>
-            </div>
-          ))}
-        </div>
+        A会摘录标有*号的指标和数值，在材料中该记号仅作为A需要摘录的位置的提示，不代表其他含义。
       </div>
       <div className="rounded-lg border border-[#e5e6eb] bg-gray-50 p-3">
         <div className="mb-2 font-medium text-[#1d2129]">材料线索</div>
@@ -364,12 +309,12 @@ export default function WorkspaceBPage() {
                 <CompanyMaterialPanel
                   ref={materialPanelRef}
                   company={companyForBMaterials ?? company}
-                  appendMaterials={aMaterials as MaterialItem[]}
+                  appendMaterials={isPractice ? [] : aMaterials as MaterialItem[]}
                   lockedMaterialIds={lockedAMaterialIds}
                   lockedMaterialMessage={
                     runtime.aInfoUnlocked
                       ? '点击查看后，本公司的全部 A 原始材料都会解锁。'
-                      : bReviewGateMessage
+                      : '材料尚未解锁'
                   }
                   onUnlockMaterialGroup={runtime.aInfoUnlocked ? () => void openAMaterials() : undefined}
                   activeItemKey={activeSidebarKey}
@@ -394,10 +339,9 @@ export default function WorkspaceBPage() {
                           {runtime.aiUpgradeNotice.message}
                         </span>
                       ) : null}
-                      <span>B任务1剩余时间：{bRemainingSeconds > 0 ? formatRemainingTime(bRemainingSeconds) : '00 秒（已满5分钟）'}</span>
-                      <span>{runtime.bCanSubmit ? 'A的任务结果已经可以查看，可以直接提交。' : bReviewGateMessage}</span>
+                      <span>{isPractice ? '测试轮到点自动提交' : runtime.aInfoUnlocked ? 'A的任务结果已同步' : bReviewGateMessage}</span>
                     </div>
-                    <button
+                    {!isPractice ? <button
                       type="button"
                       onClick={() => router.push('/workspace/b-feedback')}
                       disabled={!runtime.bCanSubmit}
@@ -405,7 +349,7 @@ export default function WorkspaceBPage() {
                       className="shrink-0 rounded-md bg-[#28a745] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       提交并填写反馈
-                    </button>
+                    </button> : null}
                   </div>
                   <ScopedZoomSurface className="no-scrollbar min-h-0 flex-1 overflow-y-auto" contentClassName="min-h-full">
                     {bootstrap ? (
@@ -463,6 +407,7 @@ export default function WorkspaceBPage() {
           participantId={bootstrap.participantId}
           role="B"
           aiLevel={runtime.aiLevel}
+          practiceDurationMinutes={runtime.practiceDurationMinutes}
           aiEnabled={false}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />

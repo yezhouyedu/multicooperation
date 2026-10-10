@@ -71,7 +71,7 @@ export default function ReadyClientPage() {
     setSubmitting(true);
     setError('');
     try {
-      if (target === 'formal' && runtime?.onlineIntegrity.config.enabled && !runtime.onlineIntegrity.commitmentCompleted) {
+      if (target === 'formal' && runtime && !runtime.onlineIntegrity.commitmentCompleted) {
         const commitmentResponse = await fetch(`${serverBaseUrl}/experiment/session/${bootstrap.sessionCode}/integrity/commitment`, {
           method: 'POST',
           headers: idempotencyHeaders(`integrity-commitment:${bootstrap.sessionCode}:${bootstrap.participantId}`, { 'Content-Type': 'application/json' }),
@@ -113,7 +113,7 @@ export default function ReadyClientPage() {
       : '双方都完成测试轮并确认正式实验注意事项后，系统会同时进入正式任务。';
   const readyRoles = (runtime?.syncState?.readyRoles ?? []).map((role) => formatRoleLabel(role));
   const selfReady = runtime?.syncState?.selfReady ?? false;
-  const needsIntegrityCommitment = target === 'formal' && Boolean(runtime?.onlineIntegrity.config.enabled) && !runtime?.onlineIntegrity.commitmentCompleted;
+  const needsIntegrityCommitment = target === 'formal' && !runtime?.onlineIntegrity.commitmentCompleted;
   const allRulesCorrect = accepted && Object.values(ruleAnswers).every(Boolean);
 
   return (
@@ -122,7 +122,7 @@ export default function ReadyClientPage() {
         className="flex h-[52px] shrink-0 items-center border-b border-[#eaecf0] bg-white px-5"
         style={{ boxShadow: 'var(--shadow-topbar)' }}
       >
-        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
+        <div className="text-[15px] font-semibold tracking-wide text-[#1e80ff]">实验任务平台</div>
       </nav>
 
       <div className="flex flex-1 items-center justify-center px-4 py-12">
@@ -156,7 +156,12 @@ export default function ReadyClientPage() {
                   onChange={(event) => setRuleAnswers({ formalOnly: event.target.checked, offscreenRule: event.target.checked, dropoutRule: event.target.checked, privacyRule: event.target.checked })}
                   className="mt-1"
                 />
-                <span>请保持实验页面全屏，不要切换标签页、微信、桌面或其他应用，也不要使用平台外工具，包括搜索引擎、计算器和AI等。长时间没有操作、切换页面或使用外部工具的行为，可能被记录为违规；出现两次异常行为会被系统判定为退出实验。</span>
+                <span>请认真完成实验，不要使用平台外工具，包括搜索引擎、计算器和AI等，不要切换到与实验无关的标签页、微信、桌面或其他应用。
+                  {runtime?.onlineIntegrity.config.enabled ? <>
+                    {runtime.onlineIntegrity.config.fullscreenRequired ? '本场正式工作段要求保持全屏。' : null}
+                    长时间没有操作、切换页面或使用外部工具的行为，可能被记录为违规；出现两次异常行为会被系统判定为退出实验。
+                  </> : null}
+                </span>
               </label>
               <label className="mt-4 flex gap-2 border-t border-amber-200 pt-4 font-semibold text-[#1d2129]">
                 <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1" />

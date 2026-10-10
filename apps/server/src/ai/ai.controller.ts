@@ -41,6 +41,15 @@ export class AiController {
     });
   }
 
+  @Get('attachment')
+  async attachment(@Query('sessionCode') sessionCode: string, @Query('participantId') participantId: string, @Query('imageRef') imageRef: string, @Res() res: Response) {
+    const attachment = await this.aiService.getAttachment(sessionCode, participantId, imageRef);
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(attachment.bytes);
+  }
+
   @Post('chat')
   chat(@Body() body: ChatBody) {
     return this.aiService.chat(body);

@@ -48,7 +48,7 @@ type ResolvedChatContext = {
   attachmentLog: Array<Record<string, unknown>>;
   followUpContext: string;
   userMessage: { role: 'user'; content: string | UserContentPart[] };
-  historyMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  historyMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string | UserContentPart[] }>;
   systemPrompt: string;
 };
 
@@ -97,9 +97,31 @@ export class AiService {
         id: message.id,
         role: message.messageRole,
         text: message.content,
-        attachments: Array.isArray(message.attachments) ? message.attachments : [],
+        attachments: Array.isArray(message.attachments) ? message.attachments.flatMap((attachment) => {
+          if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment) || typeof attachment.imageRef !== 'string' || !message.participantId) return [];
+          const params = new URLSearchParams({ sessionCode: session.code, participantId: message.participantId, imageRef: attachment.imageRef });
+          return [`/ai/attachment?${params.toString()}`];
+        }) : [],
       })),
     };
+  }
+
+  async getAttachment(sessionCode: string, participantId: string, imageRef: string) {
+    if (!participantId || !imageRef || imageRef.length > 200) throw new BadRequestException('图片引用无效');
+    const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
+    if (!session) throw new BadRequestException('Session 不存在');
+    const pairing = await this.prisma.pairing.findFirst({ where: { sessionId: session.id } });
+    if (!pairing || ![pairing.participantAId, pairing.participantBId].includes(participantId)) throw new BadRequestException('Participant 不属于当前 Session');
+    const messages = await this.prisma.aiMessageLog.findMany({ where: { sessionId: session.id, participantId, messageRole: 'user' } });
+    for (const message of messages) {
+      if (!Array.isArray(message.attachments)) continue;
+      for (const attachment of message.attachments) {
+        if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment) || attachment.imageRef !== imageRef) continue;
+        const dataUrl = await this.storage.readSavedImage(attachment as Record<string, unknown>, sessionCode, participantId);
+        if (dataUrl) return { mimeType: String(attachment.mimeType), bytes: Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64') };
+      }
+    }
+    throw new BadRequestException('历史图片文件不可用');
   }
 
   async chat(input: ChatInput) {
@@ -370,16 +392,26 @@ export class AiService {
         contextType,
         companyId: contextType === 'main' ? input.companyId ?? null : null,
         phase,
-        segmentIndex: contextType === 'side' ? segmentIndex : null,
+        segmentIndex: contextType === 'side' ? segmentIndex : undefined,
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: contextLimit,
     });
 
-    const historyMessages = history.map((message) => ({
-      role: message.messageRole === 'assistant' ? 'assistant' : 'user',
-      content: message.content,
-    })) as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    const historyMessages: ResolvedChatContext['historyMessages'] = [];
+    for (const message of history.reverse()) {
+      const role = message.messageRole === 'assistant' ? 'assistant' : 'user';
+      const parts: UserContentPart[] = message.content ? [{ type: 'text', text: message.content }] : [];
+      if (isAdvanced && role === 'user' && Array.isArray(message.attachments)) {
+        for (const attachment of message.attachments) {
+          if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment)) continue;
+          const dataUrl = await this.storage.readSavedImage(attachment as Record<string, unknown>, input.sessionCode, participantId);
+          if (dataUrl) parts.push({ type: 'image_url', image_url: { url: dataUrl } });
+          else parts.push({ type: 'text', text: '[此条历史消息的图片文件已不可用]' });
+        }
+      }
+      historyMessages.push({ role, content: parts.some((part) => part.type === 'image_url') ? parts : parts.map((part) => part.text).join('\n') });
+    }
 
     const userMessage =
       attachments.length > 0

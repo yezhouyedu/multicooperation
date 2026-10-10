@@ -226,8 +226,9 @@ export class ExperimentController {
     @Param('taskId') taskId: string,
     @Query('role') role: ParticipantRole,
     @Query('section') section?: 'main' | 'feedback',
+    @Query('participantId') participantId?: string,
   ) {
-    return this.experimentService.getTaskDraft(code.toUpperCase(), taskId, { role, section });
+    return this.experimentService.getTaskDraft(code.toUpperCase(), taskId, { role, section, participantId });
   }
 
   @Post('session/:code/tasks/:taskId/draft')

@@ -641,8 +641,8 @@ function LockedMaterialContent({
 }) {
   return (
     <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-[#c9cdd4] bg-gray-50 p-6 text-center text-sm text-[#86909c]">
-      <div className="mb-2 text-base font-bold text-[#1d2129]">{title}</div>
-      <div className="mb-5 max-w-md leading-7">{message ?? '该材料尚未解锁。'}</div>
+      {onUnlock ? <div className="mb-2 text-base font-bold text-[#1d2129]">{title}</div> : null}
+      <div className="mb-5 max-w-md leading-7">{onUnlock ? message : '材料尚未解锁'}</div>
       {onUnlock ? (
         <button
           type="button"

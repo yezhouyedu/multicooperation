@@ -41,6 +41,10 @@ function shouldShowFollowup(item: QuestionnaireItem, value: AnswerValue | undefi
 }
 
 function isAnswered(item: QuestionnaireItem, value: AnswerValue | undefined) {
+  if (item.type === 'number' && value !== undefined && String(value).trim() !== '') {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < Math.max(0, item.min ?? 0) || (item.max !== undefined && numeric > item.max)) return false;
+  }
   if (!item.required) return true;
   if (Array.isArray(value)) return value.length > 0;
   return value !== undefined && String(value).trim() !== '';
@@ -148,10 +152,9 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
 
       {sections.map((section, sectionIndex) => (
         <section key={`${section.title}-${sectionIndex}`} className="space-y-4">
-          {sections.length > 1 && section.title ? (
+          {section.description ? (
             <div className="border-b border-[#e5e6eb] pb-3">
-              <div className="text-base font-semibold text-[#1d2129]">{section.title}</div>
-              {section.description ? <p className="mt-2 text-sm leading-6 text-[#4e5969]">{section.description}</p> : null}
+              <p className="text-sm leading-6 text-[#4e5969]">{section.description}</p>
             </div>
           ) : null}
           {section.items.map((item, itemIndex) => {
@@ -163,7 +166,7 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
             return (
               <div key={item.code} className="rounded-xl border border-[#eaecf0] bg-white p-5">
                 <div className="mb-3 text-sm font-semibold leading-6 text-[#1d2129]">
-                  {itemIndex + 1}. {item.prompt}
+                  {sections.slice(0, sectionIndex).reduce((total, prior) => total + prior.items.length, 0) + itemIndex + 1}. {item.prompt}
                   {item.required ? <span className="ml-1 text-red-500">*</span> : null}
                 </div>
 
@@ -294,7 +297,8 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
                 {item.type === 'number' ? (
                   <input
                     type="number"
-                    min={item.min ?? 0}
+                    min={Math.max(0, item.min ?? 0)}
+                    aria-invalid={value !== undefined && String(value).trim() !== '' && !isAnswered(item, value)}
                     value={typeof value === 'number' || typeof value === 'string' ? value : ''}
                     onChange={(event) => updateAnswer(item.code, event.target.value)}
                     className="w-full max-w-sm rounded-lg border border-[#e2e5ea] bg-[#fafbfc] px-4 py-2.5 text-sm outline-none transition-colors duration-150 focus:border-[#1e80ff] focus:bg-white focus:shadow-[0_0_0_3px_rgba(30,128,255,0.08)]"
@@ -302,6 +306,7 @@ export function QuestionnaireForm({ questionnaire, submitting = false, submitLab
                 ) : null}
 
                 {/* 文本输入 */}
+                {item.type === 'number' && value !== undefined && String(value).trim() !== '' && !isAnswered(item, value) ? <p role="alert" className="mt-2 text-xs text-red-600">请输入符合范围的非负数字。</p> : null}
                 {item.type === 'text' ? (
                   <textarea
                     maxLength={item.maxLength}

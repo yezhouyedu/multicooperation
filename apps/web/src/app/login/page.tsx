@@ -51,7 +51,7 @@ export default function LoginPage() {
           style={{ boxShadow: 'var(--shadow-elevated)' }}
         >
           <div className="mb-8 text-center">
-            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">AI 协作决策平台</div>
+            <div className="mb-2 text-[15px] font-semibold tracking-wide text-[#1e80ff]">实验任务平台</div>
             <div className="text-sm text-[#86909c]">请使用实验账号登录</div>
           </div>
 

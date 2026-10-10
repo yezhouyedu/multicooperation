@@ -8,6 +8,7 @@ type Props = {
   sessionCode: string;
   participantId: string;
   role: 'A' | 'B';
+  practiceDurationMinutes?: number;
   aiLevel: 'BASIC' | 'ADVANCED';
   aiEnabled?: boolean;
   completedSteps?: string[];
@@ -72,35 +73,36 @@ function getVisibleAnchor(anchor: string) {
   }) as HTMLElement | undefined;
 }
 
-function getOverviewContent(role: 'A' | 'B', aiEnabled: boolean) {
+function getOverviewContent(role: 'A' | 'B', practiceDurationMinutes: number) {
   return {
     title: '欢迎进入测试轮',
     sections: [
       {
-        heading: '你需要完成两个任务',
-        text: '任务1：每次任务1需要阅读一家公司的材料并填写任务表。',
+        heading: '任务1',
+        text: '你需要完成多次任务1，每次任务1都需要阅读一家公司的材料并填写任务表',
       },
       {
         heading: '工作台布局',
         items: [
-          '左侧是材料区，用于查看任务1的相关材料。',
-          '右侧是任务表，用于填写任务1的实验报告和判断。',
+          '左侧是材料区，用于查看任务1的相关材料',
+          '右上是答题区，该区域的填写情况决定任务1的报酬',
         ],
       },
       {
-        heading: '任务1时间安排',
+        heading: '任务1的时间安排',
         items: [
-          '角色A：每次任务1从接收到一家公司的材料到提交任务的最长时间为5分钟，届时会自动提交，同时解锁给B。',
-          '角色B：每次任务1在测试轮总时长和正式工作段中不断进行，只能在开始处理5分钟后提交。5分钟时B可以查看A完成的任务表以及相关材料。',
-          '两名角色只能完成当前一家公司的任务1后，才能进行下一次任务1。',
+          `本次测试轮中，你是${role}，处理时间为${practiceDurationMinutes}分钟。右上角显示你自己的倒计时，到点自动提交，不支持提前提交。`,
+          '测试轮只需完成处理一家公司，即完成1次任务1。测试轮不提供A/B材料交互或反馈，也不提供AI。',
+          role === 'A' ? '正式实验中，A每家公司处理5分钟，到点自动提交并向B同步。' : '正式实验中，B每接到一家公司至少处理5分钟，且A的任务结果已同步后，才能查看A的信息和材料并提交、填写反馈。',
+          '正式实验中，两名角色只能完成当前一家公司的任务1后，才能进行下一次任务1。',
         ],
       },
       {
         heading: '任务2',
         items: [
-          '在完成任务1时，你还会收到任务2。',
-          '任务2会在正式工作段中不断推送，从新一轮工作段开始持续到结束。',
-          '测试轮中的任务2为教学演示，不计入正式数据。',
+          '除了任务1，你还会收到任务2',
+          '任务2会在正式工作段中不断推送，并在新的工作段开始后重置',
+          '测试轮中任务2仅为教学演示，不会实际推送',
         ],
       },
     ],
@@ -111,6 +113,7 @@ export function PracticeTutorialOverlay({
   sessionCode,
   participantId,
   role,
+  practiceDurationMinutes = 5,
   aiLevel,
   aiEnabled = true,
   completedSteps = [],
@@ -220,7 +223,7 @@ export function PracticeTutorialOverlay({
   const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
 
   if (isOverviewPhase) {
-    const overview = getOverviewContent(role, aiEnabled);
+    const overview = getOverviewContent(role, practiceDurationMinutes);
     return (
       <div className="pointer-events-none fixed inset-0 z-[80] bg-slate-950/55">
         <div className="pointer-events-auto absolute left-1/2 top-1/2 max-h-[80vh] w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/15 bg-white p-6 shadow-2xl">
@@ -258,9 +261,6 @@ export function PracticeTutorialOverlay({
         <div className="pointer-events-auto absolute left-1/2 top-1/2 w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/15 bg-white p-6 shadow-2xl">
           <div className="mb-2 text-xs font-medium tracking-widest text-[#86909c]">教学引导已完成</div>
           <div className="mb-3 text-xl font-semibold text-[#1d2129]">下一步正式进入测试轮</div>
-          <div className="text-sm leading-7 text-[#4e5969]">
-            请你完成本公司的任务，并继续使用刚才体验过的材料区、任务表和任务2功能。
-          </div>
           <div className="mt-5 flex justify-end">
             <button
               type="button"

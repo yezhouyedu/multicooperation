@@ -131,6 +131,7 @@ export type RuntimeState = {
   questionnaireSubmitted: boolean;
   experimentMode: 'manual' | 'formal' | 'ai_upgrade' | 'side_reminder' | 'coop_narrative';
   experimentSnapshot: Record<string, unknown> | null;
+  practiceDurationMinutes: number;
   onlineIntegrity: {
     config: {
       enabled: boolean;
@@ -514,7 +515,8 @@ export function useTaskDraft(
 
     setLoading(true);
     try {
-      const url = `${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft?role=${role}&section=${section}`;
+      const participantId = window.sessionStorage.getItem('exp_participant_id') ?? '';
+      const url = `${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft?role=${role}&section=${section}&participantId=${encodeURIComponent(participantId)}`;
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load task draft');
       const data = (await res.json()) as { ok: boolean; payload: unknown };

@@ -14,10 +14,10 @@ export default function WorkspaceBFeedbackPage() {
   const router = useRouter();
   const { bootstrap, runtime, loading, connectionStatus, pendingDraftCount } = useSessionRuntime();
   const currentTaskId = runtime?.currentTask?.id;
-  const { draft } = useTaskDraft(bootstrap?.sessionCode, currentTaskId, 'B', 'feedback');
+  const { draft } = useTaskDraft(bootstrap?.sessionCode, runtime?.phase === 'formal_work' ? currentTaskId : undefined, 'B', 'feedback');
 
   useEffect(() => {
-    if (!bootstrap || !currentTaskId || runtime?.currentTask?.bCompletedAt) return;
+    if (!bootstrap || !currentTaskId || runtime?.phase !== 'formal_work' || runtime.currentTask?.bCompletedAt) return;
     sessionStorage.setItem(`b_feedback_resume:${bootstrap.sessionCode}`, currentTaskId);
   }, [bootstrap, currentTaskId, runtime?.currentTask?.bCompletedAt]);
 
@@ -26,6 +26,8 @@ export default function WorkspaceBFeedbackPage() {
       ? '/login'
       : !loading && runtime?.assignedRole === 'A'
         ? '/workspace/a'
+        : !loading && (runtime?.phase === 'practice' || runtime?.phase === 'formal_ready')
+          ? runtime.phase === 'formal_ready' || runtime.currentTask?.bCompletedAt ? '/ready?target=formal' : '/workspace/b'
         : !loading && runtime?.phase === 'end'
           ? '/workspace/end'
           : !loading && runtime?.phase === 'pre_segment_instruction'

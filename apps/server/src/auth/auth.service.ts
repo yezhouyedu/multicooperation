@@ -64,6 +64,7 @@ type ExperimentSnapshot = {
   aiCondition: 'NONE' | 'BASIC' | 'ADVANCED';
   upgradeCohort: 'early_upgrade' | 'late_upgrade' | null;
   practiceAiState: AiLevel | null;
+  practiceTiming: { A: number; B: number };
   segmentAiStates: { 1: AiLevel | null; 2: AiLevel | null; 3: AiLevel | null };
   sideDispatchMode: DispatchMode;
   narrativeGroup: NarrativeGroup;
@@ -637,6 +638,7 @@ export class AuthService {
         : segmentAiStates[1] === AiLevel.ADVANCED ? 'ADVANCED' : 'BASIC',
       upgradeCohort,
       practiceAiState: segmentAiStates[1],
+      practiceTiming: { A: config?.practiceADurationMinutes ?? 5, B: config?.practiceBDurationMinutes ?? 5 },
       segmentAiStates,
       sideDispatchMode,
       narrativeGroup,

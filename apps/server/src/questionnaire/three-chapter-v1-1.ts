@@ -70,7 +70,7 @@ const section = (title: string, items: QuestionnaireItem[], description?: string
 
 export const formalQuestionnaireTemplate = {
   schemaVersion: 2,
-  version: 'three_chapter_v3_0_20260816',
+  version: 'three_chapter_v3_1_20261010',
   title: '实验后问卷',
   recruitmentExcluded: true,
   segmentSurvey: section('工作段回顾', [

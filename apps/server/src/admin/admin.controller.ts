@@ -68,7 +68,9 @@ export class AdminController {
     activeExperimentMode?: string;
     experimentModeSettings?: unknown;
     instructionBlocks?: unknown;
-    practiceDurationMinutes: number;
+    practiceDurationMinutes?: number;
+    practiceADurationMinutes?: number;
+    practiceBDurationMinutes?: number;
     workDurationMinutes: number;
     breakDurationMinutes: number;
     segmentAiLevels: string[];

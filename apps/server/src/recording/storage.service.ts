@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, createWriteStream } from 'fs';
-import { cp, mkdir, readdir, readFile, stat, writeFile } from 'fs/promises';
+import { cp, mkdir, readdir, readFile, realpath, stat, writeFile } from 'fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'path';
 import { storageRoot } from '../storage-paths';
 
@@ -79,6 +79,24 @@ export class StorageService {
       mimeType,
       sizeBytes: Buffer.byteLength(match[2], 'base64'),
     };
+  }
+
+  async readSavedImage(attachment: Record<string, unknown>, sessionCode: string, participantId: string | null): Promise<string | null> {
+    if (typeof attachment.relativePath !== 'string') return null;
+    const expectedDirectory = resolve(this.attachmentsRoot, 'sessions', sessionCode, 'participants', participantId ?? 'unknown-participant', 'attachments', 'images');
+    const candidate = resolve(this.attachmentsRoot, attachment.relativePath);
+    if (!candidate.startsWith(expectedDirectory + sep)) return null;
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(String(attachment.mimeType))) return null;
+    try {
+      const [actual, directory] = await Promise.all([realpath(candidate), realpath(expectedDirectory)]);
+      if (!actual.startsWith(directory + sep)) return null;
+      const info = await stat(actual);
+      if (!info.isFile() || info.size > 10 * 1024 * 1024) return null;
+      const bytes = await readFile(actual);
+      return `data:${attachment.mimeType};base64,${bytes.toString('base64')}`;
+    } catch {
+      return null;
+    }
   }
 
   async createZipFromDirectory(sourceDir: string, archivePath: string) {

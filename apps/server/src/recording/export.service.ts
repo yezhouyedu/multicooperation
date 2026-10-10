@@ -463,6 +463,7 @@ export class ExportService {
       segmentIndex: 0,
       startedAt: state?.startedAt?.toISOString() ?? null,
       endedAt: state?.completedAt?.toISOString() ?? null,
+      participantTiming: this.buildPracticeTiming(session, participantId, role),
     });
 
     for (const task of session.tasks.filter(
@@ -828,6 +829,7 @@ export class ExportService {
       status: session.status,
       runtimePhase: session.runtimePhase,
       durations: {
+        practiceRoleMinutes: snapshot.practiceTiming ?? null,
         practiceMinutes: this.durationMinutes(
           session.segmentStates.find((state) => state.segmentIndex === 0),
         ),
@@ -849,6 +851,23 @@ export class ExportService {
         conditionAssignedAt: session.conditionAssignedAt?.toISOString() ?? null,
       },
       qualityFlags: this.buildSessionIntegrityFlags(session),
+    };
+  }
+
+  private buildPracticeTiming(session: SessionExportRecord, participantId: string, role: ParticipantRole | null) {
+    const timer = session.progresses.find((row) => row.participantId === participantId && row.stage === 'practice_timer_started');
+    const payload = this.parseObject(timer?.payload);
+    const task = session.tasks.find((row) => row.phase === ExperimentPhase.PRACTICE);
+    const endedAt = role === ParticipantRole.A ? task?.aSubmittedAt : task?.bCompletedAt;
+    const configured = this.parseObject(this.parseObject(session.experimentSnapshot).practiceTiming);
+    const startedAt = typeof payload.startedAt === 'string' ? payload.startedAt : null;
+    return {
+      configuredMinutes: (role ? configured[role] : null) ?? payload.durationMinutes ?? null,
+      startedAt,
+      plannedEndsAt: typeof payload.endsAt === 'string' ? payload.endsAt : null,
+      endedAt: endedAt?.toISOString() ?? null,
+      elapsedSeconds: startedAt && endedAt ? Math.max(0, (endedAt.getTime() - new Date(startedAt).getTime()) / 1000) : null,
+      source: timer ? 'participant_practice_timer' : 'legacy_no_personal_timer',
     };
   }
 
@@ -896,6 +915,7 @@ export class ExportService {
         log: audit?.bAssignmentLog ?? [],
       },
       instructionPlan: experiment.instructionPlan ?? null,
+      practiceTiming: experiment.practiceTiming ?? null,
       experiment,
     };
   }
@@ -1044,6 +1064,7 @@ export class ExportService {
       role,
       displayRole: this.displayRole(role),
       treatments: {
+        practiceTiming: this.buildPracticeTiming(session, participantId, role),
         experimentMode: session.experimentMode,
         experimentRunId: session.experimentRunId,
         experimentCondition: session.experimentCondition,
@@ -1799,6 +1820,8 @@ export class ExportService {
   }
 
   private bAssignedAtFromTask(task: SessionExportRecord['tasks'][number]) {
+    // Practice has independent clocks; never infer B's start from A's completion.
+    if (task.phase === ExperimentPhase.PRACTICE) return null;
     return task.bPreAAiLevel ? task.aStartedAt : task.aSubmittedAt;
   }
 
@@ -1824,6 +1847,13 @@ export class ExportService {
   }
 
   private bAssignedAt(session: SessionExportRecord, taskId: string) {
+    const task = session.tasks?.find((row) => row.id === taskId);
+    if (task?.phase === ExperimentPhase.PRACTICE) {
+      const participantBId = session.pairings?.[0]?.participantBId;
+      const timer = (session.progresses ?? []).find((row) => row.participantId === participantBId && row.stage === 'practice_timer_started');
+      const payload = this.parseObject(timer?.payload);
+      return typeof payload.startedAt === 'string' ? payload.startedAt : null;
+    }
     const detail = this.bAssignmentDetail(session, taskId) as Record<
       string,
       unknown

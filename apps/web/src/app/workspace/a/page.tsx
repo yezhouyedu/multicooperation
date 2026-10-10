@@ -143,7 +143,7 @@ export default function WorkspaceAPage() {
                           {runtime.aiUpgradeNotice.message}
                         </span>
                       ) : null}
-                      <span>任务1限时5分钟，届时自动提交，无需手动操作。</span>
+                      <span>任务1限时{runtime.phase === 'practice' ? runtime.practiceDurationMinutes : 5}分钟，届时自动提交，无需手动操作。</span>
                     </div>
                     <span className="rounded-full bg-[#e8f3ff] px-3 py-1 text-xs font-semibold text-[#1e80ff]">
                       自动提交
@@ -212,6 +212,7 @@ export default function WorkspaceAPage() {
           participantId={bootstrap.participantId}
           role="A"
           aiLevel={runtime.aiLevel}
+          practiceDurationMinutes={runtime.practiceDurationMinutes}
           aiEnabled={false}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />
