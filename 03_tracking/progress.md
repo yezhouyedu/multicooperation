@@ -2907,7 +2907,11 @@
 - AI任务1历史按个人/公司跨正式段连续，最近N条按时间正序送模型；任务2按段隔离；已发送高级图片可进入追问并刷新恢复，日志/导出不存base64。
 - APP_FLOW、实验必要口径、AI/问卷/质量/变量规格、数据库文件夹手册、前后端README、启动prompt与本轮计划同步；数据库手册明确团队时间与个人耗时区别、新空字段及旧数据缺失标记。
 - Prisma、本地迁移、server/web build和后端15套件90项测试通过；双浏览器/API/数据库63检查点及Admin/截图复核4检查通过。导出A30秒/B60秒、结束事件各1条、`missingSource=[]`；模拟任务2 API未附题目ID的2条请求保留自检风险说明。模型请求使用本地模拟服务，不冒称新生产AI能力评测或完整三段彩排。
-- 生产备份已在项目外 `/var/backups/multi-cooperation/feedback1002_20261010_225100/` 完成：数据库、server_storage、源码、环境文件及SHA-256校验齐全；备份前11局/35账户/37家公司/900active题。部署同步使用HEAD归档，当前待完成Git提交、上线及发布后核验。
+- 生产备份已在项目外 `/var/backups/multi-cooperation/feedback1002_20261010_225100/` 完成：数据库、server_storage、源码、环境文件及SHA-256校验齐全；备份前11局/35账户/37家公司/900active题。
+- 实现提交 `ed0c0bc 落实1002反馈与独立测试轮最终方案` 已推送GitHub `main`，经 `upload-git-archive.ps1 -Service all -AllowDirty` 全量部署；迁移成功，生产A/B测试时长均为5，当前模板版本为 `three_chapter_v3_1_20261010`。postgres/server/nginx healthy，web正常，发布后server日志未发现应用错误。
+- 生产新建双账号smoke 14项检查通过：组内A/B、时长快照/runtime、测试轮手动提交/查看/材料/反馈/AI服务端保护。仅删除本轮临时Session/账户并归还槽位，既有11局/35账户/37家公司/900active题未变；既有Session快照哈希及AI设置哈希与备份前完全一致，监测仍true/全屏仍false。
+- 公网浏览器8项检查通过：HTTPS `/api/health`、根域名跳转 `/login`、品牌及标签页、ICP备案与公安备案、Admin新品牌/无备案悬浮块、页面运行异常0。四份关键源码按git归档CRLF格式计算SHA-256，与服务器一致。
+- APP_FLOW、数据库手册、验收、progress和启动prompt的发布记录随后单独提交并上传源码归档（不重复重建容器）；实现版本仍为 `ed0c0bc`。本轮本地临时实验/账户/实验局/导出任务记录已清理，复核截图和导出文件仅留Git忽略目录；用户原有未跟踪文件未纳入提交或清理。
 
 ---
 
