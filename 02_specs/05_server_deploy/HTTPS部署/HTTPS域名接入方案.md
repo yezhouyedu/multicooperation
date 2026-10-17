@@ -1,6 +1,6 @@
 # HTTPS 域名接入方案
 
-> 更新日期：2026-09-06
+> 更新日期：2026-10-17
 > 当前域名：`aiseek.tech`、`www.aiseek.tech`  
 > 当前服务器：`49.233.203.108`
 
@@ -55,13 +55,17 @@ infra/nginx/production.conf
 
 证书私钥内容不进 git、不写入 Markdown、不放入 `02_specs` 可提交内容。
 
-当前证书已于 2026-08-31 完成续期：
+当前证书已于 2026-10-17 完成续期并通过公网验证：
 
-- 证书序列号：`0C209191A5272082A38AA812B8EF0F34`
-- 到期时间：2026-11-29 07:59:59（Asia/Shanghai）
-- 服务器备份：`/etc/multi-cooperation/cert-backups/20260831T164017+0800`
+- 证书序列号：`0B4343E5695AFC44D5F30F0FE1EFBEEF`
+- 有效期：2026-10-17 08:00:00 至 2027-01-15 07:59:59（Asia/Shanghai）；UTC 到期为 2027-01-14 23:59:59。
+- 证书 SHA-256 指纹：`D3:DC:19:D0:23:C2:88:6A:E0:62:4E:D6:E8:48:62:2D:55:D4:93:3B:55:32:8F:35:32:7A:9E:82:45:68:FB:DD`
+- 本轮替换前旧证书、旧私钥和 Nginx 配置备份：`/etc/multi-cooperation/cert-backups/20261017T124748+0800`（root 所有，目录权限 700）。
 - 当前证书：`/etc/multi-cooperation/certs/aiseek.tech_bundle.crt`
 - 当前私钥：`/etc/multi-cooperation/certs/aiseek.tech.key`
+- 当前文件权限：证书 `644 root:root`，私钥 `600 root:root`；临时上传副本已清理。
+
+历史记录：上一轮于 2026-08-31 续期，旧序列号 `0C209191A5272082A38AA812B8EF0F34`、旧到期时间 2026-11-29 07:59:59（Asia/Shanghai），当时的替换前备份目录为 `/etc/multi-cooperation/cert-backups/20260831T164017+0800`。这些不是当前正在使用的证书信息。
 
 ## 4. 生产环境变量
 
@@ -98,7 +102,7 @@ Invoke-WebRequest -UseBasicParsing http://aiseek.tech -MaximumRedirection 0
 
 公网首页当前口径：
 
-- 根域名跳转到 `/login`，页面品牌和浏览器标签统一显示“AI 协作决策平台”。
+- 根域名跳转到 `/login`，页面品牌和浏览器标签统一显示“实验任务平台”。
 - `/login` 底部同时展示 `鲁ICP备2026032213号`（链接 `https://beian.miit.gov.cn/`）和 `鲁公网安备37098202000886号`（链接全国互联网安全管理平台）。
 - 备案块只在登录首页显示；登录后的实验页面和 Admin 不渲染备案块，以免遮挡 AI 输入区或正式退出按钮。
 
@@ -108,12 +112,22 @@ Invoke-WebRequest -UseBasicParsing http://aiseek.tech -MaximumRedirection 0
 
 1. 确认证书 SAN 同时包含 `aiseek.tech` 和 `www.aiseek.tech`，并核对有效期与证书/私钥匹配。
 2. 在服务器 `/etc/multi-cooperation/cert-backups/<时间戳>/` 备份当前 `.crt` 和 `.key`。
-3. 将新文件写入 `/etc/multi-cooperation/certs/` 的固定文件名，权限只允许必要账户读取。
+3. 将新文件写入 `/etc/multi-cooperation/certs/` 的固定文件名，权限只允许必要账户读取。保留原证书目录本身，在该目录内替换文件，不整体换目录，避免 Docker 的目录 bind mount 仍指向旧目录。
 4. 在 Nginx 容器内执行配置检查后重载；若当前镜像不支持平滑重载，仅重建 `nginx` 服务，不重建数据库 volume。
 5. 从公网核对证书序列号、到期时间、主域名、`www` 跳转、`/api/health` 和 `/admin`。
 6. 验证失败时，从最近备份恢复证书并重启 `nginx`。
 
 续期只替换证书文件，不需要修改业务数据库，也不得执行 `docker compose down -v`。
+
+本项目已验证的配置检查与平滑重载命令：
+
+```bash
+docker exec multi_cooperation_nginx_prod nginx -t
+# 仅在上一步通过后执行：
+docker exec multi_cooperation_nginx_prod nginx -s reload
+```
+
+2026-10-17 实测支持平滑重载，未重建任何容器。公网 11 项检查通过：主域名/www 的证书信任与新指纹、HTTP/HTTPS www 跳转、根路径到登录页、登录页、Admin 和 `/api/health`。供应商参考为 [腾讯云 Nginx 证书安装流程](https://cloud.tencent.com/document/product/400/35244)，本项目使用现有 Docker 反代配置，不照搬示例站点的 `root` 或覆盖业务路由。
 
 ## 7. 稳定后收口
 

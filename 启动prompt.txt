@@ -76,6 +76,7 @@
 
 - 正式入口已经从裸 IP 继续推进到 HTTPS 域名：`https://aiseek.tech`，`/api/*` 通过 Nginx 反代到 server，`/admin` 通过 web 访问。
 - 生产 Docker Compose 当前包含 `postgres`、`server`、`web`、`nginx` 四类服务；Nginx 证书文件在服务器 `/etc/multi-cooperation/certs`，证书私钥不进 git。
+- HTTPS 证书已于2026-10-17续期并平滑重载，当前到期为2027-01-15 07:59:59（Asia/Shanghai）；主域名/www及页面/API公网验证通过，未重建容器、未改数据库。续期与回滚真相源见`02_specs/05_server_deploy/HTTPS部署/HTTPS域名接入方案.md`。
 - 服务器部署优先使用本地 `scripts/deploy/upload-git-archive.ps1 -Service all -AllowDirty` 打包当前 git HEAD 上传，再在服务器运行 `scripts/deploy/deploy-prod.sh`；不要依赖服务器直接从 GitHub 私仓拉取。
 - HTTPS API / 页面 / 跳转 / 段前指导语 API smoke 已通过；完整浏览器三段彩排（含 SSE、AI、图片上传、任务2、问卷、导出）通过后，再关闭公网 3000 / 3001，只留 80 / 443 / 22。
 - 正式问卷已经接入：段 1/2/3 后常规问卷 + 实验后问卷；填写中草稿保存到服务器并可刷新恢复，导出区分 `submitted / draft_only / never_started`；招募问卷不进系统；旧“休息问卷模板”口径已废弃。
