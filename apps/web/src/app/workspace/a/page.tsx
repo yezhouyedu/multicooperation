@@ -9,11 +9,11 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
-import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
+import { OnlineIntegrityGuard, requestExperimentQuit } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft } from '@/lib/session-runtime';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
@@ -21,6 +21,7 @@ export default function WorkspaceAPage() {
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
   const finalFlushTaskRef = useRef<string | null>(null);
+  const [sideTaskExpanded, setSideTaskExpanded] = useState(false);
   const {
     bootstrap,
     runtime,
@@ -107,9 +108,11 @@ export default function WorkspaceAPage() {
           taskCountdownLabel={isPractice ? undefined : taskCountdownLabel}
           connectionStatus={connectionStatus}
           pendingDraftCount={pendingDraftCount}
+          onQuit={runtime?.phase === 'formal_work' && !sideTaskExpanded && !['SELF_DROPPED', 'STOP_AFTER_A_DROPOUT'].includes(runtime.onlineIntegrity.outcome) ? requestExperimentQuit : undefined}
         />
         {bootstrap && runtime ? (
           <SideTaskStrip
+            onExpandedChange={setSideTaskExpanded}
             sessionCode={bootstrap.sessionCode}
             participantId={bootstrap.participantId}
             role="A"
@@ -212,7 +215,6 @@ export default function WorkspaceAPage() {
           participantId={bootstrap.participantId}
           role="A"
           aiLevel={runtime.aiLevel}
-          practiceDurationMinutes={runtime.practiceDurationMinutes}
           aiEnabled={false}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />

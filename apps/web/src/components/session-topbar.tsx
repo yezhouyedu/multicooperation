@@ -8,6 +8,7 @@ export type SessionTopbarProps = {
   taskCountdownLabel?: string | null;
   connectionStatus?: 'connecting' | 'connected' | 'reconnecting' | 'polling' | 'offline';
   pendingDraftCount?: number;
+  onQuit?: () => void;
 };
 
 export function SessionTopbar({
@@ -18,6 +19,7 @@ export function SessionTopbar({
   taskCountdownLabel,
   connectionStatus,
   pendingDraftCount = 0,
+  onQuit,
 }: SessionTopbarProps) {
   const statusLabel =
     connectionStatus === 'connected'
@@ -40,7 +42,8 @@ export function SessionTopbar({
 
   return (
     <nav
-      className="flex h-[52px] shrink-0 items-center justify-between border-b border-[#eaecf0] bg-white px-5"
+      aria-label="实验状态栏"
+      className="flex min-h-[52px] shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[#eaecf0] bg-white px-5 py-2 sm:flex-nowrap sm:py-0"
       style={{ boxShadow: 'var(--shadow-topbar)' }}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -54,7 +57,16 @@ export function SessionTopbar({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex max-w-full flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+        {onQuit ? (
+          <button
+            type="button"
+            onClick={onQuit}
+            className="shrink-0 rounded-md border border-red-200 bg-red-50/50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+          >
+            退出实验
+          </button>
+        ) : null}
         {statusLabel ? (
           <div className={`rounded-md border px-3 py-1 text-xs font-medium ${statusClass}`}>
             {statusLabel}

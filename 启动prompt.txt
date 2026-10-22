@@ -54,6 +54,8 @@
 
 2026-10-10最终定稿与本轮实施口径（生产发布结果以progress最新记录为准）：
 
+- 2026-10-22界面更新：测试轮总览必须逐字采用研究者《测试轮指导语.txt》，只做排版，不补写、不按角色或Admin时间拼接；前端固定源为`apps/web/src/content/practice-instructions.ts`，检查命令`node scripts/verify-practice-instructions.cjs`。默认各5分钟和Admin可调能力、个人时钟均不变。退出入口仅放正式任务1主工作台顶部“网络正常”左边，任务2展开时隐藏、返回后恢复；原二次确认和后端规则不变。上线状态以progress最新记录为准。
+
 - 《问题发现1002.docx》正文与18张图逐项复核；最终定稿见`02_specs/03_execution/1002反馈与测试轮最终方案.md`，取代更早的B测试反馈/5.5分钟方案。
 - 该方案已于2026-10-10在生产部署：实现提交ed0c0bc，迁移20261010090000_feedback1002_practice成功；A/B默认均5分钟。后端90项测试、本地63+4检查、生产14+8检查通过；本轮仅清理新建smoke对象，生产原有11局/35账户/37家公司/900active题、Session监测快照及AI配置保留。验收边界/模拟模型说明见`02_specs/03_execution/1002反馈验收记录.md`，发布证据以progress最新记录为准。
 - 测试轮A/B时长分别在Admin调整，均默认5分钟；创建Session时固化`experimentSnapshot.practiceTiming={A,B}`。各自完成教学后开始本人倒计时，到点自动提交，无提前提交，一方结束不结束另一方。

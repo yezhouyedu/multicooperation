@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PRACTICE_OVERVIEW } from '@/content/practice-instructions';
 
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 
@@ -8,7 +9,6 @@ type Props = {
   sessionCode: string;
   participantId: string;
   role: 'A' | 'B';
-  practiceDurationMinutes?: number;
   aiLevel: 'BASIC' | 'ADVANCED';
   aiEnabled?: boolean;
   completedSteps?: string[];
@@ -73,47 +73,10 @@ function getVisibleAnchor(anchor: string) {
   }) as HTMLElement | undefined;
 }
 
-function getOverviewContent(role: 'A' | 'B', practiceDurationMinutes: number) {
-  return {
-    title: '欢迎进入测试轮',
-    sections: [
-      {
-        heading: '任务1',
-        text: '你需要完成多次任务1，每次任务1都需要阅读一家公司的材料并填写任务表',
-      },
-      {
-        heading: '工作台布局',
-        items: [
-          '左侧是材料区，用于查看任务1的相关材料',
-          '右上是答题区，该区域的填写情况决定任务1的报酬',
-        ],
-      },
-      {
-        heading: '任务1的时间安排',
-        items: [
-          `本次测试轮中，你是${role}，处理时间为${practiceDurationMinutes}分钟。右上角显示你自己的倒计时，到点自动提交，不支持提前提交。`,
-          '测试轮只需完成处理一家公司，即完成1次任务1。测试轮不提供A/B材料交互或反馈，也不提供AI。',
-          role === 'A' ? '正式实验中，A每家公司处理5分钟，到点自动提交并向B同步。' : '正式实验中，B每接到一家公司至少处理5分钟，且A的任务结果已同步后，才能查看A的信息和材料并提交、填写反馈。',
-          '正式实验中，两名角色只能完成当前一家公司的任务1后，才能进行下一次任务1。',
-        ],
-      },
-      {
-        heading: '任务2',
-        items: [
-          '除了任务1，你还会收到任务2',
-          '任务2会在正式工作段中不断推送，并在新的工作段开始后重置',
-          '测试轮中任务2仅为教学演示，不会实际推送',
-        ],
-      },
-    ],
-  };
-}
-
 export function PracticeTutorialOverlay({
   sessionCode,
   participantId,
   role,
-  practiceDurationMinutes = 5,
   aiLevel,
   aiEnabled = true,
   completedSteps = [],
@@ -223,15 +186,15 @@ export function PracticeTutorialOverlay({
   const viewportHeight = typeof window === 'undefined' ? 720 : window.innerHeight;
 
   if (isOverviewPhase) {
-    const overview = getOverviewContent(role, practiceDurationMinutes);
+    const overview = PRACTICE_OVERVIEW;
     return (
       <div className="pointer-events-none fixed inset-0 z-[80] bg-slate-950/55">
         <div className="pointer-events-auto absolute left-1/2 top-1/2 max-h-[80vh] w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-white/15 bg-white p-6 shadow-2xl">
           <div className="mb-4 text-xl font-bold text-[#1d2129]">{overview.title}</div>
+          <p className="mb-4 text-sm leading-6 text-[#4e5969]">{overview.introduction}</p>
           {overview.sections.map((section, idx) => (
             <div key={idx} className="mb-4">
               <div className="mb-1 text-sm font-semibold text-[#1d2129]">{section.heading}</div>
-              {section.text ? <div className="text-sm leading-6 text-[#4e5969]">{section.text}</div> : null}
               {section.items ? (
                 <ul className="list-disc pl-5 text-sm leading-6 text-[#4e5969]">
                   {section.items.map((item, itemIndex) => (
@@ -247,7 +210,7 @@ export function PracticeTutorialOverlay({
               onClick={() => setShowOverview(false)}
               className="rounded-xl bg-[#1e80ff] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1168e3] active:scale-[0.98]"
             >
-              我了解了
+              {overview.buttonLabel}
             </button>
           </div>
         </div>

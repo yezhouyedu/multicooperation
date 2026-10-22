@@ -9,6 +9,12 @@ const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localho
 type Props = { bootstrap: SessionBootstrap | null; runtime: RuntimeState | null };
 type PromptState = 'none' | 'confirm' | 'invalid';
 
+const quitRequestedEvent = 'experiment-quit-requested';
+
+export function requestExperimentQuit() {
+  window.dispatchEvent(new Event(quitRequestedEvent));
+}
+
 export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   const active = Boolean(bootstrap && runtime?.phase === 'formal_work' && runtime.onlineIntegrity.config.enabled);
   const config = runtime?.onlineIntegrity.config;
@@ -31,6 +37,14 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   const recentCopyHashesRef = useRef<string[]>([]);
   const currentTaskRef = useRef(runtime?.currentTask ?? null);
   currentTaskRef.current = runtime?.currentTask ?? null;
+
+  useEffect(() => {
+    const outcome = runtime?.onlineIntegrity.outcome;
+    if (!bootstrap || runtime?.phase !== 'formal_work' || !config || outcome === 'SELF_DROPPED' || outcome === 'STOP_AFTER_A_DROPOUT') return;
+    const requestQuit = () => setShowQuit(true);
+    window.addEventListener(quitRequestedEvent, requestQuit);
+    return () => window.removeEventListener(quitRequestedEvent, requestQuit);
+  }, [bootstrap, config, runtime?.phase, runtime?.onlineIntegrity.outcome]);
 
   const postEvent = useCallback(async (eventType: string, payload: Record<string, unknown> = {}, intervalId?: string) => {
     if (!bootstrap) return null;
@@ -305,7 +319,6 @@ export function OnlineIntegrityGuard({ bootstrap, runtime }: Props) {
   return (
     <>
       {outcome === 'CONTINUE_AFTER_B_DROPOUT' && partnerNoticeVisible ? <div className="fixed left-1/2 top-16 z-[95] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 shadow-lg">你的队友已退出实验。请继续完成剩余任务，系统已忠实记录该情况。</div> : null}
-      {!stopped ? <button type="button" onClick={() => setShowQuit(true)} className="fixed right-2 top-14 z-[90] rounded border border-red-200 bg-white/95 px-2 py-1 text-[10px] text-red-600 shadow-sm">退出实验</button> : null}
       {fullscreenBlocked && !stopped ? <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/80 p-6"><div className="max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><h2 className="text-xl font-bold">请恢复实验全屏</h2><p className="mt-3 text-sm leading-6 text-[#4e5969]">正式工作段必须保持全屏。退出全屏本身不记为违规；如果实验页面失焦或被隐藏，会单独记录为切屏区间。</p>{fullscreenError ? <p className="mt-3 text-sm text-red-600">{fullscreenError}</p> : null}<button type="button" onClick={() => void restoreFullscreen()} className="mt-5 rounded-lg bg-[#1e80ff] px-5 py-2.5 font-semibold text-white">恢复全屏并继续</button></div></div> : null}
       {promptState !== 'none' && !stopped ? <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/75 p-6"><div className="max-w-md rounded-2xl bg-white p-7 text-center shadow-2xl"><h2 className="text-xl font-bold">仍在参与实验吗？</h2><p className="mt-3 text-sm leading-6 text-[#4e5969]">{promptState === 'confirm' ? `请在 ${promptSeconds} 秒内确认。未响应将被记录为异常行为。2次异常行为将判定为退出实验，无法获得实验报酬。` : '本次未及时确认已被记录为异常行为。2次异常行为将判定为退出实验，无法获得实验报酬。'}</p><button type="button" onClick={() => void confirmStillPresent()} className="mt-5 rounded-lg bg-[#1e80ff] px-5 py-2.5 font-semibold text-white">我仍在参与，继续实验</button></div></div> : null}
       {showQuit ? <div className="fixed inset-0 z-[120] grid place-items-center bg-slate-950/75 p-6"><div className="max-w-md rounded-2xl bg-white p-7"><h2 className="text-xl font-bold">确认退出实验</h2><p className="mt-3 text-sm leading-6 text-[#4e5969]">退出后系统会立即记录，你将无法继续实验，同时你也无法获得实验报酬。你的退出行为也可能会对另一名参与者产生影响。</p><div className="mt-5 flex justify-end gap-3"><button type="button" onClick={() => setShowQuit(false)} className="rounded border px-4 py-2">取消</button><button type="button" disabled={quitting} onClick={() => void quitExperiment()} className="rounded bg-red-600 px-4 py-2 font-semibold text-white">{quitting ? '正在退出...' : '确认退出'}</button></div></div></div> : null}

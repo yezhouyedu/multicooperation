@@ -8,7 +8,7 @@ import { ScopedZoomSurface } from '@/components/scoped-zoom-surface';
 import { SessionTopbar } from '@/components/session-topbar';
 import { SideTaskStrip } from '@/components/sidetask-strip';
 import { WorkbenchLayout } from '@/components/workbench-layout';
-import { OnlineIntegrityGuard } from '@/components/online-integrity-guard';
+import { OnlineIntegrityGuard, requestExperimentQuit } from '@/components/online-integrity-guard';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { useSessionRuntime, useTaskDraft, type CompanyData, type MaterialItem } from '@/lib/session-runtime';
 import { useBAOriginalMaterialExposure } from '@/lib/use-b-a-material-exposure';
@@ -52,6 +52,7 @@ function normalizeADraft(payload: unknown): NormalizedADraft {
 }
 
 export default function WorkspaceBPage() {
+  const [sideTaskExpanded, setSideTaskExpanded] = useState(false);
   const router = useRouter();
   const materialPanelRef = useRef<CompanyMaterialPanelHandle>(null);
   const {
@@ -280,9 +281,11 @@ export default function WorkspaceBPage() {
           countdownLabel={countdownLabel}
           connectionStatus={connectionStatus}
           pendingDraftCount={pendingDraftCount}
+          onQuit={runtime?.phase === 'formal_work' && !sideTaskExpanded && !['SELF_DROPPED', 'STOP_AFTER_A_DROPOUT'].includes(runtime.onlineIntegrity.outcome) ? requestExperimentQuit : undefined}
         />
         {bootstrap && runtime ? (
           <SideTaskStrip
+            onExpandedChange={setSideTaskExpanded}
             sessionCode={bootstrap.sessionCode}
             participantId={bootstrap.participantId}
             role="B"
@@ -407,7 +410,6 @@ export default function WorkspaceBPage() {
           participantId={bootstrap.participantId}
           role="B"
           aiLevel={runtime.aiLevel}
-          practiceDurationMinutes={runtime.practiceDurationMinutes}
           aiEnabled={false}
           completedSteps={runtime.practiceTutorialState?.completedSteps ?? []}
         />

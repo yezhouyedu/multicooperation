@@ -25,6 +25,7 @@ type Props = {
   phase?: 'practice' | 'formal';
   segmentIndex?: number;
   showPracticeDemoTask?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 };
 
 export function SideTaskStrip({
@@ -38,8 +39,12 @@ export function SideTaskStrip({
   phase = 'formal',
   segmentIndex = 0,
   showPracticeDemoTask = false,
+  onExpandedChange,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [optimisticAnswers, setOptimisticAnswers] = useState<Record<string, string>>({});
 
