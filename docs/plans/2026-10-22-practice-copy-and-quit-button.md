@@ -8,7 +8,7 @@
 
 **Tech Stack:** Next.js / React / TypeScript，现有NestJS后端保持不变。
 
-**Status:** 2026-10-22本地实现与验证完成，生产备份校验完成；待web发布及公网复核。
+**Status:** 2026-10-22实现提交`468c788`已push并部署web；本地与公网界面验收完成，发布记录随后单独同步。
 
 ## 文案真相源及边界
 
@@ -71,3 +71,5 @@
 - 浏览器使用实际前端与拦截的虚构runtime/API、模拟EventSource，不读写真实参与者；125%检查使用CSS zoom，不冒称浏览器原生缩放、真实SSE或完整实验彩排。最初夹具记录请求时跨导航丢失执行上下文，改为夹具进程记录后重跑通过，不是产品代码错误。
 - 生产备份：`/var/backups/multi-cooperation/ui_copy_quit_20261022T143925+0800`，数据库custom dump、server_storage、源码、环境文件均完成校验；旧web镜像保留标签`multi-cooperation-web:rollback-ui-20261022`。
 - 发布前线上16局/41参与者，Admin现值A5/B6；默认配置定义仍5/5。本轮保留现值和历史Session快照，不修改数据库；不能按旧测试记录清理现有数据。
+- 经`upload-git-archive.ps1 -Service web -AllowDirty`发布，实现源码16份SHA-256与归档一致；仅web容器更新为`55d022a06418`，server/postgres/nginx容器ID保持，Nginx配置检查后平滑重载。
+- 公网实际新前端同样通过155项虚构API夹具检查，包含完整可见指导语的哈希核对；真实`/login`、`/admin`、`/api/health`均200。未创建生产测试局、未提交生产答卷或退出请求；Session数/参与者数、Session快照哈希、AI配置哈希与发布前一致。
