@@ -9,7 +9,7 @@ const reserves = { BASIC: 0.5, ADVANCED: 14.6 };
 function setupAi(tag, users) {
   const quotas = users === 30 ? { BASIC: 3, ADVANCED: 0 } : users === 60 ? { BASIC: 9, ADVANCED: 3 } : { BASIC: 0, ADVANCED: 0 };
   const settings = remoteNode(`const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const s=await p.aiSettings.findUnique({where:{id:'default'}});console.log(JSON.stringify({basicModel:s.basicModel,advancedModel:s.advancedModel,basicHost:new URL(s.basicBaseUrl).hostname,advancedHost:new URL(s.advancedBaseUrl).hostname,promptBytes:Buffer.byteLength(s.systemPromptMain+s.systemPromptSide)}));await p.$disconnect()})()`);
-  if (settings.basicModel !== 'qwen3.5-35b-a3b' || settings.advancedModel !== 'qwen3.7-max-2026-06-08' || settings.promptBytes > 15000 || ![settings.basicHost, settings.advancedHost].every((host) => /(^|\.)aliyuncs\.com$/.test(host))) throw Error('AI budget assumptions changed; paid test disabled');
+  if (settings.basicModel !== 'qwen3.5-35b-a3b' || settings.advancedModel !== 'qwen3.7-max-2026-06-08' || settings.promptBytes > 15000 || ![settings.basicHost, settings.advancedHost].every((host) => host === 'dashscope.aliyuncs.com')) throw Error('AI budget assumptions changed; paid test disabled');
   const screenshot = path.join(output, '../..', 'output/playwright/capacity-ui-offline.png');
   const image = fs.existsSync(screenshot) ? 'data:image/png;base64,' + fs.readFileSync(screenshot).toString('base64') : null;
   const metrics = { requested: 0, done: 0, errors: [], results: [], maxConcurrent: 0, active: 0, quotas, settings, budgetCny: 50, priceSource: 'https://help.aliyun.com/zh/model-studio/model-pricing' };

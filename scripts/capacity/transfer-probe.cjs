@@ -1,0 +1,6 @@
+const fs=require('node:fs'),path=require('node:path'),https=require('node:https'),zlib=require('node:zlib');
+const{output,write}=require('./lib.cjs');
+const tag=process.argv[2];if(!/^C\d+_(10|30|60)_(pilot|full)$/.test(tag||''))throw Error('Exact tag required');
+const a=JSON.parse(fs.readFileSync(path.join(output,tag+'-manifest.json'),'utf8')).actors[0];
+const started=Date.now();
+https.get(`https://aiseek.tech/api/experiment/session/${a.sessionCode}/runtime?participantId=${a.participantId}`,{headers:{'Accept-Encoding':'gzip'}},res=>{const chunks=[];res.on('data',c=>chunks.push(c));res.on('end',()=>{const bytes=Buffer.concat(chunks);const decoded=res.headers['content-encoding']==='gzip'?zlib.gunzipSync(bytes):bytes;const runtime=JSON.parse(decoded);const result={at:new Date().toISOString(),status:res.statusCode,encoding:res.headers['content-encoding'],wireBodyBytes:bytes.length,decodedBytes:decoded.length,ratio:bytes.length/decoded.length,elapsedMs:Date.now()-started,phase:runtime.phase};write('transfer-probe-'+Date.now()+'.json',result);console.log(JSON.stringify(result));});}).on('error',e=>{console.error(e.message);process.exitCode=1}).setTimeout(10000,function(){this.destroy(Error('timeout'))});
