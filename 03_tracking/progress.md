@@ -2994,6 +2994,7 @@
 - 收尾仅将本轮176个CAPACITY_新账号设isActive=false，未删除任何测试数据或volume；原18局快照/AI设置哈希及原41账户保留、原活动局恢复、公司37/题库900不变，最终106局/217账户包含测试记录。所有浏览器/负载已停止，原始记录在output/capacity-20261028，最终源码与容器/文档一致性由scripts/capacity/verify-release.cjs产出final-release-verification.json。
 - 已同步维护README、容量/稳定性规格、数据库手册、执行计划和启动prompt；报告含可直接向师兄转述的简版。保留边界：协议模拟不是60台真人电脑，AI未测40人同时请求，外部自动告警和完整实时异常台尚未实现。实际Admin仍A5/B6、休息1分钟、强制全屏关闭，正式放行应人工确认，未擅改实验参数。
 - 本轮独立本地沙箱容器multi_coop_resilience_20261028已停止，测试volume保留；未停止其他项目容器、未删Docker volume。中文维护文档UTF-8复核无替换字符。
+- 0b7cbe5已提交推送并用git archive同步服务器；verify-release对server/web运行源码、schema、Nginx实际挂载配置及四份维护文档共16项哈希核对全通过，公网/api/health、/login、/admin均200。最后只同步报告/脚本，不重新构建已经验收的运行容器，验证回执见output/capacity-20261028/final-release-verification.json。
 
 ---
 
