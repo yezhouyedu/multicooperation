@@ -235,13 +235,11 @@ export class ExperimentController {
   saveTaskDraft(
     @Param('code') code: string,
     @Param('taskId') taskId: string,
-    @Body() body: { role: ParticipantRole; section?: 'main' | 'feedback'; payload: Prisma.InputJsonValue },
+    @Body() body: { role: ParticipantRole; section?: 'main' | 'feedback'; payload: Prisma.InputJsonValue; expectedRevision?: number; mutationId?: string },
     @Headers('idempotency-key') key?: string,
   ) {
     const sessionCode = code.toUpperCase();
-    return this.idem(key, 'save-draft', `${sessionCode}:${taskId}:${body.role}:${body.section ?? 'main'}`, () =>
-      this.experimentService.saveTaskDraft(sessionCode, taskId, body),
-    );
+    return this.experimentService.saveTaskDraft(sessionCode, taskId, { ...body, mutationId: body.mutationId ?? key });
   }
 
   @Get('session/:code/tasks/:taskId/snapshots')

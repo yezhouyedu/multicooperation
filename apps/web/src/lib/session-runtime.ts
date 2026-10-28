@@ -5,6 +5,7 @@ import {
   flushDraftQueue,
   getPendingDraftCount,
   loadLocalDraft,
+  hydrateDraft,
   type DraftSection,
 } from './draft-sync';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -377,7 +378,9 @@ export function useSessionRuntime() {
         setNextReconnectDelayMs(0);
         setConnectionStatus('connected');
         stopPolling();
-        void flushDraftQueue().then(setPendingDraftCount);
+        // In-memory replay cannot survive a server restart. Always reconcile with database truth.
+        void refresh();
+        void flushDraftQueue().then(setPendingDraftCount).catch(() => undefined);
       });
 
       source.addEventListener('runtime', (event) => {
@@ -386,11 +389,15 @@ export function useSessionRuntime() {
       try {
         const payload = JSON.parse(message.data) as RuntimeState & { ok: boolean };
         applyRuntime(payload);
+        stopPolling();
+        setConnectionStatus('connected');
         setLastEvent({ type: 'runtime', data: payload });
       } catch {
         // ignore malformed event payloads
       }
       });
+
+      source.addEventListener('runtime_error', () => { startPolling(); });
 
       const forwardEvent = (type: string) => (event: Event) => {
       recordEventId(event);
@@ -444,7 +451,7 @@ export function useSessionRuntime() {
     };
     const handleOnline = () => {
       setConnectionStatus((status) => (status === 'offline' ? 'reconnecting' : status));
-      void flushDraftQueue().then(setPendingDraftCount);
+      void flushDraftQueue().then(setPendingDraftCount).catch(() => undefined);
       void refresh();
     };
     const handleOffline = () => {
@@ -459,6 +466,7 @@ export function useSessionRuntime() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('draft-sync-status', handleDraftStatus as EventListener);
+    const draftTimer = setInterval(() => { void flushDraftQueue().then(setPendingDraftCount).catch(() => undefined); }, 5000);
     updateDraftCount();
     void emitDraftSyncStatus();
     if (typeof navigator !== 'undefined' && !navigator.onLine) setConnectionStatus('offline');
@@ -466,6 +474,7 @@ export function useSessionRuntime() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('draft-sync-status', handleDraftStatus as EventListener);
+      clearInterval(draftTimer);
     };
   }, [refresh]);
 
@@ -519,9 +528,9 @@ export function useTaskDraft(
       const url = `${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft?role=${role}&section=${section}&participantId=${encodeURIComponent(participantId)}`;
       const res = await fetch(url, { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load task draft');
-      const data = (await res.json()) as { ok: boolean; payload: unknown };
-      const local = await loadLocalDraft(sessionCode, taskId, role, section as DraftSection).catch(() => null);
-      setDraft(data.payload ?? local?.payload ?? null);
+      const data = (await res.json()) as { ok: boolean; payload: unknown; revision?: number };
+      const local = await hydrateDraft({ sessionCode, taskId, role, section, payload: data.payload }, data.revision ?? 0);
+      setDraft(local?.payload ?? data.payload ?? null);
     } catch {
       const local = await loadLocalDraft(sessionCode, taskId, role, section as DraftSection).catch(() => null);
       setDraft(local?.payload ?? null);

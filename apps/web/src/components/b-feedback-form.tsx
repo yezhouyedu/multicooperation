@@ -1,6 +1,6 @@
 'use client';
 
-import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
+import { persistDraft } from '@/lib/draft-sync';
 import { idempotencyHeaders } from '@/lib/idempotency';
 import { recordTimestampEvent } from '@/lib/timestamp-events';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -86,6 +86,7 @@ export function BFeedbackForm({
   }
 
   function touch() {
+    editVersionRef.current += 1;
     setDirty(true);
     window.dispatchEvent(new CustomEvent('workbench-draft-dirty'));
     const now = Date.now();
@@ -129,8 +130,9 @@ export function BFeedbackForm({
     return () => window.removeEventListener('timestamp-anchor', handleAnchor);
   }, []);
 
+  const editVersionRef = useRef(0);
   async function saveDraft(silent = false) {
-    if (!sessionCode || !taskId) return;
+    if (!sessionCode || !taskId) return false;
     if (silent) {
       setSaving(true);
     } else {
@@ -138,26 +140,22 @@ export function BFeedbackForm({
     }
 
     const draftPayload = payload();
+    const editVersion = editVersionRef.current;
     try {
-      await saveLocalDraft({ sessionCode, taskId, role: 'B', section: 'feedback', payload: draftPayload });
-      const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft`, {
-        method: 'POST',
-        headers: idempotencyHeaders(`draft:${sessionCode}:${taskId}:B:feedback`, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          role: 'B',
-          section: 'feedback',
-          payload: draftPayload,
-        }),
-      });
-      if (!response.ok) throw new Error('save failed');
-      await removeQueuedDraft(sessionCode, taskId, 'B', 'feedback');
+      const result = await persistDraft({ sessionCode, taskId, role: 'B', section: 'feedback', payload: draftPayload });
+      if (!result.synced) {
+        setStatus(result.conflict ? '草稿版本冲突：本地内容已保留，请勿清缓存，联系研究员处理' : 'local saved, waiting to sync');
+        return false;
+      }
+      if (editVersion !== editVersionRef.current) return false;
       setDirty(false);
       setStatus(silent ? 'autosaved' : 'saved');
       window.dispatchEvent(new CustomEvent('task-draft-saved', { detail: { taskId, role: 'B', section: 'feedback', payload: draftPayload } }));
       window.dispatchEvent(new CustomEvent('workbench-draft-saved'));
+      return true;
     } catch (error) {
-      await enqueueDraftSave({ sessionCode, taskId, role: 'B', section: 'feedback', payload: draftPayload }, error);
-      setStatus(silent ? 'local saved, waiting to sync' : 'local saved, will sync when online');
+      setStatus('保存失败，请勿关闭页面，联系研究员处理');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -195,7 +193,7 @@ export function BFeedbackForm({
       q5,
     };
     try {
-      await saveDraft(true);
+      if (!await saveDraft(true)) throw new Error('草稿尚未同步或存在版本冲突，已保留本地内容，请联系研究员');
       const res = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/progress`, {
         method: 'POST',
         headers: idempotencyHeaders(`progress:${sessionCode}:${taskId}:b_feedback_submitted`, {

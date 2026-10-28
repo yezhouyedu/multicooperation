@@ -51,8 +51,12 @@ export class AiController {
   }
 
   @Post('chat')
-  chat(@Body() body: ChatBody) {
-    return this.aiService.chat(body);
+  async chat(@Body() body: ChatBody, @Res({ passthrough: true }) res: Response) {
+    const controller = new AbortController();
+    const cancel = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', cancel);
+    try { return await this.aiService.chat(body, controller.signal); }
+    finally { res.off('close', cancel); }
   }
 
   @Post('chat-stream')
@@ -60,24 +64,28 @@ export class AiController {
     res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    const controller = new AbortController();
+    const cancel = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', cancel);
 
     try {
       await this.aiService.chatStream(body, {
         onStart: (payload) => {
-          res.write(`${JSON.stringify({ type: 'start', ...payload })}\n`);
+          if (!res.destroyed) res.write(`${JSON.stringify({ type: 'start', ...payload })}\n`);
         },
         onDelta: (delta) => {
-          res.write(`${JSON.stringify({ type: 'delta', delta })}\n`);
+          if (!res.destroyed) res.write(`${JSON.stringify({ type: 'delta', delta })}\n`);
         },
         onDone: (payload) => {
-          res.write(`${JSON.stringify({ type: 'done', ...payload })}\n`);
+          if (!res.destroyed) res.write(`${JSON.stringify({ type: 'done', ...payload })}\n`);
         },
-      });
+      }, controller.signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI 流式请求失败';
-      res.write(`${JSON.stringify({ type: 'error', message })}\n`);
+      if (!res.destroyed) res.write(`${JSON.stringify({ type: 'error', message })}\n`);
     } finally {
-      res.end();
+      res.off('close', cancel);
+      if (!res.destroyed) res.end();
     }
   }
 }

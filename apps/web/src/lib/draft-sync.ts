@@ -2,213 +2,159 @@
 
 import { createIdempotencyKey } from './idempotency';
 
-const dbName = 'multi-cooperation-resilience';
-const dbVersion = 1;
-const draftStore = 'drafts';
-const queueStore = 'draftQueue';
 const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
-
 export type DraftSection = 'main' | 'feedback';
 export type DraftRole = 'A' | 'B';
-
-export type DraftRecord = {
-  key: string;
-  sessionCode: string;
-  taskId: string;
-  role: DraftRole;
-  section: DraftSection;
-  payload: unknown;
-  updatedAt: number;
-};
-
-type QueuedDraftSave = DraftRecord & {
-  idempotencyKey: string;
-  attempts: number;
-  lastError?: string;
-};
-
-export type DraftSyncStatus = {
-  pendingCount: number;
-  syncing: boolean;
-  lastError?: string;
-};
-
+type DraftInput = { sessionCode: string; taskId: string; role: DraftRole; section: DraftSection; payload: unknown };
+export type DraftRecord = DraftInput & { key: string; updatedAt: number; revision: number; mutationId: string; conflict?: boolean };
+type QueuedDraft = DraftRecord & { attempts: number; lastError?: string };
+export type DraftSyncStatus = { pendingCount: number; syncing: boolean; lastError?: string };
 let dbPromise: Promise<IDBDatabase> | null = null;
-let flushing = false;
+const syncing = new Map<string, Promise<void>>();
 
 export function draftRecordKey(sessionCode: string, taskId: string, role: DraftRole, section: DraftSection = 'main') {
   return `${sessionCode.toUpperCase()}:${taskId}:${role}:${section}`;
 }
 
-export async function saveLocalDraft(input: Omit<DraftRecord, 'key' | 'updatedAt'>) {
-  const record: DraftRecord = {
-    ...input,
-    sessionCode: input.sessionCode.toUpperCase(),
-    key: draftRecordKey(input.sessionCode, input.taskId, input.role, input.section),
-    updatedAt: Date.now(),
-  };
-  const db = await openDb();
-  await putRecord(db, draftStore, record);
-  notifyDraftSaved(record);
-  return record;
-}
-
-export async function loadLocalDraft(
-  sessionCode: string,
-  taskId: string,
-  role: DraftRole,
-  section: DraftSection = 'main',
-) {
-  const db = await openDb();
-  return getRecord<DraftRecord>(db, draftStore, draftRecordKey(sessionCode, taskId, role, section));
-}
-
-export async function enqueueDraftSave(input: Omit<DraftRecord, 'key' | 'updatedAt'>, error?: unknown) {
-  const record = await saveLocalDraft(input);
-  const queued: QueuedDraftSave = {
-    ...record,
-    idempotencyKey: createIdempotencyKey(`draft:${record.key}`),
-    attempts: 0,
-    lastError: error instanceof Error ? error.message : undefined,
-  };
-  const db = await openDb();
-  await putRecord(db, queueStore, queued);
-  await emitDraftSyncStatus();
-  return queued;
-}
-
-export async function removeQueuedDraft(
-  sessionCode: string,
-  taskId: string,
-  role: DraftRole,
-  section: DraftSection = 'main',
-) {
-  const db = await openDb();
-  await deleteRecord(db, queueStore, draftRecordKey(sessionCode, taskId, role, section));
-  await emitDraftSyncStatus();
-}
-
-export async function getPendingDraftCount() {
-  const db = await openDb();
-  const items = await getAllRecords<QueuedDraftSave>(db, queueStore);
-  return items.length;
-}
-
-export async function flushDraftQueue() {
-  if (flushing || typeof navigator !== 'undefined' && !navigator.onLine) return getPendingDraftCount();
-  flushing = true;
-  await emitDraftSyncStatus({ syncing: true });
-  let lastError: string | undefined;
-  try {
-    const db = await openDb();
-    const queued = await getAllRecords<QueuedDraftSave>(db, queueStore);
-    queued.sort((a, b) => a.updatedAt - b.updatedAt);
-    for (const item of queued) {
-      try {
-        const response = await fetch(
-          `${serverBaseUrl}/experiment/session/${item.sessionCode}/tasks/${item.taskId}/draft`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Idempotency-Key': item.idempotencyKey,
-            },
-            body: JSON.stringify({
-              role: item.role,
-              section: item.section,
-              payload: item.payload,
-            }),
-          },
-        );
-        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`.trim());
-        await deleteRecord(db, queueStore, item.key);
-        window.dispatchEvent(new CustomEvent('task-draft-synced', { detail: item }));
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : 'sync failed';
-        await putRecord(db, queueStore, { ...item, attempts: item.attempts + 1, lastError });
-      }
-    }
-  } finally {
-    flushing = false;
-    await emitDraftSyncStatus({ syncing: false, lastError });
-  }
-  return getPendingDraftCount();
-}
-
-export async function emitDraftSyncStatus(partial: Partial<DraftSyncStatus> = {}) {
-  const pendingCount = await getPendingDraftCount().catch(() => 0);
-  window.dispatchEvent(
-    new CustomEvent<DraftSyncStatus>('draft-sync-status', {
-      detail: {
-        pendingCount,
-        syncing: false,
-        ...partial,
-      },
-    }),
-  );
-}
-
-function notifyDraftSaved(record: DraftRecord) {
-  window.dispatchEvent(
-    new CustomEvent('task-draft-saved', {
-      detail: {
-        taskId: record.taskId,
-        role: record.role,
-        section: record.section,
-        payload: record.payload,
-        source: 'local',
-      },
-    }),
-  );
-}
-
 function openDb() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(dbName, dbVersion);
+  if (!dbPromise) dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open('multi-cooperation-resilience', 1);
     request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(draftStore)) db.createObjectStore(draftStore, { keyPath: 'key' });
-      if (!db.objectStoreNames.contains(queueStore)) db.createObjectStore(queueStore, { keyPath: 'key' });
+      for (const name of ['drafts', 'draftQueue']) if (!request.result.objectStoreNames.contains(name)) request.result.createObjectStore(name, { keyPath: 'key' });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('indexedDB open failed'));
+    request.onerror = () => { dbPromise = null; reject(request.error); };
   });
   return dbPromise;
 }
 
-function txStore(db: IDBDatabase, storeName: string, mode: IDBTransactionMode) {
-  return db.transaction(storeName, mode).objectStore(storeName);
-}
-
-function putRecord<T>(db: IDBDatabase, storeName: string, record: T) {
+// Read/modify both stores in one transaction: a late network ACK must not delete newer edits.
+async function mutate(key: string, change: (local: DraftRecord | undefined, queued: QueuedDraft | undefined) => { local?: DraftRecord; queued?: QueuedDraft | null }) {
+  const db = await openDb();
   return new Promise<void>((resolve, reject) => {
-    const request = txStore(db, storeName, 'readwrite').put(record);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('indexedDB put failed'));
+    const tx = db.transaction(['drafts', 'draftQueue'], 'readwrite');
+    const local = tx.objectStore('drafts').get(key);
+    const queued = tx.objectStore('draftQueue').get(key);
+    queued.onsuccess = () => {
+      const next = change(local.result, queued.result);
+      if (next.local) tx.objectStore('drafts').put(next.local);
+      if (next.queued === null) tx.objectStore('draftQueue').delete(key);
+      else if (next.queued) tx.objectStore('draftQueue').put(next.queued);
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
-function getRecord<T>(db: IDBDatabase, storeName: string, key: string) {
-  return new Promise<T | null>((resolve, reject) => {
-    const request = txStore(db, storeName, 'readonly').get(key);
-    request.onsuccess = () => resolve((request.result as T | undefined) ?? null);
-    request.onerror = () => reject(request.error ?? new Error('indexedDB get failed'));
+async function read<T>(store: string, key?: string): Promise<T> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const objectStore = db.transaction(store, 'readonly').objectStore(store);
+    const request = key === undefined ? objectStore.getAll() : objectStore.get(key);
+    request.onsuccess = () => resolve(request.result as T);
+    request.onerror = () => reject(request.error);
   });
 }
 
-function getAllRecords<T>(db: IDBDatabase, storeName: string) {
-  return new Promise<T[]>((resolve, reject) => {
-    const request = txStore(db, storeName, 'readonly').getAll();
-    request.onsuccess = () => resolve((request.result as T[] | undefined) ?? []);
-    request.onerror = () => reject(request.error ?? new Error('indexedDB getAll failed'));
-  });
+export async function loadLocalDraft(sessionCode: string, taskId: string, role: DraftRole, section: DraftSection = 'main') {
+  return (await read<DraftRecord | undefined>('drafts', draftRecordKey(sessionCode, taskId, role, section))) ?? null;
 }
 
-function deleteRecord(db: IDBDatabase, storeName: string, key: string) {
-  return new Promise<void>((resolve, reject) => {
-    const request = txStore(db, storeName, 'readwrite').delete(key);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('indexedDB delete failed'));
+export async function hydrateDraft(input: DraftInput, revision: number) {
+  const key = draftRecordKey(input.sessionCode, input.taskId, input.role, input.section);
+  await mutate(key, (_local, queued) => queued ? {} : { local: { ...input, key, revision, mutationId: '', updatedAt: Date.now() } });
+  return loadLocalDraft(input.sessionCode, input.taskId, input.role, input.section);
+}
+
+export async function persistDraft(input: DraftInput) {
+  const key = draftRecordKey(input.sessionCode, input.taskId, input.role, input.section);
+  const mutationId = createIdempotencyKey(`draft:${key}`);
+  await mutate(key, (local, queued) => {
+    const record = { ...input, key, mutationId, revision: queued?.revision ?? local?.revision ?? 0, updatedAt: Date.now(), conflict: queued?.conflict ?? local?.conflict };
+    return { local: record, queued: { ...record, attempts: 0 } };
   });
+  await emitDraftSyncStatus();
+  await synchronize(key);
+  const current = await loadLocalDraft(input.sessionCode, input.taskId, input.role, input.section);
+  const queued = await read<QueuedDraft | undefined>('draftQueue', key);
+  return { synced: !queued && current?.mutationId === mutationId, conflict: Boolean(queued?.conflict) };
+}
+
+function synchronize(key: string): Promise<void> {
+  const existing = syncing.get(key);
+  if (existing) return existing;
+  const promise = syncKey(key).finally(() => syncing.delete(key));
+  syncing.set(key, promise);
+  return promise;
+}
+
+async function syncKey(key: string) {
+  // Bound work during continuous typing. Remaining items are picked up by periodic flush.
+  for (let i = 0; i < 10; i += 1) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    let item = await read<QueuedDraft | undefined>('draftQueue', key);
+    if (!item || item.conflict) return;
+    if (!item.mutationId || item.revision === undefined) {
+      await mutate(key, (local, queued) => {
+        if (!queued) return {};
+        const normalized = { ...queued, revision: queued.revision ?? 0, mutationId: queued.mutationId || createIdempotencyKey(`draft:${key}`) };
+        return { local: local && { ...local, revision: normalized.revision, mutationId: normalized.mutationId }, queued: normalized };
+      });
+      item = await read<QueuedDraft | undefined>('draftQueue', key);
+      if (!item) return;
+    }
+    const sending = item;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(`${serverBaseUrl}/experiment/session/${item.sessionCode}/tasks/${item.taskId}/draft`, {
+        method: 'POST', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: item.role, section: item.section, payload: item.payload, expectedRevision: item.revision ?? 0, mutationId: item.mutationId }),
+      });
+      if (!response.ok) {
+        await mutate(key, (local, queued) => {
+          if (!queued) return {};
+          const conflict = response.status === 409;
+          const lastError = conflict ? '草稿版本冲突：本地内容已保留，请勿清缓存，联系研究员处理' : `保存失败 ${response.status}`;
+          return { local: local && { ...local, conflict }, queued: { ...queued, conflict, lastError, attempts: queued.attempts + 1 } };
+        });
+        return;
+      }
+      const result = await response.json() as { revision: number };
+      if (!Number.isSafeInteger(result.revision)) throw new Error('草稿保存响应缺少版本');
+      await mutate(key, (local, queued) => {
+        // Another tab may already have advanced to a different version; never rebase it backwards.
+        if (!local || !queued || queued.revision !== (sending.revision ?? 0)) return {};
+        return {
+          local: { ...local, revision: result.revision },
+          queued: queued.mutationId === sending.mutationId ? null : { ...queued, revision: result.revision },
+        };
+      });
+      window.dispatchEvent(new CustomEvent('task-draft-synced', { detail: item }));
+    } catch (error) {
+      await mutate(key, (_local, queued) => queued ? { queued: { ...queued, attempts: queued.attempts + 1, lastError: error instanceof Error ? error.message : '保存失败' } } : {});
+      return;
+    } finally {
+      clearTimeout(timer);
+      await emitDraftSyncStatus();
+    }
+  }
+}
+
+export async function getPendingDraftCount() { return (await read<QueuedDraft[]>('draftQueue')).length; }
+
+export async function flushDraftQueue() {
+  const items = await read<QueuedDraft[]>('draftQueue');
+  for (const item of items) await synchronize(item.key);
+  return getPendingDraftCount();
+}
+
+export async function emitDraftSyncStatus(partial: Partial<DraftSyncStatus> = {}) {
+  const items = await read<QueuedDraft[]>('draftQueue').catch(() => []);
+  window.dispatchEvent(new CustomEvent<DraftSyncStatus>('draft-sync-status', { detail: {
+    pendingCount: items.length, syncing: syncing.size > 0,
+    lastError: items.find((item) => item.conflict)?.lastError, ...partial,
+  } }));
 }

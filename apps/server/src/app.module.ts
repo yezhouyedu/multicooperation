@@ -10,6 +10,7 @@ import { ExperimentService } from './experiment/experiment.service';
 import { IdempotencyService } from './idempotency/idempotency.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { RecordingModule } from './recording/recording.module';
+import { PlatformLivenessService } from './operations/platform-liveness.service';
 
 @Module({
   imports: [
@@ -24,6 +25,6 @@ import { RecordingModule } from './recording/recording.module';
     RecordingModule,
   ],
   controllers: [AppController, ExperimentController],
-  providers: [AppService, ExperimentService, IdempotencyService],
+  providers: [AppService, ExperimentService, IdempotencyService, PlatformLivenessService],
 })
 export class AppModule {}

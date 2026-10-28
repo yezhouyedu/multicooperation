@@ -1,7 +1,6 @@
 'use client';
 
-import { enqueueDraftSave, removeQueuedDraft, saveLocalDraft } from '@/lib/draft-sync';
-import { idempotencyHeaders } from '@/lib/idempotency';
+import { persistDraft } from '@/lib/draft-sync';
 import type { CompanyData } from '@/lib/session-runtime';
 import { recordTimestampEvent } from '@/lib/timestamp-events';
 import type { ReactNode } from 'react';
@@ -37,7 +36,6 @@ type Props = {
   segmentIndex?: number;
 };
 
-const serverBaseUrl = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:3001';
 const sourceOptions: Exclude<SourceOption, ''>[] = ['自有材料', 'A的任务结果', 'A的备注', 'A的材料'];
 const minInfoRows = 2;
 const maxInfoLength = 55;
@@ -230,6 +228,7 @@ export function BTaskEditor({
   }, [normalized, taskId, isDirty]);
 
   function touch() {
+    editVersionRef.current += 1;
     setIsDirty(true);
     window.dispatchEvent(new CustomEvent('workbench-draft-dirty'));
     if (!taskId) return;
@@ -288,6 +287,7 @@ export function BTaskEditor({
     };
   }
 
+  const editVersionRef = useRef(0);
   async function saveDraft(silent = false) {
     if (!sessionCode || !taskId) {
       setStatus('preview mode, not saved');
@@ -297,26 +297,20 @@ export function BTaskEditor({
     else setStatus('saving...');
 
     const payload = buildPayload();
+    const editVersion = editVersionRef.current;
     try {
-      await saveLocalDraft({ sessionCode, taskId, role: 'B', section: 'main', payload });
-      const response = await fetch(`${serverBaseUrl}/experiment/session/${sessionCode}/tasks/${taskId}/draft`, {
-        method: 'POST',
-        headers: idempotencyHeaders(`draft:${sessionCode}:${taskId}:B:main`, { 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          role: 'B',
-          section: 'main',
-          payload,
-        }),
-      });
-      if (!response.ok) throw new Error('save failed');
-      await removeQueuedDraft(sessionCode, taskId, 'B', 'main');
+      const result = await persistDraft({ sessionCode, taskId, role: 'B', section: 'main', payload });
+      if (!result.synced) {
+        setStatus(result.conflict ? '草稿版本冲突：本地内容已保留，请勿清缓存，联系研究员处理' : 'local saved, waiting to sync');
+        return;
+      }
+      if (editVersion !== editVersionRef.current) return;
       setIsDirty(false);
       setStatus(silent ? 'autosaved' : 'saved');
       window.dispatchEvent(new CustomEvent('task-draft-saved', { detail: { taskId, role: 'B', section: 'main', payload } }));
       window.dispatchEvent(new CustomEvent('workbench-draft-saved'));
     } catch (error) {
-      await enqueueDraftSave({ sessionCode, taskId, role: 'B', section: 'main', payload }, error);
-      setStatus(silent ? 'local saved, waiting to sync' : 'local saved, will sync when online');
+      setStatus('保存失败，请勿关闭页面，联系研究员处理');
     } finally {
       setIsAutosaving(false);
     }

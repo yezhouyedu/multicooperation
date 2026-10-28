@@ -183,6 +183,7 @@ model TaskAssignment {
   aDraft                   Json?
   bDraft                   Json?
   bFeedbackDraft           Json?
+  draftVersions            Json              @default("{}")
   createdAt                DateTime          @default(now())
   updatedAt                DateTime          @updatedAt
   session                  Session           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -193,6 +194,12 @@ model TaskAssignment {
   @@index([sessionId])
   @@index([sessionId, phase, sortOrder])
   @@index([sessionId, bSequenceIndex])
+}
+
+model ServerLiveness {
+  id          String   @id
+  instanceId  String
+  lastAliveAt DateTime
 }
 
 model ExperimentConfig {

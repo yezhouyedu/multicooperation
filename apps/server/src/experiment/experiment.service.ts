@@ -23,6 +23,8 @@ import {
   TaskAssignment,
 } from '@prisma/client';
 import { Observable, Subject, Subscription } from 'rxjs';
+import { checkDraftVersion, readDraftVersions } from './draft-version';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMaterialPublicUrl, normalizeMaterials } from '../admin/materials';
 import { ExperimentAuditService } from '../recording/experiment-audit.service';
@@ -172,6 +174,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ExperimentService.name);
   private integritySweepTimer?: NodeJS.Timeout;
   private nextSessionEventId = 1;
+  private readonly streamInstanceId = randomUUID();
   private readonly bCompanyReviewWindowMs = 5 * 60 * 1000;
 
   constructor(
@@ -1314,6 +1317,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       ok: true,
       taskId: task.id,
       payload: this.pickDraftPayload(task, selector),
+      revision: readDraftVersions(task.draftVersions)[`${selector.role}:${selector.section ?? 'main'}`]?.revision ?? 0,
     };
   }
 
@@ -1362,9 +1366,16 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    await this.prisma.taskAssignment.update({
-      where: { id: task.id },
-      data,
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`draft:${task.id}`}))`;
+      const latest = await tx.taskAssignment.findUniqueOrThrow({ where: { id: task.id } });
+      const versions = { ...readDraftVersions(latest.draftVersions) };
+      for (const snapshot of latestSnapshots) {
+        if (!snapshot.role || !snapshot.section) continue;
+        const key = `${snapshot.role}:${snapshot.section}`;
+        versions[key] = { revision: (versions[key]?.revision ?? 0) + 1 };
+      }
+      await tx.taskAssignment.update({ where: { id: task.id }, data: { ...data, draftVersions: versions as Prisma.InputJsonValue } });
     });
 
     const latestFreeze = latestSnapshots[0];
@@ -1401,8 +1412,16 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       role: ParticipantRole;
       section?: 'main' | 'feedback';
       payload: Prisma.InputJsonValue;
+      expectedRevision?: number;
+      mutationId?: string;
     },
   ) {
+    if (![ParticipantRole.A, ParticipantRole.B].includes(body.role)
+      || (body.section !== undefined && body.section !== 'main' && body.section !== 'feedback')
+      || (body.role === ParticipantRole.A && body.section === 'feedback')) {
+      throw new BadRequestException('草稿角色或区域无效');
+    }
+    if (body.mutationId !== undefined && (typeof body.mutationId !== 'string' || body.mutationId.length > 512)) throw new BadRequestException('草稿请求标识无效');
     const session = await this.prisma.session.findUnique({ where: { code: sessionCode } });
     if (!session) throw new NotFoundException(`Session ${sessionCode} not found`);
     await this.assertRoleCanContinue(session.id, body.role);
@@ -1430,9 +1449,12 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
       data.bDraft = body.payload;
     }
 
-    if (task.phase === ExperimentPhase.PRACTICE) {
-      await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (task.phase === ExperimentPhase.PRACTICE) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`experiment-runtime:${sessionCode}`}))`;
+      }
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`draft:${task.id}`}))`;
+      if (task.phase === ExperimentPhase.PRACTICE) {
         const latest = await tx.taskAssignment.findUniqueOrThrow({ where: { id: task.id } });
         const completed = body.role === ParticipantRole.A ? latest.aSubmittedAt : latest.bCompletedAt;
         const pairing = await tx.pairing.findFirst({ where: { sessionId: session.id } });
@@ -1441,11 +1463,13 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
         const timer = await tx.taskProgress.findFirst({ where: { sessionId: session.id, participantId, stage: 'practice_timer_started' }, orderBy: { createdAt: 'asc' } });
         const endsAt = timer ? this.practiceTimerEndsAt(timer.payload) : null;
         if (completed || (endsAt && endsAt <= new Date())) throw new BadRequestException('你的测试轮已结束，不能继续修改');
-        await tx.taskAssignment.update({ where: { id: task.id }, data });
-      });
-    } else {
-      await this.prisma.taskAssignment.update({ where: { id: task.id }, data });
-    }
+      }
+      const latest = await tx.taskAssignment.findUniqueOrThrow({ where: { id: task.id } });
+      const version = checkDraftVersion(latest.draftVersions, `${body.role}:${body.section ?? 'main'}`, body.expectedRevision, body.mutationId);
+      if (!version.duplicate) await tx.taskAssignment.update({ where: { id: task.id }, data: { ...data, draftVersions: version.versions as Prisma.InputJsonValue } });
+      return { ok: true, revision: version.revision, duplicate: version.duplicate };
+    });
+    if (result.duplicate) return result;
     await this.recordProgress({
       sessionCode,
       role: body.role,
@@ -1459,7 +1483,7 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.emitRuntimeInvalidated(sessionCode);
-    return { ok: true };
+    return result;
   }
 
   async viewAInfo(sessionCode: string, taskId: string) {
@@ -4019,18 +4043,20 @@ export class ExperimentService implements OnModuleInit, OnModuleDestroy {
   }
 
   private issueSessionEventId() {
-    const nextId = String(this.nextSessionEventId);
+    const nextId = `${this.streamInstanceId}:${this.nextSessionEventId}`;
     this.nextSessionEventId += 1;
     return nextId;
   }
 
   private getReplayEvents(sessionCode: string, lastEventId?: string) {
     if (!lastEventId) return [];
-    const lastSeen = Number(lastEventId);
+    const [instanceId, sequence] = lastEventId.split(':');
+    if (instanceId !== this.streamInstanceId) return [];
+    const lastSeen = Number(sequence);
     if (!Number.isFinite(lastSeen)) return [];
     const cached = this.sessionEventCache.get(sessionCode) ?? [];
     return cached.filter((event) => {
-      const eventId = Number(event.id);
+      const eventId = Number(event.id?.split(':')[1]);
       return Number.isFinite(eventId) && eventId > lastSeen;
     });
   }

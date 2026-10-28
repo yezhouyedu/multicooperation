@@ -4,6 +4,7 @@ import { AiLevel, ExperimentPhase, ParticipantRole, Prisma } from '@prisma/clien
 import { PrismaService } from '../prisma/prisma.service';
 import { ExperimentAuditService } from '../recording/experiment-audit.service';
 import { StorageService } from '../recording/storage.service';
+import { ProviderRequestError, withProviderDeadline } from './provider-request';
 
 type ChatInput = {
   sessionCode: string;
@@ -124,188 +125,96 @@ export class AiService {
     throw new BadRequestException('历史图片文件不可用');
   }
 
-  async chat(input: ChatInput) {
-    const ctx = await this.resolveChatContext(input);
-    const startedAt = Date.now();
-    await this.persistUserMessage(ctx);
-    await this.recordAiWaitStarted(ctx);
-
-    if (!ctx.endpoint || !ctx.apiKey) {
-      const reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
-      const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
-        latencyMs: Date.now() - startedAt,
-        providerStatus: 'mock',
-      });
-      await this.recordAiEvent(ctx, Date.now() - startedAt, 'mock');
-      return {
-        ok: true,
-        mode: 'mock',
-        messageId: assistantMessage.id,
-        createdAt: assistantMessage.createdAt.toISOString(),
-        reply,
-      };
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(ctx.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${ctx.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: ctx.model,
-          messages: [{ role: 'system', content: ctx.systemPrompt }, ...ctx.historyMessages, ctx.userMessage],
-          temperature: 0.65,
-        }),
-      });
-    } catch (error) {
-      const latencyMs = Date.now() - startedAt;
-      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型接口调用失败', {
-        latencyMs,
-        providerStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      await this.recordAiEvent(ctx, latencyMs, 'error', error instanceof Error ? error.message : String(error));
-      throw error;
-    }
-
-    const raw = await response.text();
-    let data: any = null;
-    try {
-      data = raw ? JSON.parse(raw) : null;
-    } catch {
-      if (!response.ok) {
-        throw new BadRequestException(raw || '上游模型接口返回了非 JSON 错误');
-      }
-    }
-
-    if (!response.ok) {
-      const latencyMs = Date.now() - startedAt;
-      const errorMessage = data?.error?.message || data?.message || raw || '上游模型接口调用失败';
-      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型接口调用失败', {
-        latencyMs,
-        providerStatus: 'error',
-        errorMessage,
-      });
-      await this.recordAiEvent(ctx, latencyMs, 'error', errorMessage);
-      throw new BadRequestException(data?.error?.message || data?.message || raw || '上游模型接口调用失败');
-    }
-
-    const reply = this.extractReply(data) || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
-    const latencyMs = Date.now() - startedAt;
-    const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
-      latencyMs,
-      providerStatus: 'provider',
-    });
-    await this.recordAiEvent(ctx, latencyMs, 'provider');
-    return {
-      ok: true,
-      mode: 'provider',
-      providerConfigured: true,
-      messageId: assistantMessage.id,
-      createdAt: assistantMessage.createdAt.toISOString(),
-      reply,
-    };
+  async chat(input: ChatInput, signal?: AbortSignal) {
+    return this.executeChat(input, undefined, signal);
   }
 
-  async chatStream(input: ChatInput, callbacks: StreamCallbacks = {}) {
+  async chatStream(input: ChatInput, callbacks: StreamCallbacks = {}, signal?: AbortSignal) {
+    await this.executeChat(input, callbacks, signal);
+  }
+
+  private async executeChat(input: ChatInput, callbacks?: StreamCallbacks, external?: AbortSignal) {
     const ctx = await this.resolveChatContext(input);
     const startedAt = Date.now();
     await this.persistUserMessage(ctx);
     await this.recordAiWaitStarted(ctx);
-    callbacks.onStart?.({ requestId: ctx.requestId });
-
-    if (!ctx.endpoint || !ctx.apiKey) {
-      const reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
-      callbacks.onDelta?.(reply);
-      const latencyMs = Date.now() - startedAt;
-      const assistantMessage = await this.persistAssistantMessage(ctx, reply, {
-        latencyMs,
-        providerStatus: 'mock',
-      });
-      await this.recordAiEvent(ctx, latencyMs, 'mock');
-      callbacks.onDone?.({
-        messageId: assistantMessage.id,
-        createdAt: assistantMessage.createdAt.toISOString(),
-        reply,
-        mode: 'mock',
-      });
-      return;
-    }
-
-    const response = await fetch(ctx.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${ctx.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: ctx.model,
-        stream: true,
-        messages: [{ role: 'system', content: ctx.systemPrompt }, ...ctx.historyMessages, ctx.userMessage],
-        temperature: 0.65,
-      }),
-    });
-
-    if (!response.ok || !response.body) {
-      const raw = await response.text();
-      const latencyMs = Date.now() - startedAt;
-      await this.persistAssistantMessage(ctx, '## 请求失败\n- 上游模型流式接口调用失败', {
-        latencyMs,
-        providerStatus: 'error',
-        errorMessage: raw || '上游模型流式接口调用失败',
-      });
-      await this.recordAiEvent(ctx, latencyMs, 'error', raw || '上游模型流式接口调用失败');
-      throw new BadRequestException(raw || '上游模型流式接口调用失败');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
+    callbacks?.onStart?.({ requestId: ctx.requestId });
     let reply = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const rawLine of lines) {
-        const line = rawLine.trim();
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === '[DONE]') continue;
-
-        let parsed: any = null;
-        try {
-          parsed = JSON.parse(payload);
-        } catch {
-          continue;
-        }
-
-        const delta = this.extractDelta(parsed);
-        if (!delta) continue;
-        reply += delta;
-        callbacks.onDelta?.(delta);
+    try {
+      if (external?.aborted) throw new ProviderRequestError('cancelled');
+      const mode = !ctx.endpoint || !ctx.apiKey ? 'mock' : 'provider';
+      if (mode === 'mock') {
+        reply = '## 当前状态\n- 当前未检测到模型配置\n- 系统仍处于 mock 模式\n- 你可以继续测试界面与交互链路';
+        callbacks?.onDelta?.(reply);
+      } else {
+        const configured = Number(this.configService.get('AI_REQUEST_TIMEOUT_MS'));
+        const timeoutMs = Number.isFinite(configured) && configured >= 10000 && configured <= 600000 ? configured : 180000;
+        reply = await withProviderDeadline(external, timeoutMs, async (signal) => {
+          const response = await fetch(ctx.endpoint!, {
+            method: 'POST', signal,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
+            body: JSON.stringify({
+              model: ctx.model, ...(callbacks ? { stream: true } : {}),
+              messages: [{ role: 'system', content: ctx.systemPrompt }, ...ctx.historyMessages, ctx.userMessage],
+              temperature: 0.65,
+            }),
+          });
+          if (!response.ok) {
+            await response.body?.cancel().catch(() => undefined);
+            throw new BadRequestException(`上游模型请求失败（HTTP ${response.status}），请稍后重试`);
+          }
+          if (!callbacks) {
+            const data = await response.json();
+            signal.throwIfAborted();
+            return this.extractReply(data) || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
+          }
+          if (!response.body) throw new BadRequestException('上游模型未返回响应流');
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+          let finished = false;
+          const consume = (line: string) => {
+            if (!line.trim().startsWith('data:')) return;
+            const payload = line.trim().slice(5).trim();
+            if (payload === '[DONE]') { finished = true; return; }
+            let data: unknown;
+            try { data = JSON.parse(payload); } catch { return; }
+            const delta = this.extractDelta(data);
+            if (delta) { reply += delta; callbacks.onDelta?.(delta); }
+          };
+          try {
+            while (!finished) {
+              const chunk = await reader.read();
+              signal.throwIfAborted();
+              if (chunk.done) { buffer += decoder.decode(); break; }
+              buffer += decoder.decode(chunk.value, { stream: true });
+              const lines = buffer.split('\n');
+              buffer = lines.pop() ?? '';
+              for (const line of lines) { consume(line); if (finished) break; }
+            }
+            if (!finished && buffer.trim()) consume(buffer);
+            signal.throwIfAborted();
+            return reply.trim() || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
+          } finally {
+            await reader.cancel().catch(() => undefined);
+            reader.releaseLock();
+          }
+        });
       }
+      if (external?.aborted) throw new ProviderRequestError('cancelled');
+      const latencyMs = Date.now() - startedAt;
+      const message = await this.persistAssistantMessage(ctx, reply, { latencyMs, providerStatus: mode });
+      await this.recordAiEvent(ctx, latencyMs, mode);
+      callbacks?.onDone?.({ messageId: message.id, createdAt: message.createdAt.toISOString(), reply, mode });
+      return { ok: true, mode, providerConfigured: mode === 'provider', messageId: message.id, createdAt: message.createdAt.toISOString(), reply };
+    } catch (error) {
+      const status = error instanceof ProviderRequestError ? error.status : 'error';
+      const errorMessage = error instanceof Error ? error.message : 'AI请求失败';
+      const latencyMs = Date.now() - startedAt;
+      await this.persistAssistantMessage(ctx, reply || '## 请求失败\n- ' + errorMessage, { latencyMs, providerStatus: status, errorMessage });
+      await this.recordAiEvent(ctx, latencyMs, status, errorMessage);
+      throw error;
     }
-
-    const finalReply = reply.trim() || '## 结果\n- 模型没有返回可显示内容\n- 请稍后重试';
-    const latencyMs = Date.now() - startedAt;
-    const assistantMessage = await this.persistAssistantMessage(ctx, finalReply, {
-      latencyMs,
-      providerStatus: 'provider',
-    });
-    await this.recordAiEvent(ctx, latencyMs, 'provider');
-    callbacks.onDone?.({
-      messageId: assistantMessage.id,
-      createdAt: assistantMessage.createdAt.toISOString(),
-      reply: finalReply,
-      mode: 'provider',
-    });
   }
 
   private async resolveChatContext(input: ChatInput): Promise<ResolvedChatContext> {

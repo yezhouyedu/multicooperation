@@ -140,4 +140,6 @@ corepack pnpm --filter server build
 
 ## 9. 一句话说明
 
+2026-10-28本地补丁（尚未部署）：草稿GET/POST增加revision/expectedRevision/mutationId，在任务锁内防旧保存覆盖；AI总时限环境变量`AI_REQUEST_TIMEOUT_MS`默认180000、允许10000–600000，覆盖body读取并支持客户端取消；`ServerLiveness`持久探针及平台中断事件用于恢复审计，不改变实验时钟。生产迁移与真实数据库验收待完成，见`../../02_specs/06_resilience/RESILIENCE_20261028.md`。
+
 这个服务本质上是实验调度引擎 + 数据采集层 + 服务器导出层 + admin 后台服务，不只是一个普通 API 壳子。

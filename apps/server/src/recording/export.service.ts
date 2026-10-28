@@ -269,7 +269,7 @@ export class ExportService {
     const partner =
       participants.find((item) => item.id !== participant.id) ?? null;
     const participantEvents = session.experimentEvents.filter(
-      (event) => event.participantId === participant.id,
+      (event) => event.participantId === participant.id || event.eventType === 'platform_service_interruption',
     );
     const legacyEvents = session.progresses
       .filter((progress) => progress.participantId === participant.id)
@@ -2858,6 +2858,7 @@ export class ExportService {
     participantId: string,
   ) {
     const flags: string[] = [];
+    if (session.experimentEvents.some((event) => event.eventType === 'platform_service_interruption')) flags.push('platform_interruption_requires_review');
     if (session.status !== 'COMPLETED') flags.push('session_not_completed');
     const practice = session.questionnaireAnswers.some(
       (row) =>
@@ -2881,12 +2882,15 @@ export class ExportService {
     const offscreen = states.some((state) => state.hasOffscreenViolation);
     const connectionLoss = states.some((state) => state.hasConnectionLoss);
     const dropout = states.some((state) => state.hasFormalDropout);
+    const platformInterruption = session.experimentEvents.some((event) => event.eventType === 'platform_service_interruption');
     return {
       hasAnyParticipantInvalidInactivity: invalid,
       hasAnyParticipantOffscreenViolation: offscreen,
       hasAnyParticipantConnectionLoss: connectionLoss,
       hasAnyParticipantFormalDropout: dropout,
-      sessionDataUsable: !(invalid || offscreen || dropout),
+      hasPlatformInterruption: platformInterruption,
+      requiresPlatformReview: platformInterruption,
+      sessionDataUsable: !(invalid || offscreen || dropout || platformInterruption),
     };
   }
 
@@ -2901,7 +2905,7 @@ export class ExportService {
     const snapshot = this.parseObject(session.experimentSnapshot);
     const events = session.experimentEvents.filter(
       (event) =>
-        event.participantId === participantId &&
+        event.eventType === 'platform_service_interruption' || event.participantId === participantId &&
         (event.eventType.startsWith('idle_prompt_') ||
           event.eventType.startsWith('clipboard_') ||
           event.eventType.includes('dropout') ||
