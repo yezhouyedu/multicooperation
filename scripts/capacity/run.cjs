@@ -3,6 +3,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { output, adminToken, remoteNode, write } = require('./lib.cjs');
+const { setupAi } = require('./ai-load.cjs');
 const users = Number(process.argv[2] || 10);
 const mode = process.argv[3] || 'pilot';
 if (![10, 30, 60].includes(users) || !['pilot', 'full'].includes(mode)) throw Error('Usage: run.cjs 10|30|60 pilot|full');
@@ -13,20 +14,31 @@ const stopFile = path.join(output, `${tag}.stop`);
 let stop = false; let token; let originalRun; let run; let monitor;
 const actors = []; const controllers = new Set(); const timings = {}; const errors = []; const milestones = [];
 let firstFormalAt = null; let global5xx = [];
+let aiLoad;
 const stats = { tag, users, mode, startedAt: new Date().toISOString(), requests: 0, bytes: 0, sseConnections: 0, sseReconnects: 0, sseRuntimeEvents: 0, materialDownloads: 0, draftSaves: 0, sideAnswers: 0, feedbacks: 0, questionnaires: 0, realAiRequests: 0 };
 function log(type, data = {}) { const item = { at: new Date().toISOString(), type, ...data }; milestones.push(item); console.log(JSON.stringify(item)); }
 function guard() { if (fs.existsSync(stopFile)) { stop = true; throw Error(fs.readFileSync(stopFile, 'utf8')); } if (stop) throw Error('test stopped'); }
 function sample(label, ms, status) { (timings[label] ??= []).push(ms); stats.requests++; if (status >= 500) { global5xx.push(Date.now()); global5xx = global5xx.filter((t) => t > Date.now() - 30000); if (global5xx.length >= 3) fs.writeFileSync(stopFile, 'Three unexpected 5xx responses within 30 seconds'); } }
 async function request(route, body, label = route.replace(/session\/[^/]+/g, 'session/:code').replace(/tasks\/[^/]+/g, 'tasks/:task').replace(/sidetask\/[^/]+/g, 'sidetask/:plan'), admin = false, timeout = 45000) {
-  guard(); const started = Date.now();
-  const controller = new AbortController(); controllers.add(controller); const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    const res = await fetch(base + route, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...(admin ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined || route.endsWith('/draft') || route.endsWith('/heartbeat') || route.endsWith('/exposure') ? {} : { 'Idempotency-Key': randomUUID() }) }, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal });
-    const text = await res.text(); stats.bytes += Buffer.byteLength(text); sample(label.split('?')[0], Date.now() - started, res.status);
-    if (!res.ok) throw Object.assign(Error(`HTTP ${res.status} ${label}: ${text.slice(0, 180)}`), { status: res.status });
-    return JSON.parse(text);
-  } catch (error) { errors.push({ at: new Date().toISOString(), label, status: error.status ?? 'network', message: error.message.slice(0, 300) }); throw error; }
-  finally { clearTimeout(timer); controllers.delete(controller); }
+  guard();
+  const headers = { 'Content-Type': 'application/json', ...(admin ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined || route.endsWith('/draft') || route.endsWith('/heartbeat') || route.endsWith('/exposure') ? {} : { 'Idempotency-Key': randomUUID() }) };
+  const attempts = label === 'admin:create-run' ? 1 : 3;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    guard(); const started = Date.now();
+    const controller = new AbortController(); controllers.add(controller); const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(base + route, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal });
+      const text = await res.text(); stats.bytes += Buffer.byteLength(text); sample(label.split('?')[0], Date.now() - started, res.status);
+      if (!res.ok) throw Object.assign(Error(`HTTP ${res.status} ${label}: ${text.slice(0, 180)}`), { status: res.status });
+      if (attempt > 1) log('request_recovered', { label, attempt });
+      return JSON.parse(text);
+    } catch (error) {
+      if (!error.status) sample(label.split('?')[0], Date.now() - started, 'network');
+      errors.push({ at: new Date().toISOString(), label, status: error.status ?? 'network', attempt, message: error.message.slice(0, 300), cause: error.cause?.code ?? error.cause?.message });
+      if (error.status || stop || attempt === attempts) throw error;
+      await sleep(attempt * 500);
+    } finally { clearTimeout(timer); controllers.delete(controller); }
+  }
 }
 async function refresh(actor) {
   const data = await request(`/experiment/session/${actor.sessionCode}/runtime?participantId=${actor.participantId}`, undefined, 'runtime');
@@ -78,11 +90,18 @@ async function save(actor, section = 'main') {
   actor.lastDraft = { taskId: task.id, section, payload, revision: result.revision };
 }
 async function materials(actor) {
-  const list = actor.runtime.currentTask?.company?.materials ?? [];
+  const list = (actor.runtime.currentTask?.company?.materials ?? []).filter((item) => {
+    const role = item.metadata?.participantRole;
+    return role == null || role === 'shared' || role === actor.role || (actor.role === 'B' && role === 'A' && actor.runtime.phase !== 'practice' && actor.runtime.bHasViewedAMaterials);
+  });
   const material = list.find((item) => item.url && !actor.materials.has(item.id)); if (!material) return;
   actor.materials.add(material.id); const started = Date.now();
   let url = material.url.startsWith('http') ? material.url : 'https://aiseek.tech' + (material.url.startsWith('/api/') ? material.url : '/api' + material.url);
-  const response = await fetch(url, { signal: AbortSignal.timeout(60000) }); const bytes = await response.arrayBuffer();
+  let response; let bytes;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { response = await fetch(url, { signal: AbortSignal.timeout(60000) }); bytes = await response.arrayBuffer(); break; }
+    catch (error) { const detail = { at: new Date().toISOString(), label: 'material:download', actor: actor.index, url, attempt, message: error.message, cause: error.cause?.code ?? error.cause?.message }; errors.push(detail); if (attempt === 3) throw Error(JSON.stringify(detail)); await sleep(attempt * 500); }
+  }
   sample('material:download', Date.now() - started, response.status);
   if (!response.ok || bytes.byteLength === 0) throw Error(`Material download HTTP ${response.status}`);
   stats.materialDownloads++; stats.bytes += bytes.byteLength;
@@ -131,12 +150,13 @@ async function act(actor) {
     } else if (runtime.phase === 'formal_work') {
       if (!formalEntered) { formalEntered = true; actor.firstFormalAt = Date.now(); if (!firstFormalAt) firstFormalAt = Date.now(); }
       actor.formalSegments.add(runtime.segmentIndex);
+      aiLoad?.maybeStart(actor);
       if (runtime.onlineIntegrity?.outcome === 'SELF_DROPPED' || runtime.onlineIntegrity?.outcome === 'STOP_AFTER_A_DROPOUT') throw Error('Unexpected participant dropout during steady load');
       if (Date.now() > actor.nextSave && runtime.currentTask) { await save(actor); actor.nextSave = Date.now() + 10000 + actor.index % 5 * 1000; }
       if (Date.now() > actor.nextMaterial) { await materials(actor); actor.nextMaterial = Date.now() + 20000; }
       for (const item of runtime.sideTaskQueue ?? []) if (!actor.released.has(item.planId)) { await request(prefix + `/sidetask/${item.planId}/exposure`, { participantId: actor.participantId, eventType: 'side_task_released' }, 'side:released'); actor.released.add(item.planId); }
       const pending = (runtime.sideTaskQueue ?? []).find((item) => !item.answered && !actor.answered.has(item.planId));
-      if (pending && Date.now() > actor.nextSide) {
+      if (pending && Date.now() > actor.nextSide && runtime.segmentRemainingSeconds > 20) {
         await timestamp(actor, 'side_area_entered', {}, { sideTaskPlanId: pending.planId });
         await request(prefix + `/sidetask/${pending.planId}/exposure`, { participantId: actor.participantId, eventType: 'side_task_opened' }, 'side:opened');
         await sleep(8000 + actor.index % 4 * 1000);
@@ -144,7 +164,7 @@ async function act(actor) {
         await timestamp(actor, 'side_activity', { activityKind: 'answer' }, { sideTaskPlanId: pending.planId });
         await timestamp(actor, 'main_area_returned'); actor.answered.add(pending.planId); actor.nextSide = Date.now() + 35000 + actor.index % 5 * 1000; stats.sideAnswers++;
       }
-      if (actor.role === 'B' && runtime.bCanSubmit && runtime.currentTask && !actor.completedTasks.has(runtime.currentTask.id)) {
+      if (actor.role === 'B' && runtime.bCanSubmit && runtime.segmentRemainingSeconds > 15 && runtime.currentTask && !actor.completedTasks.has(runtime.currentTask.id)) {
         const taskId = runtime.currentTask.id;
         if (actor.index % 3 !== 0) { await request(prefix + `/tasks/${taskId}/view-a-info`, {}, 'b:view-a-info'); await request(prefix + `/tasks/${taskId}/view-a-materials`, {}, 'b:view-a-materials'); }
         await save(actor, 'feedback');
@@ -176,6 +196,7 @@ function summary() {
 }
 async function main() {
   token = await adminToken();
+  if (process.env.CAPACITY_REAL_AI === 'CNY50_APPROVED') aiLoad = setupAi(tag, users);
   const initial = remoteNode(`const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const c=await p.experimentConfig.findUnique({where:{id:'default'}}); const q=await p.questionnaireTemplate.findUnique({where:{id:c.practiceQuizTemplateId}});console.log(JSON.stringify({run:c.activeExperimentRunId,quiz:q.items,onlineIntegrityEnabled:c.onlineIntegrityEnabled}));await p.$disconnect()})()`);
   originalRun = initial.run;
   run = (await request('/admin/experiment-runs', { name: `CAPACITY_${tag}` }, 'admin:create-run', true)).run;
@@ -199,11 +220,12 @@ async function main() {
   });
   try { await Promise.all(actors.map((actor) => act(actor))); }
   finally { clearInterval(ticker); }
+  if (aiLoad) { stats.ai = await aiLoad.finish(); stats.realAiRequests = stats.ai.requested; if (stats.ai.errors.length) throw Error('Real AI workload had errors; inspect AI report'); }
   if (mode === 'pilot') for (const actor of actors.filter((a) => a.role === 'A')) await request(`/experiment/session/${actor.sessionCode}/integrity/quit`, { participantId: actor.participantId, reason: 'capacity_pilot_completed' }, 'pilot:controlled-quit');
   log('completed', { users, mode, requests: stats.requests, errors: errors.length });
 }
 process.on('SIGINT', () => { stop = true; for (const controller of controllers) controller.abort(); });
-main().catch((error) => { stats.failure = error.message; console.error('CAPACITY FAILED', error.message); process.exitCode = 1; }).finally(async () => {
+main().catch((error) => { stats.failure = error.message; stats.failureCause = error.cause?.code ?? error.cause?.message; console.error('CAPACITY FAILED', error.message, stats.failureCause ?? ''); process.exitCode = 1; }).finally(async () => {
   stop = true; for (const controller of controllers) controller.abort();
   fs.writeFileSync(path.join(output, `${tag}.done`), new Date().toISOString());
   if (originalRun && token) {

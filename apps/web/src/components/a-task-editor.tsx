@@ -183,6 +183,7 @@ export function ATaskEditor({
   }
 
   const editVersionRef = useRef(0);
+  const latestSaveRef = useRef<{ json: string; version: number } | null>(null);
   async function saveDraft(silent = false) {
     if (!sessionCode || !taskId) {
       setStatus('preview mode, not saved');
@@ -193,6 +194,7 @@ export function ATaskEditor({
 
     const payload = buildPayload();
     const editVersion = editVersionRef.current;
+    latestSaveRef.current = { json: JSON.stringify(payload), version: editVersion };
     try {
       const result = await persistDraft({ sessionCode, taskId, role: 'A', section: 'main', payload });
       if (!result.synced) {
@@ -215,6 +217,21 @@ export function ATaskEditor({
     const handler = () => void saveDraft();
     window.addEventListener('workbench-save-draft', handler);
     return () => window.removeEventListener('workbench-save-draft', handler);
+  });
+
+  useEffect(() => {
+    const synced = (event: Event) => {
+      const item = (event as CustomEvent<{ sessionCode: string; taskId: string; role: string; section: string; payload: unknown }>).detail;
+      if (!item || item.sessionCode !== sessionCode || item.taskId !== taskId || item.role !== 'A' || item.section !== 'main') return;
+      if (latestSaveRef.current?.version !== editVersionRef.current || latestSaveRef.current.json !== JSON.stringify(item.payload)) return;
+      if (JSON.stringify(item.payload) !== JSON.stringify(buildPayload())) return;
+      window.dispatchEvent(new CustomEvent('task-draft-saved', { detail: item }));
+      setIsDirty(false);
+      setStatus('autosaved');
+      window.dispatchEvent(new CustomEvent('workbench-draft-saved'));
+    };
+    window.addEventListener('task-draft-synced', synced);
+    return () => window.removeEventListener('task-draft-synced', synced);
   });
 
   useEffect(() => {
