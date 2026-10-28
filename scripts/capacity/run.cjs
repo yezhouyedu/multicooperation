@@ -82,8 +82,8 @@ async function save(actor, section = 'main') {
     actor.revisions.set(key, draft.revision ?? 0);
   }
   const value = `容量测试 ${tag} 第${++actor.edits}次填写；材料整理和判断，非真实被试数据。`;
-  const payload = section === 'feedback' ? { q1: '是', q2: '是', q3: value.slice(0, 55), q4: '建议补充来源说明', q5: '建议保留核验线索' } : actor.role === 'A' ? {
-    metrics: { indicator: '材料中的经营指标', content: '120' }, materialClues: Array.from({ length: 6 }, (_, i) => ({ materialName: `材料${i + 1}`, opportunityStatus: 'HAS', opportunityEvidence: value.slice(0, 55), riskStatus: 'HAS', riskEvidence: '存在需要核对的不确定信息' })), noteTypes: ['信息整理'], handoffMemo: value.slice(0, 150),
+  const payload = section === 'feedback' ? { q1: actor.index % 2 ? '是' : '否', q2: '是', q3: '比较有帮助', q4: '不确定', q5: '证据来源更清楚' } : actor.role === 'A' ? {
+    metrics: { indicator: '材料中的经营指标', content: '120' }, materialClues: Array.from({ length: 6 }, (_, i) => ({ materialName: `材料${i + 1}`, opportunityStatus: 'HAS', opportunityEvidence: value.slice(0, 30), riskStatus: 'HAS', riskEvidence: '存在需要核对的不确定信息' })), noteTypes: ['核验建议'], handoffMemo: value.slice(0, 150),
   } : { opportunities: [{ text: value.slice(0, 55), source: '自有材料' }, { text: '测试：业务规模存在增长线索', source: '自有材料' }], risks: [{ text: '测试：核对后再判断', source: '自有材料' }, { text: '测试：材料信息存在不确定性', source: '自有材料' }], overallAssessment: value.slice(0, 150), finalDecision: '不投资', confidence: 4, noObviousOpportunity: false, noObviousRisk: false, ordinaryOpportunityCount: 2, ordinaryRiskCount: 2 };
   const result = await request(`/experiment/session/${actor.sessionCode}/tasks/${task.id}/draft`, { role: actor.role, section, payload, expectedRevision: actor.revisions.get(key), mutationId: randomUUID() }, 'draft:save');
   actor.revisions.set(key, result.revision); stats.draftSaves++;
@@ -108,7 +108,7 @@ async function materials(actor) {
 }
 function answers(template) {
   const items = template.items ?? (template.sections ?? []).flatMap((section) => section.items);
-  return Object.fromEntries(items.map((item) => [item.code || item.id, item.type === 'text' ? '系统容量测试，非真实被试意见' : item.type === 'number' ? Math.max(item.min ?? 0, 25) : item.type === 'scale' ? Math.ceil(((item.min ?? 1) + (item.max ?? 7)) / 2) : item.type === 'multi' ? [item.options[0]] : item.options?.at(-1) ?? '测试答案']));
+  return Object.fromEntries(items.map((item) => [item.code || item.id, item.type === 'text' ? '系统容量测试，非真实被试意见' : item.type === 'number' ? Math.min(item.max ?? 25, Math.max(item.min ?? 0, 25)) : item.type === 'scale' ? Math.ceil(((item.min ?? 1) + (item.max ?? 7)) / 2) : item.type === 'multi' ? [item.options[0]] : item.options?.at(-1) ?? '测试答案']));
 }
 async function heartbeats(actor) {
   while (!stop && !actor.done) {
@@ -155,6 +155,11 @@ async function act(actor) {
       if (Date.now() > actor.nextSave && runtime.currentTask) { await save(actor); actor.nextSave = Date.now() + 10000 + actor.index % 5 * 1000; }
       if (Date.now() > actor.nextMaterial) { await materials(actor); actor.nextMaterial = Date.now() + 20000; }
       for (const item of runtime.sideTaskQueue ?? []) if (!actor.released.has(item.planId)) { await request(prefix + `/sidetask/${item.planId}/exposure`, { participantId: actor.participantId, eventType: 'side_task_released' }, 'side:released'); actor.released.add(item.planId); }
+      const pulse = runtime.sideTaskConfig?.notificationPulse;
+      if (pulse && !actor.pulses.has(pulse.id)) {
+        actor.pulses.add(pulse.id);
+        for (const planId of pulse.planIds) await request(prefix + `/sidetask/${planId}/exposure`, { participantId: actor.participantId, eventType: 'side_task_notified', payload: { pulseId: pulse.id, reason: pulse.reason, newCount: pulse.newCount, windowStart: pulse.windowStart, windowEnd: pulse.windowEnd, displayed: true } }, 'side:notified');
+      }
       const pending = (runtime.sideTaskQueue ?? []).find((item) => !item.answered && !actor.answered.has(item.planId));
       if (pending && Date.now() > actor.nextSide && runtime.segmentRemainingSeconds > 20) {
         await timestamp(actor, 'side_area_entered', {}, { sideTaskPlanId: pending.planId });
@@ -166,11 +171,18 @@ async function act(actor) {
       }
       if (actor.role === 'B' && runtime.bCanSubmit && runtime.segmentRemainingSeconds > 15 && runtime.currentTask && !actor.completedTasks.has(runtime.currentTask.id)) {
         const taskId = runtime.currentTask.id;
-        if (actor.index % 3 !== 0) { await request(prefix + `/tasks/${taskId}/view-a-info`, {}, 'b:view-a-info'); await request(prefix + `/tasks/${taskId}/view-a-materials`, {}, 'b:view-a-materials'); }
+        if (actor.index % 3 !== 0) {
+          await request(prefix + `/tasks/${taskId}/view-a-info`, {}, 'b:view-a-info');
+          await request(prefix + `/tasks/${taskId}/view-a-materials`, {}, 'b:view-a-materials');
+          const exposureId = randomUUID(); const context = { taskAssignmentId: taskId, companyId: runtime.currentTask.company.id };
+          await timestamp(actor, 'b_a_original_material_view_started', { exposureId }, context);
+          await refresh(actor); await materials(actor); await sleep(6000 + actor.index % 3 * 1000);
+          await timestamp(actor, 'b_a_original_material_view_ended', { exposureId, endReason: 'view_state_changed' }, context);
+        }
         await save(actor, 'feedback');
         await sleep(5000 + actor.index % 3 * 1000);
-        await progress(actor, 'b_feedback_submitted', { taskId, q1: actor.index % 2 ? '是' : '否', sendFeedback: actor.index % 2 === 1 });
-        if (actor.index % 2) { await progress(actor, 'b_feedback_to_a', { taskId, helpfulness: '测试：材料有帮助', missingContent: '测试：补充来源', improvement: '测试：保留核验线索' }); stats.feedbacks++; }
+        await progress(actor, 'b_feedback_submitted', { taskId, companyName: runtime.currentTask.company?.name, companyNo: runtime.currentTask.sortOrder, ...actor.lastDraft.payload });
+        if (actor.index % 2) { await progress(actor, 'b_feedback_to_a', { taskId, companyName: runtime.currentTask.company?.name, companyNo: runtime.currentTask.sortOrder, helpfulness: '比较有帮助', missingContent: '不确定', improvement: '证据来源更清楚', appreciative: true }); stats.feedbacks++; }
         await request(prefix + `/tasks/${taskId}/b-complete`, {}, 'b:complete'); actor.completedTasks.add(taskId); await refresh(actor);
       }
       if (mode === 'pilot' && Date.now() - actor.firstFormalAt > 360000) { actor.done = true; }
@@ -207,7 +219,7 @@ async function main() {
   monitor = spawn(process.execPath, [path.join(__dirname, 'monitor.cjs'), tag], { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });
   const logins = await Promise.all(phones.map((phone) => request('/auth/login', { phone }, 'login')));
   for (let index = 0; index < logins.length; index++) {
-    const actor = { ...logins[index], index, role: logins[index].role, quizAnswers: Object.fromEntries(initial.quiz.map((item) => [item.id, item.correctOption])), revisions: new Map(), materials: new Set(), released: new Set(), answered: new Set(), instructions: new Set(), formalSegments: new Set(), completedTasks: new Set(), edits: 0, surveys: 0, nextSave: 0, nextMaterial: 0, nextSide: 0, nextHeartbeat: 0, done: false };
+    const actor = { ...logins[index], index, role: logins[index].role, quizAnswers: Object.fromEntries(initial.quiz.map((item) => [item.id, item.correctOption])), revisions: new Map(), materials: new Set(), released: new Set(), pulses: new Set(), answered: new Set(), instructions: new Set(), formalSegments: new Set(), completedTasks: new Set(), edits: 0, surveys: 0, nextSave: 0, nextMaterial: 0, nextSide: 0, nextHeartbeat: 0, done: false };
     actors.push(actor); await refresh(actor);
   }
   const codes = new Set(actors.map((a) => a.sessionCode)); if (codes.size !== users / 2) throw Error(`Expected ${users / 2} pairs, got ${codes.size}`);

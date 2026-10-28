@@ -1,6 +1,6 @@
 # 2026-06-17 Resilience Implementation
 
-> Historical release record. Current 2026-10-28 local-only additions and pending database/production acceptance are documented in `RESILIENCE_20261028.md`; this file does not prove 60-user capacity.
+> Historical release record. Current 2026-10-28 additions, database/recovery verification, production release and capacity acceptance are documented in `RESILIENCE_20261028.md`; this historical file does not prove 60-user capacity.
 
 本文件记录本轮“Admin 强认证 + 稳健性 P0/P1 主干”的实际落地范围。
 

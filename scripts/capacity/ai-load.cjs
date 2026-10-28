@@ -26,29 +26,30 @@ function setupAi(tag, users) {
     ledger.reservedCny = Math.round((ledger.reservedCny + reserve) * 100) / 100;
     ledger.requests.push({ tag, participantId: actor.participantId, level, reserveCny: reserve, at: new Date().toISOString() });
     fs.writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
-    const side = actor.index % 2 === 0;
-    const body = { sessionCode: actor.sessionCode, participantId: actor.participantId, role: actor.role, contextType: side ? 'side' : 'main', phase: 'formal', segmentIndex: runtime.segmentIndex, aiLevel: level, companyId: runtime.currentTask.companyId, taskAssignmentId: runtime.currentTask.id, ...(side && runtime.sideTaskQueue?.[0] ? { sideTaskPlanId: runtime.sideTaskQueue[0].planId } : {}), message: level === 'ADVANCED' ? '这是容量测试截图。请说明截图左侧区域的标题，并用一句话提醒核对证据，合计不超过60个汉字。' : '容量测试：材料称某公司营收增长，但未提供来源。请用三点说明如何核对证据，合计不超过80个汉字。', ...(level === 'ADVANCED' && image ? { attachments: [image] } : {}) };
+    const side = metrics.requested % 2 === 0;
+    const body = { sessionCode: actor.sessionCode, participantId: actor.participantId, role: actor.role, contextType: side ? 'side' : 'main', phase: 'formal', segmentIndex: runtime.segmentIndex, aiLevel: level, companyId: runtime.currentTask.company.id, taskAssignmentId: runtime.currentTask.id, ...(side && runtime.sideTaskQueue?.[0] ? { sideTaskPlanId: runtime.sideTaskQueue[0].planId } : {}), message: level === 'ADVANCED' ? '这是容量测试截图。请说明截图左侧区域的标题，并用一句话提醒核对证据，合计不超过60个汉字。' : '容量测试：材料称某公司营收增长，但未提供来源。请用三点说明如何核对证据，合计不超过80个汉字。', ...(level === 'ADVANCED' && image ? { attachments: [image] } : {}) };
     metrics.requested++; metrics.active++; metrics.maxConcurrent = Math.max(metrics.maxConcurrent, metrics.active);
     const job = (async () => {
-      const started = Date.now(); let firstTokenMs = null; let deltas = 0; let done = false; let requestId;
+      const started = Date.now(); let firstTokenMs = null; let firstFrameMs = null; let lastDeltaMs = null; let chunks = 0; let deltas = 0; let done = false; let requestId;
       try {
         const response = await fetch('https://aiseek.tech/api/ai/chat-stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(190000) });
         if (!response.ok || !response.body) throw Error('AI HTTP ' + response.status);
         const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
         for (;;) {
           const chunk = await reader.read(); if (chunk.done) break;
-          buffer += decoder.decode(chunk.value, { stream: true }); let index;
+          chunks++; buffer += decoder.decode(chunk.value, { stream: true }); let index;
           while ((index = buffer.indexOf('\n')) >= 0) {
             const line = buffer.slice(0, index); buffer = buffer.slice(index + 1); if (!line.trim()) continue;
             const frame = JSON.parse(line);
+            firstFrameMs ??= Date.now() - started;
             if (frame.type === 'start') requestId = frame.requestId;
-            if (frame.type === 'delta') { firstTokenMs ??= Date.now() - started; deltas++; }
+            if (frame.type === 'delta') { firstTokenMs ??= Date.now() - started; lastDeltaMs = Date.now() - started; deltas++; }
             if (frame.type === 'error') throw Error(frame.message);
             if (frame.type === 'done') { if (frame.mode !== 'provider' || !frame.reply) throw Error('AI did not return a real provider reply'); done = true; }
           }
         }
         if (!done || !deltas) throw Error('AI stream ended without completion');
-        metrics.done++; metrics.results.push({ actor: actor.index, level, contextType: body.contextType, image: Boolean(body.attachments), requestId, firstTokenMs, totalMs: Date.now() - started, deltas });
+        metrics.done++; metrics.results.push({ actor: actor.index, level, contextType: body.contextType, image: Boolean(body.attachments), requestId, firstFrameMs, firstTokenMs, deltaSpanMs: lastDeltaMs - firstTokenMs, totalMs: Date.now() - started, deltas, chunks });
       } catch (error) { metrics.errors.push({ actor: actor.index, level, requestId, message: error.message, elapsedMs: Date.now() - started }); }
       finally { metrics.active--; write(`${tag}-ai.json`, metrics); }
     })();
