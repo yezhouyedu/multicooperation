@@ -130,6 +130,9 @@ export class AuthService {
 
     const result = await this.prisma.$transaction(
       async (tx) => {
+        // Pairing is a short global admission queue. READ COMMITTED takes a fresh
+        // snapshot after the lock; SERIALIZABLE waiters would retain a stale snapshot.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('experiment-pairing-admission'))`;
         const existingSession = await tx.session.findFirst({
           where: {
             status: {
@@ -250,27 +253,19 @@ export class AuthService {
           },
         });
 
-        await this.audit.record({
-          sessionId: waitingSession.id,
-          participantId: participantAId,
-          role: ParticipantRole.A,
-          eventType: 'role_assigned',
-          payload: { role: ParticipantRole.A, roleAssignmentSeed } as Prisma.InputJsonValue,
-        });
-        await this.audit.record({
-          sessionId: waitingSession.id,
-          participantId: participantBId,
-          role: ParticipantRole.B,
-          eventType: 'role_assigned',
-          payload: { role: ParticipantRole.B, roleAssignmentSeed } as Prisma.InputJsonValue,
-        });
+        // Do not acquire another pool connection while this transaction owns
+        // the admission lock; all waiters can already occupy the remaining pool.
+        await tx.experimentEvent.createMany({ data: [
+          { sessionId: waitingSession.id, participantId: participantAId, role: ParticipantRole.A, eventType: 'role_assigned', payload: { role: ParticipantRole.A, roleAssignmentSeed } },
+          { sessionId: waitingSession.id, participantId: participantBId, role: ParticipantRole.B, eventType: 'role_assigned', payload: { role: ParticipantRole.B, roleAssignmentSeed } },
+        ] });
 
         return {
           sessionCode: waitingSession.code,
           role: participantAId === participant.id ? ParticipantRole.A : ParticipantRole.B,
         };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 30000, timeout: 30000 },
     );
 
     return {
@@ -322,17 +317,15 @@ export class AuthService {
       });
     }
 
-    for (let index = 0; index < shuffled.length; index += 1) {
-      await tx.taskAssignment.create({
-        data: {
+    if (shuffled.length) await tx.taskAssignment.createMany({
+      data: shuffled.map((company, index) => ({
           sessionId,
-          companyId: shuffled[index].id,
+          companyId: company.id,
           phase: ExperimentPhase.FORMAL,
           sortOrder: index + 1,
           sequenceIndex: index + 1,
-        },
-      });
-    }
+      })),
+    });
 
     await tx.sessionSegmentState.deleteMany({ where: { sessionId } });
     await tx.sessionSegmentState.createMany({
@@ -503,10 +496,8 @@ export class AuthService {
       const shuffled = this.shuffleWithSeed(allSampled, `${sampleSeed}:shuffle`);
 
       // Create plan records
-      for (let queueOrder = 0; queueOrder < shuffled.length; queueOrder++) {
-        const item = shuffled[queueOrder];
-        await sidetaskTx.sideTaskPlan.create({
-          data: {
+      if (shuffled.length) await sidetaskTx.sideTaskPlan.createMany({
+        data: shuffled.map((item, queueOrder) => ({
             sessionId,
             segmentIndex,
             itemId: item.id,
@@ -514,9 +505,8 @@ export class AuthService {
             narrativeGroup,
             themeLabel: segmentTheme,
             queueOrder: queueOrder + 1,
-          },
-        });
-      }
+        })),
+      });
     }
   }
 

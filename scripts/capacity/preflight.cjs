@@ -1,0 +1,11 @@
+const { ssh, remoteNode, write } = require('./lib.cjs');
+const hardware = ssh("set -e\nprintf 'CPU '; nproc\nfree -m\ndf -h /\ndocker ps --format '{{.Names}} {{.ID}} {{.Status}}'\ndocker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}'\n");
+const facts = remoteNode(`const {PrismaClient}=require('@prisma/client'); const crypto=require('crypto'); const p=new PrismaClient();
+(async()=>{const config=await p.experimentConfig.findUnique({where:{id:'default'}}); const snapshots=await p.session.findMany({select:{id:true,experimentSnapshot:true},orderBy:{id:'asc'}}); const ai=await p.aiSettings.findUnique({where:{id:'default'}}); const counts={sessions:await p.session.count(),participants:await p.participant.count(),companies:await p.company.count(),sideTaskItems:await p.sideTaskItem.count()};
+const recent=await p.participantIntegrityState.count({where:{lastHeartbeatAt:{gte:new Date(Date.now()-1800000)}}});
+const active=await p.session.groupBy({by:['status','runtimePhase'],_count:{_all:true}});
+const hash=x=>crypto.createHash('sha256').update(JSON.stringify(x)).digest('hex');
+console.log(JSON.stringify({at:new Date().toISOString(),counts,recentHeartbeats30m:recent,active,configHash:hash(config),snapshotHash:hash(snapshots),aiHash:hash(ai),publicConfig:{workDurationMinutes:config.workDurationMinutes,breakDurationMinutes:config.breakDurationMinutes,practiceADurationMinutes:config.practiceADurationMinutes,practiceBDurationMinutes:config.practiceBDurationMinutes,activeExperimentRunId:config.activeExperimentRunId,activeExperimentMode:config.activeExperimentMode},models:ai?{basic:ai.basicModel,advanced:ai.advancedModel}:null}));await p.$disconnect();})().catch(e=>{console.error(e.message);process.exit(1)});`);
+write('preflight.json', { hardware, ...facts });
+console.log(hardware); console.log(JSON.stringify(facts, null, 2));
+if (facts.recentHeartbeats30m) throw Error('Recent participant activity: do not deploy or load test without confirming maintenance window');
