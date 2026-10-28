@@ -10,7 +10,7 @@ for (const key of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'http
 function ssh(script, timeout = 30000) {
   return execFileSync('ssh', ['-i', 'E:\\Own_program\\multi_cooperation_secrets\\ssh\\first_try.pem', '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'ConnectTimeout=15', 'ubuntu@49.233.203.108', 'bash -s'], { input: script.replace(/\r\n/g, '\n'), encoding: 'utf8', env: remoteEnv, timeout, maxBuffer: 10 * 1024 * 1024 });
 }
-function remoteNode(source, timeout) { return JSON.parse(ssh("docker exec -i -w /app/apps/server multi_cooperation_server_prod node <<'CAPACITY_NODE'\n" + source + '\nCAPACITY_NODE\n', timeout).trim()); }
+function remoteNode(source, timeout) { new (require('node:vm').Script)(source, { filename: 'capacity-remote-check.js' }); return JSON.parse(ssh("docker exec -i -w /app/apps/server multi_cooperation_server_prod node <<'CAPACITY_NODE'\n" + source + '\nCAPACITY_NODE\n', timeout).trim()); }
 async function adminToken() {
   // Password stays inside this process. Never print it or persist it in test reports.
   const { password } = remoteNode('process.stdout.write(JSON.stringify({password:process.env.ADMIN_PASSWORD}));');

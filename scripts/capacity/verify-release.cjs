@@ -1,0 +1,14 @@
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
+const{root,ssh,remoteNode,write}=require('./lib.cjs');
+const groups={server:['apps/server/src/auth/auth.service.ts','apps/server/src/experiment/experiment.service.ts','apps/server/src/ai/ai.service.ts','apps/server/src/ai/provider-request.ts','apps/server/src/recording/export.service.ts','apps/server/prisma/schema.prisma'],web:['apps/web/src/components/a-task-editor.tsx','apps/web/src/components/b-task-editor.tsx','apps/web/src/components/b-feedback-form.tsx','apps/web/src/lib/draft-sync.ts','apps/web/src/lib/session-runtime.ts']};
+const hash=s=>crypto.createHash('sha256').update(s.replace(/\r\n/g,'\n')).digest('hex');
+async function main(){const checks=[];
+for(const[group,files]of Object.entries(groups)){const code=`const fs=require('fs'),crypto=require('crypto');const files=${JSON.stringify(files)};console.log(JSON.stringify(Object.fromEntries(files.map(f=>[f,crypto.createHash('sha256').update(fs.readFileSync('/app/'+f,'utf8').replace(/\\r\\n/g,'\\n')).digest('hex')]))));`;const remote=group==='server'?remoteNode(code):JSON.parse(ssh("docker exec -i multi_cooperation_web_prod node <<'RELEASE_HASH'\n"+code+'\nRELEASE_HASH\n'));for(const file of files)checks.push({file,surface:group+' container',pass:hash(fs.readFileSync(path.join(root,file),'utf8'))===remote[file]});}
+const nginx=ssh('docker exec multi_cooperation_nginx_prod cat /etc/nginx/conf.d/default.conf\n');checks.push({file:'infra/nginx/production.conf',surface:'nginx container',pass:hash(fs.readFileSync(path.join(root,'infra/nginx/production.conf'),'utf8'))===hash(nginx)});
+const docs=['启动prompt.txt','03_tracking/progress.md','02_specs/06_resilience/CAPACITY_20261028.md','02_specs/04_pre_deploy/数据库文件夹手册.md'];
+const py="import hashlib,json,pathlib\nfiles="+JSON.stringify(docs)+"\nprint(json.dumps({f:hashlib.sha256(pathlib.Path('/opt/multi-cooperation',f).read_text(encoding='utf-8').replace('\\r\\n','\\n').encode()).hexdigest() for f in files}))\n";
+const remoteDocs=JSON.parse(ssh("python3 - <<'DOC_HASH'\n"+py+'DOC_HASH\n'));for(const file of docs)checks.push({file,surface:'server source',pass:hash(fs.readFileSync(path.join(root,file),'utf8'))===remoteDocs[file]});
+const pages={};for(const url of ['/api/health','/login','/admin']){const response=await fetch('https://aiseek.tech'+url,{signal:AbortSignal.timeout(15000)});pages[url]=response.status;if(response.status!==200)checks.push({surface:'public '+url,pass:false});}
+const result={at:new Date().toISOString(),commit:execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim(),checks,pages,passed:checks.filter(x=>x.pass).length,total:checks.length};write('final-release-verification.json',result);console.log(JSON.stringify(result));if(result.passed!==result.total)process.exitCode=1;
+}
+main().catch(e=>{console.error(e.message);process.exitCode=1});

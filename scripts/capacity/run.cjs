@@ -111,7 +111,9 @@ function answers(template) {
   return Object.fromEntries(items.map((item) => [item.code || item.id, item.type === 'text' ? '系统容量测试，非真实被试意见' : item.type === 'number' ? Math.min(item.max ?? 25, Math.max(item.min ?? 0, 25)) : item.type === 'scale' ? Math.ceil(((item.min ?? 1) + (item.max ?? 7)) / 2) : item.type === 'multi' ? [item.options[0]] : item.options?.at(-1) ?? '测试答案']));
 }
 async function heartbeats(actor) {
-  while (!stop && !actor.done) {
+  // A pilot actor can finish before slower pairs. Keep its page-equivalent
+  // heartbeat alive until the entire run actually closes the sessions.
+  while (!stop) {
     if (actor.runtime?.phase === 'formal_work' && Date.now() > actor.nextHeartbeat) {
       await request(`/experiment/session/${actor.sessionCode}/integrity/heartbeat`, { participantId: actor.participantId, lastValidActivityAt: new Date().toISOString(), clientTime: new Date().toISOString() }, 'heartbeat');
       actor.nextHeartbeat = Date.now() + 10000;
